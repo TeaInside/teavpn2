@@ -2,15 +2,25 @@
 #ifndef TEAVPN__SERVER__CONFIG_H
 #define TEAVPN__SERVER__CONFIG_H
 
-typedef struct {
-  char *tcp_bind_addr;
-  uint16_t tcp_bind_port;
-} teavpn_server_tcp;
+struct teavpn_iface {
+  char *dev;
+  char *inet4;
+  char *inet4_bcmask;
+  uint16_t mtu;
+  char *data_dir;
+};
 
-typedef struct {
-  char *udp_bind_addr;
-  uint16_t udp_bind_port;
-} teavpn_server_udp;
+struct teavpn_server_tcp {
+  char *bind_addr;
+  uint16_t bind_port;
+  struct teavpn_iface iface;
+};
+
+struct teavpn_server_udp {
+  char *bind_addr;
+  uint16_t bind_port;
+  struct teavpn_iface iface;
+};
 
 enum teavpn_server_type {
   teavpn_server_tcp_type = (1 << 0),
@@ -18,8 +28,8 @@ enum teavpn_server_type {
 };
 
 union teavpn_server {
-  teavpn_server_tcp tcp;
-  teavpn_server_udp udp;
+  struct teavpn_server_tcp tcp;
+  struct teavpn_server_udp udp;
 };
 
 typedef struct {
