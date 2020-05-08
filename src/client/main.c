@@ -1,6 +1,6 @@
 
 #include <stdio.h>
-#include <teavpn2/global/data_struct.h>
+#include <teavpn2/global/common.h>
 
 int main(int argc, char *argv[], char *envp[])
 {

@@ -3,6 +3,7 @@
 #define TEAVPN__GLOBAL__COMMON_H
 
 #include <stdint.h>
+#include <teavpn2/global/data_struct.h>
 
 void __internal_teavpn_debug_log(const char *format, ...);
 
