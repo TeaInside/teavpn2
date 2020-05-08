@@ -47,12 +47,16 @@ GLOBAL_CXX_SOURCES+= $(shell find ${GLOBAL_SRC_DIR} -name '*.cxx')
 GLOBAL_ASM_SOURCES+= $(shell find ${GLOBAL_SRC_DIR} -name '*.asm')
 
 # Global objects.
-GLOBAL_C_OBJECTS = $(GLOBAL_SOURCES:%=%.o)
+GLOBAL_C_OBJECTS = $(GLOBAL_C_SOURCES:%=%.o)
 GLOBAL_CXX_OBJECTS = $(GLOBAL_CXX_SOURCES:%=%.o)
 GLOBAL_ASM_OBJECTS = $(GLOBAL_ASM_SOURCES:%=%.o)
+GLOBAL_OBJECTS = $(GLOBAL_C_OBJECTS)
+GLOBAL_OBJECTS+= $(GLOBAL_CXX_OBJECTS)
+GLOBAL_OBJECTS+= $(GLOBAL_ASM_OBJECTS)
 
 # Global depends directories.
-GLOBAL_DEPDIR = .deps/src/global
+GLOBAL_DIR_L = $(shell find ${GLOBAL_SRC_DIR} -type d)
+GLOBAL_DEPDIR = ${GLOBAL_DIR_L:%=${ROOT_DEPDIR}/%}
 GLOBAL_DEPFLAGS = -MT $@ -MMD -MP -MF ${ROOT_DEPDIR}/$*.d
 GLOBAL_DEPFILES = ${GLOBAL_C_SOURCES:%=${ROOT_DEPDIR}/%.d}
 GLOBAL_DEPFILES+= ${GLOBAL_CXX_SOURCES:%=${ROOT_DEPDIR}/%.d}
@@ -74,9 +78,13 @@ SERVER_ASM_SOURCES+= $(shell find src/server -name '*.asm')
 SERVER_C_OBJECTS = $(SERVER_C_SOURCES:%=%.o)
 SERVER_CXX_OBJECTS = $(SERVER_CXX_SOURCES:%=%.o)
 SERVER_ASM_OBJECTS = $(SERVER_ASM_SOURCES:%=%.o)
+SERVER_OBJECTS = $(SERVER_C_OBJECTS)
+SERVER_OBJECTS+= $(SERVER_CXX_OBJECTS)
+SERVER_OBJECTS+= $(SERVER_ASM_OBJECTS)
 
 # Server depends directories.
-SERVER_DEPDIR = .deps/src/server
+SERVER_DIR_L = $(shell find ${SERVER_SRC_DIR} -type d)
+SERVER_DEPDIR = ${SERVER_DIR_L:%=${ROOT_DEPDIR}/%}
 SERVER_DEPFLAGS = -MT $@ -MMD -MP -MF ${ROOT_DEPDIR}/$*.d
 SERVER_DEPFILES = ${SERVER_C_SOURCES:%=${ROOT_DEPDIR}/%.d}
 SERVER_DEPFILES+= ${SERVER_CXX_SOURCES:%=${ROOT_DEPDIR}/%.d}
@@ -99,18 +107,25 @@ CLIENT_ASM_SOURCES+= $(shell find src/server -name '*.asm')
 CLIENT_C_OBJECTS = $(CLIENT_C_SOURCES:%=%.o)
 CLIENT_CXX_OBJECTS = $(CLIENT_CXX_SOURCES:%=%.o)
 CLIENT_ASM_OBJECTS = $(CLIENT_ASM_SOURCES:%=%.o)
+CLIENT_OBJECTS = $(CLIENT_C_OBJECTS)
+CLIENT_OBJECTS+= $(CLIENT_CXX_OBJECTS)
+CLIENT_OBJECTS+= $(CLIENT_ASM_OBJECTS)
 
 # Client depends directories.
-CLIENT_DEPDIR = .deps/src/client
+CLIENT_DIR_L = $(shell find ${CLIENT_SRC_DIR} -type d)
+CLIENT_DEPDIR = ${CLIENT_DIR_L:%=${ROOT_DEPDIR}/%}
 CLIENT_DEPFLAGS = -MT $@ -MMD -MP -MF ${ROOT_DEPDIR}/$*.d
 CLIENT_DEPFILES = ${CLIENT_C_SOURCES:%=${ROOT_DEPDIR}/%.d}
 CLIENT_DEPFILES+= ${CLIENT_CXX_SOURCES:%=${ROOT_DEPDIR}/%.d}
 ###################### End of Client Section ######################
 
 
-
 ### Run the compile rules ###
-all: ${CLIENT_BIN} ${SERVER_BIN}
+all: ${SERVER_BIN} ${CLIENT_BIN} 
+
+.PHONY: deps_dir
+
+deps_dir: ${GLOBAL_DEPDIR} ${CLIENT_DEPDIR} ${SERVER_DEPDIR}
 
 ${ROOT_DEPDIR}:
 	mkdir -pv $@
@@ -129,6 +144,8 @@ ${GLOBAL_ASM_OBJECTS}:
 	${NASM} ${NASM_FLAGS} ${@:%.o=%} -o $@
 
 -include ${GLOBAL_DEPFILES}
+
+global: ${GLOBAL_C_OBJECTS} ${GLOBAL_CXX_OBJECTS} ${GLOBAL_ASM_OBJECTS}
 ###################### End of build global sources ######################
 
 
@@ -149,8 +166,8 @@ ${SERVER_ASM_OBJECTS}:
 
 -include ${SERVER_DEPFILES}
 
-${SERVER_BIN}: ${SERVER_C_OBJECTS} ${SERVER_CXX_OBJECTS} ${SERVER_ASM_OBJECTS}
-	${LINKER} ${LINKER_FLAGS} ${SERVER_C_OBJECTS} ${SERVER_CXX_OBJECTS} ${SERVER_ASM_OBJECTS} -o ${SERVER_BIN}
+${SERVER_BIN}: ${GLOBAL_OBJECTS} ${SERVER_OBJECTS}
+	${LINKER} ${LINKER_FLAGS} ${GLOBAL_OBJECTS} ${SERVER_OBJECTS} -o ${SERVER_BIN}
 ###################### End of build server sources ######################
 
 
@@ -171,25 +188,26 @@ ${CLIENT_ASM_OBJECTS}:
 
 -include ${CLIENT_DEPFILES}
 
-${CLIENT_BIN}: ${CLIENT_C_OBJECTS} ${CLIENT_CXX_OBJECTS} ${CLIENT_ASM_OBJECTS}
-	${LINKER} ${LINKER_FLAGS} ${CLIENT_C_OBJECTS} ${CLIENT_CXX_OBJECTS} ${CLIENT_ASM_OBJECTS} -o ${CLIENT_BIN}
+${CLIENT_BIN}: ${GLOBAL_OBJECTS} ${CLIENT_OBJECTS}
+	${LINKER} ${LINKER_FLAGS} ${GLOBAL_OBJECTS} ${CLIENT_OBJECTS} -o ${CLIENT_BIN}
 ###################### End of build client sources ######################
 
 
 ###################### Cleaning section ######################
 clean: clean_global clean_client clean_server
+	rm -rfv ${ROOT_DEPDIR}
 
 clean_global:
-	rm -rfv ${GLOBAL_C_OBJECTS} ${GLOBAL_CXX_OBJECTS} ${GLOBAL_ASM_OBJECTS}
+	rm -rfv ${GLOBAL_OBJECTS}
 	rm -rfv ${GLOBAL_DEPDIR}
 
 clean_server:
-	rm -rfv ${SERVER_C_OBJECTS} ${SERVER_CXX_OBJECTS} ${SERVER_ASM_OBJECTS}
+	rm -rfv ${SERVER_OBJECTS}
 	rm -rfv ${SERVER_BIN}
 	rm -rfv ${SERVER_DEPDIR}
 
 clean_client:
-	rm -rfv ${CLIENT_C_OBJECTS} ${CLIENT_CXX_OBJECTS} ${CLIENT_ASM_OBJECTS}
+	rm -rfv ${CLIENT_OBJECTS}
 	rm -rfv ${CLIENT_BIN}
 	rm -rfv ${CLIENT_DEPDIR}
 ###################### End of leaning section ######################
