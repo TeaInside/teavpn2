@@ -2,7 +2,9 @@
 *.so
 *.swo
 *.swp
+*.tmp
 *.lock
+*.dump
 /.deps/
 /teavpn_server
 /teavpn_client
