@@ -8,26 +8,28 @@ LINKER = g++
 NASM = nasm
 INCLUDE_DIR = -I${BASEDIR}/include -I${BASEDIR}/include/third_party
 LINK_LIBRARIES = -lpthread
-LINK_FLAGS = 
-COMPILE_FLAGS = 
 RELEASE_MODE = 0
-CC_STD_FLAGS = -std=c99
-CXX_STD_FLAGS = -std=c++17
+CC_COMPILE_FLAGS = -std=c11
+CXX_COMPILE_FLAGS = -std=c++17 -D_GLIBCXX_ASSERTIONS
+ALL_COMPILE_FLAGS = -rdynamic -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -D_GNU_SOURCE
+
+RELEASE_COMPILE_FLAG = -fno-stack-protector -Ofast 
+DEBUG_COMPILE_FLAG = -fstack-protector-strong -ggdb3 -O0 -DTEAVPN_DEBUG -grecord-gcc-switches
 
 # Target compile.
 CLIENT_BIN = teavpn_client
 SERVER_BIN = teavpn_server
 
 ifeq (${RELEASE_MODE},1)
-	NASM_FLAGS = -felf64 -O3
-	LINKER_FLAGS = -Wl,-R -Wl,${BASEDIR} -rdynamic -fno-stack-protector -Ofast ${CONSTANTS}
-	CC_COMPILER_FLAGS = -rdynamic ${INCLUDE_DIR} ${CC_STD_FLAGS} -fPIC -fno-stack-protector -Ofast ${CONSTANTS} -c
-	CXX_COMPILER_FLAGS = -rdynamic ${INCLUDE_DIR} ${CXX_STD_FLAGS} -fPIC -fno-stack-protector -Ofast ${CONSTANTS} -c
+NASM_FLAGS = -felf64 -O3
+LINKER_FLAGS = -Wl,-R -Wl,${BASEDIR} ${LINK_FLAGS} ${ALL_COMPILE_FLAGS}
+CC_COMPILER_FLAGS = ${INCLUDE_DIR} ${CC_COMPILE_FLAGS} ${ALL_COMPILE_FLAGS} ${RELEASE_COMPILE_FLAG} -c
+CXX_COMPILER_FLAGS = ${INCLUDE_DIR} ${CXX_COMPILE_FLAGS} ${ALL_COMPILE_FLAGS} ${RELEASE_COMPILE_FLAG} -c
 else
-	NASM_FLAGS = -felf64 -g -O0
-	LINKER_FLAGS = -Wl,-R -Wl,${BASEDIR} -rdynamic -fstack-protector-strong -ggdb3 -O0 -DICETEA_DEBUG ${CONSTANTS}
-	CC_COMPILER_FLAGS = -rdynamic ${INCLUDE_DIR} ${CC_STD_FLAGS} -fPIC -fstack-protector-strong -ggdb3 -O0 -DTEAVPN_DEBUG ${CONSTANTS} -c
-	CXX_COMPILER_FLAGS = -rdynamic ${INCLUDE_DIR} ${CXX_STD_FLAGS} -fPIC -fstack-protector-strong -ggdb3 -O0 -DTEAVPN_DEBUG ${CONSTANTS} -c
+NASM_FLAGS = -felf64 -g -O0
+LINKER_FLAGS = -Wl,-R -Wl,${BASEDIR} ${DEBUG_COMPILE_FLAG}
+CC_COMPILER_FLAGS = ${INCLUDE_DIR}  ${CC_COMPILE_FLAGS} ${ALL_COMPILE_FLAGS} ${DEBUG_COMPILE_FLAG} -c
+CXX_COMPILER_FLAGS = ${INCLUDE_DIR} ${CXX_COMPILE_FLAGS} ${ALL_COMPILE_FLAGS} ${DEBUG_COMPILE_FLAG} -c
 endif
 
 ROOT_DEPDIR = .deps
@@ -167,7 +169,7 @@ ${SERVER_ASM_OBJECTS}:
 -include ${SERVER_DEPFILES}
 
 ${SERVER_BIN}: ${GLOBAL_OBJECTS} ${SERVER_OBJECTS}
-	${LINKER} ${LINKER_FLAGS} ${GLOBAL_OBJECTS} ${SERVER_OBJECTS} -o ${SERVER_BIN}
+	${LINKER} ${LINKER_FLAGS} ${GLOBAL_OBJECTS} ${SERVER_OBJECTS} -o ${SERVER_BIN} ${LINK_LIBRARIES}
 ###################### End of build server sources ######################
 
 
@@ -189,7 +191,7 @@ ${CLIENT_ASM_OBJECTS}:
 -include ${CLIENT_DEPFILES}
 
 ${CLIENT_BIN}: ${GLOBAL_OBJECTS} ${CLIENT_OBJECTS}
-	${LINKER} ${LINKER_FLAGS} ${GLOBAL_OBJECTS} ${CLIENT_OBJECTS} -o ${CLIENT_BIN}
+	${LINKER} ${LINKER_FLAGS} ${GLOBAL_OBJECTS} ${CLIENT_OBJECTS} -o ${CLIENT_BIN} ${LINK_LIBRARIES}
 ###################### End of build client sources ######################
 
 

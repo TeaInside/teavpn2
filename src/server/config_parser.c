@@ -30,7 +30,8 @@ static int parser_handler(void *user, const char *section, const char *name, con
 
   if (CMP(section, "iface")) {
     RMATCH("dev") {
-      config->iface.dev = (char *)value;
+      printf("devval: %p\n", value);
+      config->iface.dev = strdup(value);
       return 1;
     } else
     RMATCH("mtu") {
@@ -38,11 +39,11 @@ static int parser_handler(void *user, const char *section, const char *name, con
       return 1;
     } else
     RMATCH("inet4") {
-      config->iface.inet4 = (char *)value;
+      config->iface.inet4 = strdup(value);
       return 1;
     } else
     RMATCH("inet4_bcmask") {
-      config->iface.inet4_bcmask = (char *)value;
+      config->iface.inet4_bcmask = strdup(value);
       return 1;
     } else {
       goto invalid_opt;
@@ -60,10 +61,10 @@ static int parser_handler(void *user, const char *section, const char *name, con
       }
     } else
     RMATCH("bind_addr"){
-      config->socket.bind_addr = (char *)value;
+      config->socket.bind_addr = strdup(value);
     } else
     RMATCH("bind_port") {
-      config->socket.bind_port = (uint16_t)atoi((char *)value);
+      config->socket.bind_port = (uint16_t)atoi(value);
     } else {
       goto invalid_opt;
     }

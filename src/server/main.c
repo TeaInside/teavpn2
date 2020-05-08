@@ -11,11 +11,17 @@ int main(int argc, char *argv[], char *envp[])
     return 1;
   }
 
+  char arena[4096]; /* Minimize heap usage. */
+  
   teavpn_server_config config;
 
   if (!teavpn_server_config_parser(argv[1], &config)) {
     return 1;
   }
+
+  #ifdef TEAVPN_DEBUG
+    print_server_config(&config);
+  #endif
 
   return 0;
 }
