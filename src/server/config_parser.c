@@ -30,8 +30,7 @@ static int parser_handler(void *user, const char *section, const char *name, con
 
   if (CMP(section, "iface")) {
     RMATCH("dev") {
-      printf("devval: %p\n", value);
-      config->iface.dev = strdup(value);
+      config->iface.dev = arena_strdup(value);
       return 1;
     } else
     RMATCH("mtu") {
@@ -39,11 +38,11 @@ static int parser_handler(void *user, const char *section, const char *name, con
       return 1;
     } else
     RMATCH("inet4") {
-      config->iface.inet4 = strdup(value);
+      config->iface.inet4 = arena_strdup(value);
       return 1;
     } else
     RMATCH("inet4_bcmask") {
-      config->iface.inet4_bcmask = strdup(value);
+      config->iface.inet4_bcmask = arena_strdup(value);
       return 1;
     } else {
       goto invalid_opt;
@@ -61,7 +60,7 @@ static int parser_handler(void *user, const char *section, const char *name, con
       }
     } else
     RMATCH("bind_addr"){
-      config->socket.bind_addr = strdup(value);
+      config->socket.bind_addr = arena_strdup(value);
     } else
     RMATCH("bind_port") {
       config->socket.bind_port = (uint16_t)atoi(value);

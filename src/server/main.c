@@ -2,8 +2,12 @@
 #include <stdio.h>
 #include <teavpn2/server/common.h>
 
+#define ARENA_SIZE (1024 * 50)
+
 int main(int argc, char *argv[], char *envp[])
 {
+  char arena[ARENA_SIZE]; /* We create our function to treat this like heap. */
+  teavpn_server_config config;
 
   if (argc != 2) {
     printf("Invalid arguments!\n");
@@ -11,9 +15,7 @@ int main(int argc, char *argv[], char *envp[])
     return 1;
   }
 
-  char arena[4096]; /* Minimize heap usage. */
-  
-  teavpn_server_config config;
+  init_arena(arena, ARENA_SIZE);
 
   if (!teavpn_server_config_parser(argv[1], &config)) {
     return 1;
