@@ -1,5 +1,5 @@
 # TeaVPN
-Virutal Private Network for Linux
+Virutal Private Network for Linux. Not documented yet.
 
 ### Project Directory Structure
 #### Source Code Directory
@@ -23,4 +23,4 @@ Virutal Private Network for Linux
 3. `make clean_client` to clean built client.
 
 ## License
-MIT
+[MIT](https://github.com/TeaInside/teavpn2/blob/master/LICENSE)
