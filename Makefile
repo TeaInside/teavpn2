@@ -212,4 +212,4 @@ clean_client:
 	rm -rfv ${CLIENT_OBJECTS}
 	rm -rfv ${CLIENT_BIN}
 	rm -rfv ${CLIENT_DEPDIR}
-###################### End of leaning section ######################
+###################### End of cleaning section ######################
