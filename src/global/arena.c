@@ -2,6 +2,17 @@
 #include <string.h>
 #include <teavpn2/global/arena.h>
 
+/**
+ * Warning:
+ * - You must be very very careful in using arena.
+ * - It does not have free() like malloc() does.
+ * - Responsibility to manage reuse memory is yours.
+ * - No deallocation.
+ * - No detail valgrind error detection.
+ *
+ * YOU HAVE BEEN WARNED!
+ */
+
 char *arena_addr;
 size_t arena_pos;
 size_t arena_size;
