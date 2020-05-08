@@ -1,0 +1,6 @@
+
+#ifndef TEAVPN__CLIENT__DATA_STRUCT_H
+#define TEAVPN__CLIENT__DATA_STRUCT_H
+
+
+#endif
