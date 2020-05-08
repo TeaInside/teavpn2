@@ -1,0 +1,8 @@
+*.o
+*.so
+*.swo
+*.swp
+*.lock
+/.deps/
+/teavpn_server
+/teavpn_client
