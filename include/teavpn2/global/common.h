@@ -4,15 +4,6 @@
 
 #include <stdint.h>
 #include <teavpn2/global/data_struct.h>
-
-void __internal_teavpn_debug_log(const char *format, ...);
-
-#ifndef TEAVPN_DEBUGGER_FILE
-  int8_t teavpn_verbose_level;
-#endif
-
-#define debug_log(VLEVEL, ...) \
-  if (teavpn_verbose_level <= VLEVEL) \
-    teavpn_debug_log(const char *format, ...)
+#include <teavpn2/global/debugger.h>
 
 #endif
