@@ -4,6 +4,15 @@
 
 int main(int argc, char *argv[], char *envp[])
 {
-  printf("This is server application\n");
+
+  if (argc != 2) {
+    printf("Invalid arguments!\n");
+    printf("Usage: %s <config_file>\n", argv[0]);
+    return 1;
+  }
+
+  teavpn_server_config config;
+  teavpn_server_config_parser(argv[1], &config);
+
   return 0;
 }
