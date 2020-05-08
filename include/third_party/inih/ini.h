@@ -11,6 +11,11 @@ https://github.com/benhoyt/inih
 
 */
 
+#define INI_USE_STACK 1
+#define INI_MAX_LINE  500
+#define INI_ALLOW_INLINE_COMMENTS 1
+#define INI_HANDLER_LINENO 1
+
 #ifndef __INI_H__
 #define __INI_H__
 

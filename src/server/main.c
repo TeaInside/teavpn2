@@ -12,7 +12,10 @@ int main(int argc, char *argv[], char *envp[])
   }
 
   teavpn_server_config config;
-  teavpn_server_config_parser(argv[1], &config);
+
+  if (!teavpn_server_config_parser(argv[1], &config)) {
+    return 1;
+  }
 
   return 0;
 }

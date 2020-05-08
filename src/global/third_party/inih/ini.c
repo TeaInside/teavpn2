@@ -222,7 +222,6 @@ int ini_parse_stream(ini_reader reader, void* stream, ini_handler handler,
 #if !INI_USE_STACK
     free(line);
 #endif
-
     return error;
 }
 
