@@ -22,7 +22,7 @@ ifeq (${RELEASE_MODE},1)
 	NASM_FLAGS = -felf64 -O3
 	LINKER_FLAGS = -Wl,-R -Wl,${BASEDIR} -rdynamic -fno-stack-protector -Ofast ${CONSTANTS}
 	CC_COMPILER_FLAGS = -rdynamic ${INCLUDE_DIR} ${CC_STD_FLAGS} -fPIC -fno-stack-protector -Ofast ${CONSTANTS} -c
-	CXX_COMPILER_FLAGS = -rdynamic ${INCLUDE_DIR} ${STD_FLAGS} -fPIC -fno-stack-protector -Ofast ${CONSTANTS} -c
+	CXX_COMPILER_FLAGS = -rdynamic ${INCLUDE_DIR} ${CXX_STD_FLAGS} -fPIC -fno-stack-protector -Ofast ${CONSTANTS} -c
 else
 	NASM_FLAGS = -felf64 -g -O0
 	LINKER_FLAGS = -Wl,-R -Wl,${BASEDIR} -rdynamic -fstack-protector-strong -ggdb3 -O0 -DICETEA_DEBUG ${CONSTANTS}
