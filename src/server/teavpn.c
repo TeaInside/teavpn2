@@ -1,7 +1,7 @@
 
 #include <stdio.h>
 
-#include <teavpn2/server/iface.h>
+#include <teavpn2/global/iface.h>
 #include <teavpn2/server/common.h>
 
 static bool validate_config(teavpn_server_config *config);
@@ -24,8 +24,9 @@ int teavpn_server_run(teavpn_server_config *config)
     return 1;
   }
 
-  if (teavpn_iface_init(&config->iface)) {
-
+  debug_log(2, "");
+  if (!teavpn_iface_init(&config->iface)) {
+    return 1;
   }
 
   return 0;

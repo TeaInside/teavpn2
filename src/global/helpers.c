@@ -1,5 +1,6 @@
 
 #include <string.h>
+#include <stdlib.h>
 
 #include <teavpn2/global/arena.h>
 #include <teavpn2/global/helpers.h>
@@ -8,13 +9,16 @@
  * @param char *str
  * @return char *
  */
-char *escapeshellarg(char *str)
+char *escape_sh(
+  register char *cmd, /* arena */
+  register char *str, /* string to be escaped */
+  register size_t l   /* string length */
+)
 {
-  size_t x, y = 0;
-  size_t l = strlen(str);
-  char *cmd;
+  register size_t x;
+  register size_t y = 0;
 
-  cmd = (char *)arena_alloc(sizeof(char) * l * 4); // Worst case
+  // cmd = (char *)malloc(sizeof(char) * l * 4); // Worst case
 
 #ifdef PHP_WIN32
   cmd[y++] = '"';

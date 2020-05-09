@@ -10,8 +10,8 @@
 #include <linux/if.h>
 #include <linux/if_tun.h>
 
-#include <teavpn2/server/iface.h>
-#include <teavpn2/server/common.h>
+#include <teavpn2/global/iface.h>
+#include <teavpn2/global/common.h>
 
 static int tun_alloc(char *dev, int flags);
 
@@ -39,7 +39,38 @@ int teavpn_iface_allocate(char *dev)
  */
 bool teavpn_iface_init(struct teavpn_iface *iface)
 {
-  sleep(1000);
+  register size_t arena_pos = 0;
+  register size_t l;
+  char cmd1[100], cmd2[100], _arena[100],
+    *dev,
+    *inet4,
+    *inet4_bc,
+    *arena = _arena;
+
+  dev = escape_sh(arena, iface->dev, strlen(iface->dev));
+  arena += strlen(dev) + 1;
+  inet4 = escape_sh(arena, iface->inet4, strlen(iface->inet4));
+  arena += strlen(inet4) + 1;
+  inet4_bc = escape_sh(arena, iface->inet4_bcmask, strlen(iface->inet4_bcmask));
+
+  debug_log(5, "dev: %s", dev);
+  debug_log(5, "inet4: %s", inet4);
+  debug_log(5, "inet4_bc: %s", inet4_bc);
+
+  sprintf(cmd1, "/sbin/ip link set dev %s up mtu %d", dev, iface->mtu);
+  sprintf(cmd2, "/sbin/ip addr add dev %s %s broadcast %s", dev, inet4, inet4_bc);
+
+  debug_log(0, "Executing: %s", cmd1);
+  if (system(cmd1)) {
+    return false;
+  }
+
+  debug_log(0, "Executing: %s", cmd2);
+  if (system(cmd2)) {
+    return false;
+  }
+
+  return true;
 }
 
 /**
