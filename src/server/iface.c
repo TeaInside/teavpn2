@@ -15,6 +15,10 @@
 
 static int tun_alloc(char *dev, int flags);
 
+/**
+ * @param char *dev
+ * @return int
+ */
 int teavpn_iface_allocate(char *dev)
 {
   int tun_fd;
@@ -27,6 +31,21 @@ int teavpn_iface_allocate(char *dev)
   return tun_fd;
 }
 
+/**
+ * Initialize network interface for TeaVPN server.
+ *
+ * @param server_config *config
+ * @return bool
+ */
+static bool teavpn_tcp_server_init_iface(server_config *config)
+{
+}
+
+/**
+ * @param char *dev
+ * @param int flags
+ * @return int
+ */
 static int tun_alloc(char *dev, int flags)
 {
   int fd, err;

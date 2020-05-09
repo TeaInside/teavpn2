@@ -9,6 +9,11 @@
 
 static int parser_handler(void *user, const char *section, const char *name, const char *value, int lineno);
 
+/**
+ * @param char *ini_file
+ * @param teavpn_server_config *config
+ * @return bool
+ */
 bool teavpn_server_config_parser(char *ini_file, teavpn_server_config *config)
 {
   int ret = ini_parse(ini_file, parser_handler, config);
@@ -21,6 +26,14 @@ bool teavpn_server_config_parser(char *ini_file, teavpn_server_config *config)
   return (ret == 0);
 }
 
+/**
+ * @param void *user
+ * @param const char *section
+ * @param const char *name
+ * @param const char *value
+ * @param int lineno
+ * @return int
+ */
 static int parser_handler(void *user, const char *section, const char *name, const char *value, int lineno)
 {
   teavpn_server_config *config = (teavpn_server_config *)user;

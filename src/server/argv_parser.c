@@ -10,6 +10,13 @@
 static void set_default_config(teavpn_server_config *config);
 static bool getopt_handler(int argc, char **argv, teavpn_server_config *config);
 
+/**
+ * @param int argc
+ * @param char **argv
+ * @param char **envp
+ * @param teavpn_server_config *config
+ * @return bool
+ */
 bool teavpn_server_argv_parser(int argc, char **argv, char **envp, teavpn_server_config *config)
 {
 
@@ -57,6 +64,12 @@ const static struct option long_options[] = {
   {0, 0, 0, 0}
 };
 
+/**
+ * @param int argc
+ * @param char **argv
+ * @param teavpn_server_config *config
+ * @return bool
+ */
 static bool getopt_handler(int argc, char **argv, teavpn_server_config *config)
 {
   int c;

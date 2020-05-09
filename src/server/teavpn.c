@@ -6,6 +6,10 @@
 
 static bool validate_config(teavpn_server_config *config);
 
+/**
+ * @param teavpn_server_config *config
+ * @return int
+ */
 int teavpn_server_run(teavpn_server_config *config)
 {
   if (!validate_config(config)) {
@@ -26,6 +30,10 @@ int teavpn_server_run(teavpn_server_config *config)
   return 0;
 }
 
+/**
+ * @param teavpn_server_config *config
+ * @return bool
+ */
 static bool validate_config(teavpn_server_config *config)
 {
   /**

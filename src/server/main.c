@@ -4,6 +4,12 @@
 
 #define ARENA_SIZE (1024 * 100)
 
+/**
+ * @param int argc
+ * @param char *argv[]
+ * @param char *envp[]
+ * @return int
+ */
 int main(int argc, char *argv[], char *envp[])
 {
   char arena[ARENA_SIZE]; /* We create our function to treat this like heap. */
