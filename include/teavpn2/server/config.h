@@ -13,6 +13,7 @@ struct teavpn_iface {
 };
 
 typedef struct {
+  char *config_file;
   struct teavpn_iface iface;
   enum teavpn_socket_type socket_type;
   struct {
