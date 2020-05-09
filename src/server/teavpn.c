@@ -4,6 +4,7 @@
 #include <teavpn2/global/iface.h>
 #include <teavpn2/server/common.h>
 
+int tun_fd;
 static bool validate_config(teavpn_server_config *config);
 
 /**
@@ -16,8 +17,6 @@ int teavpn_server_run(teavpn_server_config *config)
     return 1;
   }
 
-  int tun_fd;
-
   debug_log(2, "Allocating teavpn interface...");
   tun_fd = teavpn_iface_allocate(config->iface.dev);
   if (tun_fd < 0) {
@@ -26,6 +25,7 @@ int teavpn_server_run(teavpn_server_config *config)
 
   debug_log(2, "Setting up teavpn network interface...");
   if (!teavpn_iface_init(&config->iface)) {
+    error_log("Cannot set up teavpn network interface");
     return 1;
   }
 

@@ -41,7 +41,7 @@ bool teavpn_iface_init(struct teavpn_iface *iface)
 {
   register size_t arena_pos = 0;
   register size_t l;
-  char cmd1[100], cmd2[100], _arena[100],
+  char cmd[256], _arena[256],
     *dev,
     *inet4,
     *inet4_bc,
@@ -57,20 +57,18 @@ bool teavpn_iface_init(struct teavpn_iface *iface)
   debug_log(5, "inet4: %s", inet4);
   debug_log(5, "inet4_bc: %s", inet4_bc);
 
-  sprintf(cmd1, "/sbin/ip link set dev %s up mtu %d", dev, iface->mtu);
-  sprintf(cmd2, "/sbin/ip addr add dev %s %s broadcast %s", dev, inet4, inet4_bc);
+  #define EXEC_CMD(CMD, ...) \
+    sprintf(cmd, CMD, ##__VA_ARGS__); \
+    debug_log(0, "Executing: %s", cmd); \
+    if (system(cmd)) { \
+      return false; \
+    }
 
-  debug_log(0, "Executing: %s", cmd1);
-  if (system(cmd1)) {
-    return false;
-  }
-
-  debug_log(0, "Executing: %s", cmd2);
-  if (system(cmd2)) {
-    return false;
-  }
+  EXEC_CMD("/sbin/ip link set dev %s up mtu %d", dev, iface->mtu);
+  EXEC_CMD("/sbin/ip addr add dev %s %s broadcast %s", dev, inet4, inet4_bc);
 
   return true;
+  #undef EXEC_CMD
 }
 
 /**
