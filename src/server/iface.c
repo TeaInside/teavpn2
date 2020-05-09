@@ -10,20 +10,20 @@
 #include <linux/if.h>
 #include <linux/if_tun.h>
 
-#include <teavpn2/server/tun.h>
+#include <teavpn2/server/iface.h>
 #include <teavpn2/server/common.h>
 
 static int tun_alloc(char *dev, int flags);
 
-int teavpn_tun_allocate(char *dev)
+int teavpn_iface_allocate(char *dev)
 {
   int tun_fd;
-
   tun_fd = tun_alloc(dev, IFF_TUN);
   if (tun_fd < 0) {
     perror("Error tun_alloc");
-    return -1;
+    return tun_fd;
   }
+
   return tun_fd;
 }
 

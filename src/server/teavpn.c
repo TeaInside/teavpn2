@@ -1,5 +1,7 @@
 
 #include <stdio.h>
+
+#include <teavpn2/server/iface.h>
 #include <teavpn2/server/common.h>
 
 static bool validate_config(teavpn_server_config *config);
@@ -10,6 +12,18 @@ int teavpn_server_run(teavpn_server_config *config)
     return 1;
   }
 
+  int tun_fd;
+
+  tun_fd = teavpn_iface_allocate(config->iface.dev);
+  if (tun_fd < 0) {
+    return 1;
+  }
+
+  if (!tun_init_iface()) {
+
+  }
+
+  return 0;
 }
 
 static bool validate_config(teavpn_server_config *config)
