@@ -6,5 +6,6 @@
 *.lock
 *.dump
 /.deps/
+/teavpn_data/
 /teavpn_server
 /teavpn_client
