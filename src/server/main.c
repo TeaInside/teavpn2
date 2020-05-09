@@ -25,5 +25,5 @@ int main(int argc, char *argv[], char *envp[])
     print_server_config(&config);
   #endif
 
-  return teavpn_server_run(config);
+  return teavpn_server_run(&config);
 }
