@@ -23,10 +23,6 @@ int teavpn_server_run(teavpn_server_config *config)
     return 1;
   }
 
-  if (!tun_init_iface()) {
-
-  }
-
   return 0;
 }
 

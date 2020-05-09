@@ -37,7 +37,7 @@ int teavpn_iface_allocate(char *dev)
  * @param server_config *config
  * @return bool
  */
-static bool teavpn_tcp_server_init_iface(server_config *config)
+static bool teavpn_tcp_server_init_iface(teavpn_server_config *config)
 {
 }
 
