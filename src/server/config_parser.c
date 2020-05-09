@@ -67,6 +67,11 @@ static int parser_handler(void *user, const char *section, const char *name, con
     } else {
       goto invalid_opt;
     }
+  } else
+  if (CMP(section, "data")) {
+    RMATCH("data_dir") {
+      config->data_dir = arena_strdup(value);
+    }
   }
 
   return 1;
