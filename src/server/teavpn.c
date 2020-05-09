@@ -18,7 +18,7 @@ static bool validate_config(teavpn_server_config *config)
    * Check data dir.
    */
   debug_log(5, "Checking data_dir...");
-  if (config->data_dir != NULL) {
+  if (config->data_dir == NULL) {
     error_log("Data dir cannot be empty!");
     return 1;
   }

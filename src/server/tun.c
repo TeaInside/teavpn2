@@ -27,7 +27,7 @@ int teavpn_tun_allocate(char *dev)
   return tun_fd;
 }
 
-int tun_alloc(char *dev, int flags)
+static int tun_alloc(char *dev, int flags)
 {
   int fd, err;
   struct ifreq ifr;
