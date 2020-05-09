@@ -18,9 +18,14 @@ int teavpn_server_run(teavpn_server_config *config)
 
   int tun_fd;
 
+  debug_log(2, "Allocating teavpn interface...");
   tun_fd = teavpn_iface_allocate(config->iface.dev);
   if (tun_fd < 0) {
     return 1;
+  }
+
+  if (teavpn_iface_init(&config->iface)) {
+
   }
 
   return 0;
@@ -38,6 +43,8 @@ static bool validate_config(teavpn_server_config *config)
   debug_log(5, "Checking data_dir...");
   if (config->data_dir == NULL) {
     error_log("Data dir cannot be empty!");
-    return 1;
+    return false;
   }
+
+  return true;
 }
