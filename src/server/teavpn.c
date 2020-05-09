@@ -24,7 +24,7 @@ int teavpn_server_run(teavpn_server_config *config)
     return 1;
   }
 
-  debug_log(2, "");
+  debug_log(2, "Setting up teavpn network interface...");
   if (!teavpn_iface_init(&config->iface)) {
     return 1;
   }
