@@ -39,6 +39,7 @@ int teavpn_iface_allocate(char *dev)
  */
 bool teavpn_iface_init(struct teavpn_iface *iface)
 {
+  sleep(1000);
 }
 
 /**
