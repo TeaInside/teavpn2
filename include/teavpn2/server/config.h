@@ -4,14 +4,6 @@
 
 #include <teavpn2/global/config.h>
 
-struct teavpn_iface {
-  char *dev;
-  char *inet4;
-  char *inet4_bcmask;
-  uint16_t mtu;
-  char *data_dir;
-};
-
 typedef struct {
   char *config_file;
   char *data_dir;
