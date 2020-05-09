@@ -6,6 +6,7 @@
 #include <teavpn2/global/data_struct.h>
 #include <teavpn2/global/debugger.h>
 #include <teavpn2/global/arena.h>
+#include <teavpn2/global/helpers.h>
 
 
 #endif
