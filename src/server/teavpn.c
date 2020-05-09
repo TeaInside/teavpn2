@@ -1,11 +1,15 @@
 
 #include <stdio.h>
+#include <unistd.h>
 
 #include <teavpn2/global/iface.h>
+#include <teavpn2/server/socket.h>
 #include <teavpn2/server/common.h>
+#include <teavpn2/server/socket/tcp.h>
+#include <teavpn2/server/socket/udp.h>
 
-int tun_fd;
 static bool validate_config(teavpn_server_config *config);
+static int teavpn_tcp_start(teavpn_server_config *config);
 
 /**
  * @param teavpn_server_config *config
@@ -17,19 +21,41 @@ int teavpn_server_run(teavpn_server_config *config)
     return 1;
   }
 
+  int ret = 1;
+  iface_info iinfo;
+
   debug_log(2, "Allocating teavpn interface...");
-  tun_fd = teavpn_iface_allocate(config->iface.dev);
-  if (tun_fd < 0) {
-    return 1;
+  iinfo.tun_fd = teavpn_iface_allocate(config->iface.dev);
+  if (iinfo.tun_fd < 0) {
+    return 1; /* No need to close tun_fd, since failed to create. */
   }
 
   debug_log(2, "Setting up teavpn network interface...");
   if (!teavpn_iface_init(&config->iface)) {
     error_log("Cannot set up teavpn network interface");
-    return 1;
+    ret = 1;
+    goto close;
   }
 
-  return 0;
+  switch (config->socket_type) {
+    case teavpn_sock_tcp:
+      ret = teavpn_tcp_run(&iinfo, config);
+      break;
+
+    case teavpn_sock_udp:
+      /* TODO: Make VPN be able to use UDP socket. */
+      break;
+
+    default:
+      error_log("Invalid socket type");
+      return 1;
+      break;
+  }
+
+close:
+  /* Close tun_fd. */
+  close(iinfo.tun_fd);
+  return ret;
 }
 
 /**
