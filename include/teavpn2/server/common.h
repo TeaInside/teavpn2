@@ -10,5 +10,7 @@
 #include <teavpn2/server/debugger.h>
 
 bool teavpn_server_config_parser(char *ini_file, teavpn_server_config *config);
+bool teavpn_server_argv_parser(int argc, char **argv, char **envp, teavpn_server_config *config);
+int teavpn_server_run(teavpn_server_config *config);
 
 #endif

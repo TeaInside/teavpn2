@@ -4,8 +4,6 @@
 
 #define ARENA_SIZE (1024 * 100)
 
-bool teavpn_server_argv_parser(int argc, char **argv, char **envp, teavpn_server_config *config);
-
 int main(int argc, char *argv[], char *envp[])
 {
   char arena[ARENA_SIZE]; /* We create our function to treat this like heap. */
@@ -27,5 +25,5 @@ int main(int argc, char *argv[], char *envp[])
     print_server_config(&config);
   #endif
 
-  return 0;
+  return teavpn_server_run(config);
 }

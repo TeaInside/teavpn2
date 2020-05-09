@@ -39,15 +39,22 @@ bool teavpn_server_argv_parser(int argc, char **argv, char **envp, teavpn_server
 #endif
 
 const static struct option long_options[] = {
- {"config",       required_argument, 0, 'c'},
- {"dev",          required_argument, 0, 'd'},
- {"mtu",          required_argument, 0, 'm'},
- {"inet4",        required_argument, 0, '4'},
- {"inet4-bcmask", required_argument, 0, 'b'},
- {"sock-type",    required_argument, 0, 's'},
- {"bind-addr",    required_argument, 0, 'h'},
- {"bind-port",    required_argument, 0, 'p'},
- {0, 0, 0, 0}
+  /* Interface options. */  
+  {"config",       required_argument, 0, 'c'},
+  {"dev",          required_argument, 0, 'd'},
+  {"mtu",          required_argument, 0, 'm'},
+  {"inet4",        required_argument, 0, '4'},
+  {"inet4-bcmask", required_argument, 0, 'b'},
+  {"sock-type",    required_argument, 0, 's'},
+
+  /* Socket options. */
+  {"bind-addr",    required_argument, 0, 'h'},
+  {"bind-port",    required_argument, 0, 'p'},
+
+  /* Data options. */
+  {"data-dir",     required_argument, 0, 'u'},
+
+  {0, 0, 0, 0}
 };
 
 static bool getopt_handler(int argc, char **argv, teavpn_server_config *config)
@@ -58,7 +65,7 @@ static bool getopt_handler(int argc, char **argv, teavpn_server_config *config)
   while (1) {
     int this_option_optind = optind ? optind : 1;
     int option_index = 0;
-    c = getopt_long(argc, argv, "h:d:c:m:4:b:p:s:", long_options, &option_index);
+    c = getopt_long(argc, argv, "h:d:c:m:4:b:p:s:u:", long_options, &option_index);
 
     if (c == -1)
       break;
@@ -105,6 +112,11 @@ static bool getopt_handler(int argc, char **argv, teavpn_server_config *config)
       case 'p':
         config->socket.bind_port = (uint16_t)atoi(optarg);
         pqdebug(bind_port, "%d", config->socket.bind_port);
+        break;
+
+      case 'u':
+        config->data_dir = optarg;
+        pqdebug(data_dir, "\"%s\"", optarg);
         break;
 
       default:
