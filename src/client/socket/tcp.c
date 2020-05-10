@@ -64,6 +64,7 @@ static bool teavpn_client_tcp_init()
    */
   debug_log(3, "Setting up socket file descriptor...");
   if (!teavpn_client_tcp_socket_setup()) {
+    perror("Error setsockopt()");
     return false;
   }
   debug_log(4, "Socket file descriptor set up successfully");
@@ -115,4 +116,6 @@ static bool teavpn_client_tcp_socket_setup()
     perror("setsockopt()");
     return false;
   }
+
+  return true;
 }

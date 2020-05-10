@@ -111,4 +111,5 @@ static bool teavpn_server_tcp_socket_setup()
     perror("setsockopt()");
     return false;
   }
+  return true;
 }
