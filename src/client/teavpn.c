@@ -1,4 +1,5 @@
 
+#include <unistd.h>
 #include <teavpn2/global/iface.h>
 #include <teavpn2/client/socket.h>
 #include <teavpn2/client/common.h>
