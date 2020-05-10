@@ -55,8 +55,8 @@ const static struct option long_options[] = {
   {"sock-type",    required_argument, 0, 's'},
 
   /* Socket options. */
-  {"bind-addr",    required_argument, 0, 'h'},
-  {"bind-port",    required_argument, 0, 'p'},
+  {"server-addr",    required_argument, 0, 'h'},
+  {"server-port",    required_argument, 0, 'p'},
 
   /* Data options. */
   {"data-dir",     required_argument, 0, 'u'},
