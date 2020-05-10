@@ -17,7 +17,7 @@ static teavpn_client_config *config;
 static struct sockaddr_in server_addr;
 
 static bool teavpn_client_tcp_init();
-static bool teavpn_tcp_socket_setup();
+static bool teavpn_client_tcp_socket_setup();
 
 /**
  * @param teavpn_client_config *config
@@ -63,7 +63,7 @@ static bool teavpn_client_tcp_init()
    * Setup TCP socket.
    */
   debug_log(3, "Setting up socket file descriptor...");
-  if (!teavpn_tcp_socket_setup()) {
+  if (!teavpn_client_tcp_socket_setup()) {
     return false;
   }
   debug_log(4, "Socket file descriptor set up successfully");
@@ -104,7 +104,7 @@ static bool teavpn_client_tcp_init()
   return true;
 }
 
-static bool teavpn_tcp_socket_setup()
+static bool teavpn_client_tcp_socket_setup()
 {
   int optval = 1;
   if (setsockopt(net_fd, SOL_SOCKET, SO_REUSEADDR, (char *)&optval, sizeof(optval)) < 0) {
