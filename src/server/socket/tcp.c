@@ -32,6 +32,7 @@ static int16_t free_chan_pos = 0; /* set -1 if channel is full. */
 static teavpn_tcp_channel channels[MAX_CLIENT_CHANNEL];
 
 static bool teavpn_server_tcp_init();
+static bool teavpn_server_tcp_auth();
 static int teavpn_server_tcp_accept();
 static bool teavpn_server_tcp_socket_setup();
 static void *teavpn_server_tcp_serve_client(teavpn_tcp_channel *chan);
@@ -134,9 +135,23 @@ prepare_channel:
 /**
  * @param teavpn_tcp_channel *chan
  */
+static bool teavpn_server_tcp_auth(teavpn_tcp_channel *chan)
+{
+  ssize_t rlen;
+  char buffer[2048];
+  // rlen = recv(chan->client_fd, );
+}
+
+/**
+ * @param teavpn_tcp_channel *chan
+ */
 static void *teavpn_server_tcp_serve_client(teavpn_tcp_channel *chan)
 {
-  sleep(100);
+  if (teavpn_server_tcp_auth(chan)) {
+
+  }
+
+  close(chan->client_fd);
 }
 
 /**

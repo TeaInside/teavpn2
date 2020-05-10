@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 
+
 struct teavpn_server_msg {
 
 };
@@ -37,5 +38,6 @@ typedef struct {
   uint32_t len;
   union teavpn_server_packet packet;
 } teavpn_srv_pkt;
+
 
 #endif
