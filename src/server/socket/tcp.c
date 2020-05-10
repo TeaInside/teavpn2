@@ -10,10 +10,21 @@
 #include <sys/socket.h>
 
 #include <teavpn2/global/iface.h>
+#include <teavpn2/global/data_struct.h>
 #include <teavpn2/server/common.h>
 #include <teavpn2/server/socket/tcp.h>
 
 #define MAX_CLIENT_CHANNEL 10
+#define RECV_ERROR_HANDLE(ret, act) \
+  if (ret < 0) { \
+    perror("Error recv()");  \
+    act; \
+  }
+#define SEND_ERROR_HANDLE(ret, act) \
+  if (ret < 0) { \
+    perror("Error send()");  \
+    act; \
+  }
 
 typedef struct {
   bool is_online;
@@ -137,9 +148,14 @@ prepare_channel:
  */
 static bool teavpn_server_tcp_auth(teavpn_tcp_channel *chan)
 {
-  ssize_t rlen;
-  char buffer[2048];
-  // rlen = recv(chan->client_fd, );
+  ssize_t slen;
+  char buffer[2048] = {0};
+  teavpn_srv_pkt *pkt = (teavpn_srv_pkt *)buffer;
+
+  /* Send auth required signal. */
+  pkt->type = SRV_PKT_AUTH_REQUIRED;
+  slen = send(chan->client_fd, pkt, sizeof(pkt), 0);
+  SEND_ERROR_HANDLE(slen, return false;);
 }
 
 /**
@@ -147,11 +163,22 @@ static bool teavpn_server_tcp_auth(teavpn_tcp_channel *chan)
  */
 static void *teavpn_server_tcp_serve_client(teavpn_tcp_channel *chan)
 {
-  if (teavpn_server_tcp_auth(chan)) {
+  char client_addr[255];
+  uint16_t client_port;
 
+  strcpy(client_addr, inet_ntoa(chan->client_addr.sin_addr));
+  client_port = ntohs(chan->client_addr.sin_port);
+
+  if (!teavpn_server_tcp_auth(chan)) {
+    debug_log(3, "Auth failed from %s:%d!", client_addr, client_port);
+    goto close_fd;
   }
 
+
+close_fd:
+  debug_log(2, "Closing connection from %s:%d", client_addr, client_port);
   close(chan->client_fd);
+  return NULL;
 }
 
 /**
