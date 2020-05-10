@@ -21,7 +21,7 @@ bool teavpn_server_argv_parser(int argc, char **argv, char **envp, teavpn_server
 {
 
   if (argc == 1) {
-    printf("Usage: %s [command] [options]\n", argv[0]);
+    printf("Usage: %s [options]\n", argv[0]);
     return false;
   }
 
