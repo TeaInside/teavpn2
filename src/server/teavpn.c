@@ -39,7 +39,7 @@ int teavpn_server_run(teavpn_server_config *config)
 
   switch (config->socket_type) {
     case teavpn_sock_tcp:
-      ret = teavpn_tcp_run(&iinfo, config);
+      ret = teavpn_server_tcp_run(&iinfo, config);
       break;
 
     case teavpn_sock_udp:

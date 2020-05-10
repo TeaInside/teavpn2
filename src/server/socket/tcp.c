@@ -23,7 +23,7 @@ static bool teavpn_tcp_soket_setup();
  * @param teavpn_server_config *config
  * @return bool
  */
-int teavpn_tcp_run(iface_info *iinfo, teavpn_server_config *_config)
+int teavpn_server_tcp_run(iface_info *iinfo, teavpn_server_config *_config)
 {
   int ret;
   config = _config;
