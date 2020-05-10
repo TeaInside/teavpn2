@@ -1,6 +1,0 @@
-
-#ifndef TEAVPN__SERVER__CONFIG_STRUCT_H
-#define TEAVPN__SERVER__CONFIG_STRUCT_H
-
-
-#endif
