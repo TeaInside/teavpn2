@@ -99,7 +99,11 @@ static bool teavpn_client_tcp_init()
    */
   signal(SIGPIPE, SIG_IGN);
 
-  debug_log(2, "Connecting to %s:%d...", config->socket.server_addr, config->socket.server_port);
+  debug_log(0, "Connecting to %s:%d...", config->socket.server_addr, config->socket.server_port);
+  if (connect(net_fd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr_in)) < 0) {
+    perror("Error on connect");
+    return false;
+  }
 
   return true;
 }

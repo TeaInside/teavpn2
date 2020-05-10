@@ -2,6 +2,7 @@
 #include <teavpn2/global/iface.h>
 #include <teavpn2/client/socket.h>
 #include <teavpn2/client/common.h>
+#include <teavpn2/client/socket/tcp.h>
 
 static bool validate_config(teavpn_client_config *config);
 

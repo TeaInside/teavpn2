@@ -1,6 +1,6 @@
 
-#ifndef TEAVPN__CLIENT__TCP_H
-#define TEAVPN__CLIENT__TCP_H
+#ifndef TEAVPN__CLIENT__SOCKET__TCP_H
+#define TEAVPN__CLIENT__SOCKET__TCP_H
 
 #include <teavpn2/server/socket.h>
 
