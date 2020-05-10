@@ -78,24 +78,6 @@ static bool teavpn_client_tcp_init()
   server_addr.sin_addr.s_addr = inet_addr(config->socket.server_addr);
 
   /**
-   * Bind socket to corresponding address.
-   */
-  if (bind(net_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-    error_log("Bind socket failed");
-    perror("Bind failed");
-    return false;
-  }
-
-  /**
-   * Listen.
-   */
-  if (listen(net_fd, 3) < 0) {
-    error_log("Listen socket failed");
-    perror("Listen failed");
-    return false;
-  }
-
-  /**
    * Ignore SIGPIPE
    */
   signal(SIGPIPE, SIG_IGN);
