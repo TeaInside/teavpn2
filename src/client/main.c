@@ -1,5 +1,4 @@
 
-#include <stdio.h>
 #include <teavpn2/client/common.h>
 
 #define ARENA_SIZE (1024 * 50)
@@ -28,7 +27,7 @@ int main(int argc, char *argv[], char *envp[])
   }
 
   #ifdef TEAVPN_DEBUG
-    print_server_config(&config);
+    print_client_config(&config);
   #endif
 
   return teavpn_client_run(&config);
