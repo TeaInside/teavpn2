@@ -15,6 +15,7 @@
 #include <teavpn2/server/socket/tcp.h>
 
 #define MAX_CLIENT_CHANNEL 10
+#define SIGNAL_RECV_BUFFER 4096
 #define RECV_ERROR_HANDLE(ret, act) \
   if (ret < 0) { \
     perror("Error recv()");  \
@@ -148,14 +149,28 @@ prepare_channel:
  */
 static bool teavpn_server_tcp_auth(teavpn_tcp_channel *chan)
 {
-  ssize_t slen;
+  ssize_t slen, rlen;
   char buffer[2048] = {0};
-  teavpn_srv_pkt *pkt = (teavpn_srv_pkt *)buffer;
+  teavpn_srv_pkt *srv_pkt = (teavpn_srv_pkt *)buffer;
+  teavpn_cli_pkt *cli_pkt = (teavpn_cli_pkt *)buffer;
+  teavpn_cli_auth *auth = (teavpn_cli_auth *)cli_pkt->data;
 
   /* Send auth required signal. */
-  pkt->type = SRV_PKT_AUTH_REQUIRED;
-  slen = send(chan->client_fd, pkt, sizeof(pkt), 0);
+  srv_pkt->type = SRV_PKT_AUTH_REQUIRED;
+  slen = send(chan->client_fd, srv_pkt, sizeof(teavpn_srv_pkt), 0);
   SEND_ERROR_HANDLE(slen, return false;);
+
+  /* Wait for auth data. */
+  rlen = recv(chan->client_fd, cli_pkt, SIGNAL_RECV_BUFFER, 0);
+  RECV_ERROR_HANDLE(rlen, return false;);
+
+  if ((cli_pkt->len != sizeof(teavpn_cli_auth)) || (cli_pkt->type != CLI_PKT_AUTH)) {
+    debug_log(2, "Invalid packet from client");
+    return false;
+  }
+
+  printf("Username: %s\n", auth->username);
+  printf("Password: %s\n", auth->password);
 }
 
 /**

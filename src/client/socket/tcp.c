@@ -26,12 +26,15 @@
 
 static int tun_fd;
 static int net_fd;
+static teavpn_srv_pkt *srv_pkt;
+static teavpn_cli_pkt *cli_pkt;
 static teavpn_client_config *config;
 static struct sockaddr_in server_addr;
 
 static bool teavpn_client_tcp_init();
 static bool teavpn_client_tcp_socket_setup();
-static int teavpn_client_tcp_wait_signal(teavpn_srv_pkt *pkt);
+static bool teavpn_client_tcp_send_auth();
+static int teavpn_client_tcp_wait_signal();
 
 /**
  * @param teavpn_client_config *config
@@ -40,18 +43,32 @@ static int teavpn_client_tcp_wait_signal(teavpn_srv_pkt *pkt);
 int teavpn_client_tcp_run(iface_info *iinfo, teavpn_client_config *_config)
 {
   int ret;
-  char buffer[2048] = {0};
-  teavpn_srv_pkt *pkt = (teavpn_srv_pkt *)buffer;
+  char arena1[8096], arena2[8096];
 
   config = _config;
   tun_fd = iinfo->tun_fd;
+  srv_pkt = (teavpn_srv_pkt *)arena1;
+  cli_pkt = (teavpn_cli_pkt *)arena2;
 
   if (!teavpn_client_tcp_init()) {
     ret = 1;
     goto close;
   }
 
-  teavpn_client_tcp_wait_signal(pkt);
+  while (1) {
+    
+    if (teavpn_client_tcp_wait_signal() == -1) {
+      goto close;
+    }
+
+    switch (srv_pkt->type) {
+      case SRV_PKT_AUTH_REQUIRED:
+        debug_log(3, "Got SRV_PKT_AUTH_REQUIRED signal");
+        teavpn_client_tcp_send_auth();
+        break;
+    }
+
+  }
 
 
 close:
@@ -63,23 +80,40 @@ close:
 }
 
 /**
- * @param teavpn_srv_pkt *pkt
  * @return int
  */
-static int teavpn_client_tcp_wait_signal(teavpn_srv_pkt *pkt)
+static int teavpn_client_tcp_wait_signal()
 {
   ssize_t rlen;
 
   /* Send wait for signal. */
-  rlen = recv(net_fd, pkt, SIGNAL_RECV_BUFFER, 0);
+  rlen = recv(net_fd, srv_pkt, SIGNAL_RECV_BUFFER, 0);
   RECV_ERROR_HANDLE(rlen, return -1;);
+}
 
-  switch (pkt->type) {
-    case SRV_PKT_AUTH_REQUIRED:
-      debug_log(0, "SRV_PKT_AUTH_REQUIRED");
-      break;
-  }
+/**
+ * @return int
+ */
+static bool teavpn_client_tcp_send_auth()
+{
+  ssize_t slen;
+  teavpn_cli_auth *auth;
 
+  cli_pkt->type = CLI_PKT_AUTH;
+  cli_pkt->len = sizeof(teavpn_cli_auth);
+  auth = (teavpn_cli_auth *)&(cli_pkt->data[0]);
+
+  strcpy(auth->username, config->auth.username);
+  strcpy(auth->password, config->auth.password);
+
+  #define SIZE_TO_BE_SENT (sizeof(teavpn_cli_pkt) + sizeof(teavpn_cli_auth) - 1)
+
+  slen = send(net_fd, cli_pkt, SIZE_TO_BE_SENT, 0);
+  SEND_ERROR_HANDLE(slen, return false;);
+
+
+  return true;
+  #undef SIZE_TO_BE_SENT
 }
 
 /**
