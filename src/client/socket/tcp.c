@@ -35,6 +35,7 @@ static bool teavpn_client_tcp_init();
 static bool teavpn_client_tcp_socket_setup();
 static bool teavpn_client_tcp_send_auth();
 static int teavpn_client_tcp_wait_signal();
+static void teavpn_client_tcp_init_iface();
 
 /**
  * @param teavpn_client_config *config
@@ -66,6 +67,16 @@ int teavpn_client_tcp_run(iface_info *iinfo, teavpn_client_config *_config)
         debug_log(3, "Got SRV_PKT_AUTH_REQUIRED signal");
         teavpn_client_tcp_send_auth();
         break;
+      case SRV_PKT_AUTH_ACCEPTED:
+        debug_log(3, "Authenticated!");
+        break;
+      case SRV_PKT_IFACE_INFO:
+        debug_log(3, "Got interface information");
+        teavpn_client_tcp_init_iface();
+        break;
+      default:
+        debug_log(3, "Got invalid packet type");
+        break;
     }
 
   }
@@ -86,9 +97,22 @@ static int teavpn_client_tcp_wait_signal()
 {
   ssize_t rlen;
 
-  /* Send wait for signal. */
+  /* Wait for signal. */
   rlen = recv(net_fd, srv_pkt, SIGNAL_RECV_BUFFER, 0);
   RECV_ERROR_HANDLE(rlen, return -1;);
+
+  return rlen;
+}
+
+/**
+ * @return void
+ */
+static void teavpn_client_tcp_init_iface()
+{
+  teavpn_srv_iface_info *iface = (teavpn_srv_iface_info *)srv_pkt->data;
+
+  debug_log(0, "inet4: \"%s\"", iface->inet4);
+  debug_log(0, "inet4_bc: \"%s\"", iface->inet4_bc);
 }
 
 /**
@@ -98,6 +122,8 @@ static bool teavpn_client_tcp_send_auth()
 {
   ssize_t slen;
   teavpn_cli_auth *auth;
+
+  debug_log(1, "Authenticating...");
 
   cli_pkt->type = CLI_PKT_AUTH;
   cli_pkt->len = sizeof(teavpn_cli_auth);

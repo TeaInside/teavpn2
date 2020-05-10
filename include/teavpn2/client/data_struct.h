@@ -6,6 +6,7 @@
 #define CLI_PKT_DATA (1 << 1)
 #define CLI_PKT_AUTH (1 << 2)
 
+
 enum teavpn_client_packet_type {
   cli_pkt_type_msg   = CLI_PKT_MSG,
   cli_pkt_type_data  = CLI_PKT_DATA,
