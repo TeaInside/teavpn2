@@ -1,6 +1,6 @@
 
 #include <stdio.h>
-#include <teavpn2/server/common.h>
+#include <teavpn2/client/common.h>
 
 #define ARENA_SIZE (1024 * 50)
 
