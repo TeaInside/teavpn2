@@ -6,7 +6,7 @@
 
 #include <teavpn2/global/common.h>
 
-int8_t verbose_level;
+int8_t verbose_level = 8;
 
 void __internal_teavpn_debug_log(const char *format, ...)
 {

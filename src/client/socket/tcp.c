@@ -16,8 +16,8 @@ static int net_fd;
 static teavpn_client_config *config;
 static struct sockaddr_in server_addr;
 
-static bool teavpn_tcp_init();
-static bool teavpn_tcp_soket_setup();
+static bool teavpn_client_tcp_init();
+static bool teavpn_tcp_socket_setup();
 
 /**
  * @param teavpn_client_config *config
@@ -29,7 +29,7 @@ int teavpn_client_tcp_run(iface_info *iinfo, teavpn_client_config *_config)
   config = _config;
   tun_fd = iinfo->tun_fd;
 
-  if (!teavpn_tcp_init()) {
+  if (!teavpn_client_tcp_init()) {
     ret = 1;
     goto close;
   }
@@ -63,7 +63,7 @@ static bool teavpn_client_tcp_init()
    * Setup TCP socket.
    */
   debug_log(3, "Setting up socket file descriptor...");
-  if (!teavpn_tcp_soket_setup()) {
+  if (!teavpn_tcp_socket_setup()) {
     return false;
   }
   debug_log(4, "Socket file descriptor set up successfully");
@@ -73,8 +73,8 @@ static bool teavpn_client_tcp_init()
    */
   memset(&server_addr, 0, sizeof(server_addr));
   server_addr.sin_family = AF_INET;
-  server_addr.sin_port = htons(config->socket.bind_port);
-  server_addr.sin_addr.s_addr = inet_addr(config->socket.bind_addr);
+  server_addr.sin_port = htons(config->socket.server_port);
+  server_addr.sin_addr.s_addr = inet_addr(config->socket.server_addr);
 
   /**
    * Bind socket to corresponding address.
@@ -99,12 +99,12 @@ static bool teavpn_client_tcp_init()
    */
   signal(SIGPIPE, SIG_IGN);
 
-  debug_log(4, "Listening on %s:%d...", config->socket.bind_addr, config->socket.bind_port);
+  debug_log(2, "Connecting to %s:%d...", config->socket.server_addr, config->socket.server_port);
 
   return true;
 }
 
-static bool teavpn_tcp_soket_setup()
+static bool teavpn_tcp_socket_setup()
 {
   int optval = 1;
   if (setsockopt(net_fd, SOL_SOCKET, SO_REUSEADDR, (char *)&optval, sizeof(optval)) < 0) {

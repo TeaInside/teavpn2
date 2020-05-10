@@ -1,8 +1,12 @@
 
+#include <teavpn2/global/iface.h>
+#include <teavpn2/client/socket.h>
 #include <teavpn2/client/common.h>
 
+static bool validate_config(teavpn_client_config *config);
+
 /**
- * @param teavpn_server_config *config
+ * @param teavpn_client_config *config
  * @return int
  */
 int teavpn_client_run(teavpn_client_config *config)
@@ -29,7 +33,7 @@ if (!validate_config(config)) {
 
   switch (config->socket_type) {
     case teavpn_sock_tcp:
-      ret = teavpn_tcp_run(&iinfo, config);
+      ret = teavpn_client_tcp_run(&iinfo, config);
       break;
 
     case teavpn_sock_udp:
@@ -50,17 +54,17 @@ close:
 
 
 /**
- * @param teavpn_server_config *config
+ * @param teavpn_client_config *config
  * @return bool
  */
-static bool validate_config(teavpn_server_config *config)
+static bool validate_config(teavpn_client_config *config)
 {
   /**
    * Check data dir.
    */
-  debug_log(5, "Checking data_dir...");
-  if (config->data_dir == NULL) {
-    error_log("Data dir cannot be empty!");
+  debug_log(5, "Checking server_addr...");
+  if (config->socket.server_addr == NULL) {
+    error_log("Server address cannot be empty!");
     return false;
   }
 

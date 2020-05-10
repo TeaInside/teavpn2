@@ -2,6 +2,8 @@
 #ifndef TEAVPN__GLOBAL__DEBUGGER_H
 #define TEAVPN__GLOBAL__DEBUGGER_H
 
+#include <stdio.h>
+
 void __internal_teavpn_debug_log(const char *format, ...);
 
 #ifndef TEAVPN_DEBUGGER_FILE
