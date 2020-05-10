@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <teavpn2/server/common.h>
 
-#define ARENA_SIZE (1024 * 50)
+#define ARENA_SIZE (1024 * 100)
 
 /**
  * @param int argc

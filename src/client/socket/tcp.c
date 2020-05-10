@@ -87,6 +87,7 @@ static bool teavpn_client_tcp_init()
     perror("Error on connect");
     return false;
   }
+  debug_log(0, "Connection established!");
 
   return true;
 }
