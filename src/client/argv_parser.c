@@ -150,6 +150,7 @@ static void set_default_config(teavpn_client_config *config)
 {
   memset(config, 0, sizeof(teavpn_client_config));
 
+  config->config_file = NULL;
   config->iface.dev = (char *)"tun0";
   config->iface.mtu = 1500;
   config->iface.inet4 = (char *)"10.8.0.1/24";

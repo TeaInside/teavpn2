@@ -12,6 +12,8 @@ void print_client_config(teavpn_client_config *config)
     printf("  "#A" = "B"\n", A)
 
   printf("===== Config Debug Info =====\n");
+  DPRINT(config->config_file, "\"%s\"");
+
   DPRINT(config->iface.dev, "\"%s\"");
   DPRINT(config->iface.mtu, "%d");
   DPRINT(config->iface.inet4, "\"%s\"");
