@@ -13,6 +13,10 @@ typedef struct {
     char *server_addr;
     uint16_t server_port;
   } socket;
+  struct {
+    char *username;
+    char *password;
+  } auth;
 } teavpn_client_config;
 
 #endif
