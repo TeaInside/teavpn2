@@ -21,7 +21,8 @@ void print_client_config(teavpn_client_config *config)
   DPRINT(config->socket.server_addr, "\"%s\"");
   DPRINT(config->socket.server_port, "%d");
 
-  DPRINT(config->data_dir, "\"%s\"");
+  DPRINT(config->auth.username, "\"%s\"");
+  DPRINT(config->auth.password, "\"%s\"");
 
   printf("================================\n");
   fflush(stdout);

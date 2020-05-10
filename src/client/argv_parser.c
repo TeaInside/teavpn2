@@ -128,8 +128,12 @@ static bool getopt_handler(int argc, char **argv, teavpn_client_config *config)
         break;
 
       case 'u':
-        config->data_dir = optarg;
-        pqdebug(data_dir, "\"%s\"", optarg);
+        config->auth.username = optarg;
+        pqdebug(username, "\"%s\"", optarg);
+        break;
+      case 'P':
+        config->auth.password = optarg;
+        pqdebug(password, "\"%s\"", optarg);
         break;
 
       default:
@@ -154,4 +158,7 @@ static void set_default_config(teavpn_client_config *config)
   config->socket.server_addr = NULL;
   config->socket_type = teavpn_sock_tcp;
   config->socket.server_port = 55555;
+
+  config->auth.username = NULL;
+  config->auth.password = NULL;
 }

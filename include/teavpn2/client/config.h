@@ -6,7 +6,6 @@
 
 typedef struct {
   char *config_file;
-  char *data_dir;
   struct teavpn_iface iface;
   enum teavpn_socket_type socket_type;
   struct {
