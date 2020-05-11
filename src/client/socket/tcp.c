@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
+#include <pthread.h>
 #include <linux/ip.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -23,6 +24,16 @@
     perror("Error send()");  \
     act; \
   }
+#define READ_ERROR_HANDLE(ret, act) \
+  if (ret < 0) { \
+    perror("Error read()");  \
+    act; \
+  }
+#define WRITE_ERROR_HANDLE(ret, act) \
+  if (ret < 0) { \
+    perror("Error write()");  \
+    act; \
+  }
 
 static int tun_fd;
 static int net_fd;
@@ -36,6 +47,7 @@ static bool teavpn_client_tcp_socket_setup();
 static bool teavpn_client_tcp_send_auth();
 static int teavpn_client_tcp_wait_signal();
 static bool teavpn_client_tcp_init_iface();
+static void *teavpn_server_tcp_handle_iface_read(void *p);
 
 /**
  * @param teavpn_client_config *config
@@ -45,6 +57,7 @@ int teavpn_client_tcp_run(iface_info *iinfo, teavpn_client_config *_config)
 {
   int ret;
   char arena1[8096], arena2[8096];
+  pthread_t client_iface_handler_thread;
 
   config = _config;
   tun_fd = iinfo->tun_fd;
@@ -75,6 +88,9 @@ int teavpn_client_tcp_run(iface_info *iinfo, teavpn_client_config *_config)
         if (!teavpn_client_tcp_init_iface()) {
           goto close;
         }
+        pthread_create(&client_iface_handler_thread, NULL,
+          teavpn_server_tcp_handle_iface_read, NULL);
+        pthread_detach(client_iface_handler_thread);
         break;
       default:
         debug_log(3, "Got invalid packet type");
@@ -90,6 +106,36 @@ close:
     close(net_fd);
   }
   return ret;
+}
+
+#define TAP_READ_SIZE 2048
+
+/**
+ * @param void *p
+ * @return void *
+ */
+static void *teavpn_server_tcp_handle_iface_read(void *p)
+{
+  char arena[4096];
+  ssize_t nread, slen;
+  teavpn_cli_pkt *cli_pkt = (teavpn_cli_pkt *)arena;
+
+  cli_pkt->type = CLI_PKT_DATA;
+
+  while (1) {
+    /**
+     * Read from TUN/TAP.
+     */
+    nread = read(tun_fd, cli_pkt->data, TAP_READ_SIZE);
+    READ_ERROR_HANDLE(nread, {});
+
+    debug_log(5, "Read from tun_fd %ld bytes", nread);
+
+    cli_pkt->len = (uint16_t)nread;
+
+    slen = send(net_fd, cli_pkt, sizeof(teavpn_srv_pkt) + cli_pkt->len - 1, 0);
+    SEND_ERROR_HANDLE(slen, {});
+  }
 }
 
 /**

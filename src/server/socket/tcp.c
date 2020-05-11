@@ -74,7 +74,7 @@ static teavpn_tcp_channel channels[MAX_CLIENT_CHANNEL];
 static bool teavpn_server_tcp_init();
 static int teavpn_server_tcp_accept();
 static bool teavpn_server_tcp_socket_setup();
-static void *teavpn_server_tcp_handle_iface(void *p);
+static void *teavpn_server_tcp_handle_iface_read(void *p);
 static void teavpn_server_tcp_register_client(int client_fd, struct sockaddr_in *client_addr);
 
 /**
@@ -94,7 +94,7 @@ int teavpn_server_tcp_run(iface_info *iinfo, teavpn_server_config *_config)
 {
   int ret, client_fd;
   struct sockaddr_in client_addr;
-  pthread_t server_iface_handler;
+  pthread_t server_iface_handler_thread;
 
   config = _config;
   tun_fd = iinfo->tun_fd;
@@ -104,8 +104,9 @@ int teavpn_server_tcp_run(iface_info *iinfo, teavpn_server_config *_config)
     goto close;
   }
 
-  pthread_create(&server_iface_handler, NULL,
-    teavpn_server_tcp_handle_iface, NULL);
+  pthread_create(&server_iface_handler_thread, NULL,
+    teavpn_server_tcp_handle_iface_read, NULL);
+  pthread_detach(server_iface_handler_thread);
 
   while (1) {
     client_fd = teavpn_server_tcp_accept(&client_addr);
@@ -428,7 +429,7 @@ void teavpn_server_tcp_handle_client_pkt_data(teavpn_tcp_channel *chan)
  * @param void *p
  * @return void *
  */
-static void *teavpn_server_tcp_handle_iface(void *p)
+static void *teavpn_server_tcp_handle_iface_read(void *p)
 {
   char arena[4096];
   ssize_t nread, slen;
