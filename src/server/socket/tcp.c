@@ -411,11 +411,11 @@ void teavpn_server_tcp_handle_client_pkt_data(teavpn_tcp_channel *chan)
 {
   ssize_t wbytes;
   teavpn_cli_pkt *cli_pkt = chan->cli_pkt;
-  uint16_t total_received = chan->signal_rlen;
+  uint16_t total_received = chan->signal_rlen - (sizeof(cli_pkt->type) + sizeof(cli_pkt->len) + 1);
 
   while (total_received < cli_pkt->len) {
     debug_log(5, "Re-receiving packet...");
-    chan->signal_rlen = recv(chan->client_fd, (cli_pkt->data + total_received), SIGNAL_RECV_BUFFER, 0);
+    chan->signal_rlen = recv(chan->client_fd, &(cli_pkt->data[total_received]), SIGNAL_RECV_BUFFER, 0);
     RECV_ERROR_HANDLE(chan->signal_rlen, {});
     total_received += (uint16_t)chan->signal_rlen;
   }
