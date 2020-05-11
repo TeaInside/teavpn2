@@ -26,13 +26,6 @@ if (!validate_config(config)) {
     return 1; /* No need to close tun_fd, since failed to create. */
   }
 
-  debug_log(2, "Setting up teavpn network interface...");
-  if (!teavpn_iface_init(&config->iface)) {
-    error_log("Cannot set up teavpn network interface");
-    ret = 1;
-    goto close;
-  }
-
   switch (config->socket_type) {
     case teavpn_sock_tcp:
       ret = teavpn_client_tcp_run(&iinfo, config);

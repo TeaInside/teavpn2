@@ -153,8 +153,8 @@ static void set_default_config(teavpn_client_config *config)
   config->config_file = NULL;
   config->iface.dev = (char *)"tun0";
   config->iface.mtu = 1500;
-  config->iface.inet4 = (char *)"10.8.0.1/24";
-  config->iface.inet4_bcmask = (char *)"10.8.0.255";
+  config->iface.inet4 = arena_alloc(255);
+  config->iface.inet4_bcmask = arena_alloc(255);
 
   config->socket.server_addr = NULL;
   config->socket_type = teavpn_sock_tcp;

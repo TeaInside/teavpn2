@@ -71,7 +71,7 @@ static void teavpn_server_tcp_register_client(int client_fd, struct sockaddr_in 
 static bool teavpn_server_tcp_auth(teavpn_tcp_channel *chan);
 static int teavpn_server_tcp_wait_signal(teavpn_tcp_channel *chan);
 static void *teavpn_server_tcp_serve_client(teavpn_tcp_channel *chan);
-static void teavpn_server_tcp_send_iface_info(teavpn_tcp_channel *chan);
+static bool teavpn_server_tcp_send_iface_info(teavpn_tcp_channel *chan);
 
 /**
  * @param teavpn_server_config *config
@@ -140,6 +140,7 @@ static void teavpn_server_tcp_register_client(register int client_fd, struct soc
 
   /* Copy client_addr information to the channel. */
   channels[free_chan_pos].client_addr = *client_addr;
+  channels[free_chan_pos].is_online = true;
 
   /* Create a new thread to serve the client. */
   pthread_create(&(channels[free_chan_pos].thread), NULL,
@@ -243,8 +244,72 @@ auth_reject:
  * @param teavpn_tcp_channel *chan
  * @return bool
  */
-static void teavpn_server_tcp_send_iface_info(teavpn_tcp_channel *chan)
+static bool teavpn_server_tcp_send_iface_info(teavpn_tcp_channel *chan)
 {
+  int file_fd;
+  ssize_t frlen;
+  struct stat file_stat;
+  char arena[512], *inet4_file = arena, *inet4, *inet4_bc = NULL;
+  teavpn_srv_pkt *srv_pkt = chan->srv_pkt;
+  teavpn_cli_pkt *cli_pkt = chan->cli_pkt;
+  teavpn_srv_iface_info *iface = (teavpn_srv_iface_info *)srv_pkt->data;
+  
+  srv_pkt->type = SRV_PKT_IFACE_INFO;
+  sprintf(inet4_file, "%s/users/%s/inet4", config->data_dir, chan->user.username);
+  file_fd = open(inet4_file, O_RDONLY);
+  if (file_fd < 0) {
+    perror("open()");
+    debug_log(2, "Cannot open inet4 file to serve %s:%d", chan->cvt.addr, chan->cvt.port);
+    return false;
+  }
+
+  if (fstat(file_fd, &file_stat) < 0) {
+    perror("fstat()");
+    debug_log(2, "Cannot stat inet4 file to serve %s:%d", chan->cvt.addr, chan->cvt.port);
+    return false; 
+  }
+
+  frlen = read(file_fd, arena, file_stat.st_size);
+  if (frlen < 0) {
+    perror("read()");
+    debug_log(2, "Cannot read inet4 file to serve %s:%d", chan->cvt.addr, chan->cvt.port);
+    return false;
+  }
+
+  arena[frlen] = '\0';
+
+  { 
+    register ssize_t i;
+    inet4 = arena;
+    for (i = 0; i < frlen; i++) {
+      if (i >= 255) {
+        break;
+      }
+      if (inet4[i] == ' ') {
+        inet4[i] = '\0';
+        inet4_bc = &(inet4[i + 1]);
+        break;
+      }
+    }
+
+    if (inet4_bc == NULL) {
+      goto invalid_inet4_file;
+    }
+  }
+
+  strcpy(iface->inet4, inet4);
+  strcpy(iface->inet4_bc, inet4_bc);
+
+  #define SIZE_TO_SEND (sizeof(teavpn_srv_pkt) + sizeof(teavpn_srv_iface_info))
+
+  chan->slen = send(chan->client_fd, srv_pkt, SIZE_TO_SEND, 0);
+  SEND_ERROR_HANDLE(chan->slen, return false;);
+
+  return true;
+
+invalid_inet4_file:
+  debug_log(0, "Invalid inet4 file for user %s", chan->user.username);
+  return false;
 }
 
 /**
@@ -286,6 +351,7 @@ static void *teavpn_server_tcp_serve_client(teavpn_tcp_channel *chan)
   chan->slen = send(chan->client_fd, chan->srv_pkt, sizeof(teavpn_srv_pkt), 0);
   SEND_ERROR_HANDLE(chan->slen, return false;);
 
+  /* Event loop. */
   while (1) {
 
     if (teavpn_server_tcp_wait_signal(chan) == -1) {
@@ -299,12 +365,17 @@ static void *teavpn_server_tcp_serve_client(teavpn_tcp_channel *chan)
           debug_log(3, "Auth failed from %s:%d!", chan->cvt.addr, chan->cvt.port);
           goto close_fd;
         }
+
+        if (!teavpn_server_tcp_send_iface_info(chan)) {
+          goto close_fd;
+        }
         break;
     }
 
   }
 
 close_fd:
+  chan->is_online = false;
   debug_log(2, "Closing connection from %s:%d", chan->cvt.addr, chan->cvt.port);
   close(chan->client_fd);
   return NULL;

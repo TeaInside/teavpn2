@@ -15,11 +15,11 @@ int main(int argc, char *argv[], char *envp[])
   char arena[ARENA_SIZE]; /* We create our function to treat this like heap. */
   teavpn_server_config config;
 
+  init_arena(arena, ARENA_SIZE);
+
   if (!teavpn_server_argv_parser(argc, argv, envp, &config)) {
     return 1;
   }
-
-  init_arena(arena, ARENA_SIZE);
 
   if (config.config_file != NULL) {
     if (!teavpn_server_config_parser(config.config_file, &config)) {
