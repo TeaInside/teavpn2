@@ -5,7 +5,11 @@
 #include <getopt.h>
 #include <teavpn2/client/common.h>
 
+#ifdef TEAVPN_DEBUG
 #define PARAM_DEBUG 1
+#else
+#define PARAM_DEBUG 0
+#endif
 
 static void set_default_config(teavpn_client_config *config);
 static bool getopt_handler(int argc, char **argv, teavpn_client_config *config);
@@ -55,8 +59,8 @@ const static struct option long_options[] = {
   {"sock-type",    required_argument, 0, 's'},
 
   /* Socket options. */
-  {"server-addr",    required_argument, 0, 'h'},
-  {"server-port",    required_argument, 0, 'p'},
+  {"server-addr",  required_argument, 0, 'h'},
+  {"server-port",  required_argument, 0, 'p'},
 
   /* Data options. */
   {"data-dir",     required_argument, 0, 'u'},
