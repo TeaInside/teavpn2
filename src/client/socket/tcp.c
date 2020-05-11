@@ -37,6 +37,7 @@
 
 static int tun_fd;
 static int net_fd;
+ssize_t signal_rlen;
 static teavpn_srv_pkt *srv_pkt;
 static teavpn_cli_pkt *cli_pkt;
 static teavpn_client_config *config;
@@ -48,6 +49,7 @@ static bool teavpn_client_tcp_send_auth();
 static int teavpn_client_tcp_wait_signal();
 static bool teavpn_client_tcp_init_iface();
 static void *teavpn_server_tcp_handle_iface_read(void *p);
+static void teavpn_client_tcp_handle_pkt_data();
 
 /**
  * @param teavpn_client_config *config
@@ -92,6 +94,9 @@ int teavpn_client_tcp_run(iface_info *iinfo, teavpn_client_config *_config)
           teavpn_server_tcp_handle_iface_read, NULL);
         pthread_detach(client_iface_handler_thread);
         break;
+      case SRV_PKT_DATA:
+        teavpn_client_tcp_handle_pkt_data();
+        break;
       default:
         debug_log(3, "Got invalid packet type");
         break;
@@ -106,6 +111,25 @@ close:
     close(net_fd);
   }
   return ret;
+}
+
+/**
+ * @return void
+ */
+static void teavpn_client_tcp_handle_pkt_data()
+{
+  ssize_t wbytes;
+  uint16_t total_received = signal_rlen;
+
+  while (total_received < srv_pkt->len) {
+    debug_log(5, "Re-receiving packet...");
+    signal_rlen = recv(net_fd, (srv_pkt->data + total_received), SIGNAL_RECV_BUFFER, 0);
+    RECV_ERROR_HANDLE(signal_rlen, {});
+  }
+
+  wbytes = write(tun_fd, srv_pkt->data, srv_pkt->len);
+  WRITE_ERROR_HANDLE(wbytes, {});
+  debug_log(5, "Write to tun_fd %ld bytes", wbytes);
 }
 
 #define TAP_READ_SIZE 2048
@@ -143,13 +167,12 @@ static void *teavpn_server_tcp_handle_iface_read(void *p)
  */
 static int teavpn_client_tcp_wait_signal()
 {
-  ssize_t rlen;
 
   /* Wait for signal. */
-  rlen = recv(net_fd, srv_pkt, SIGNAL_RECV_BUFFER, 0);
-  RECV_ERROR_HANDLE(rlen, return -1;);
+  signal_rlen = recv(net_fd, srv_pkt, SIGNAL_RECV_BUFFER, 0);
+  RECV_ERROR_HANDLE(signal_rlen, return -1;);
 
-  return rlen;
+  return signal_rlen;
 }
 
 /**
