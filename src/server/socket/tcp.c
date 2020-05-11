@@ -347,7 +347,7 @@ static int teavpn_server_tcp_wait_signal(teavpn_tcp_channel *chan)
     chan->signal_rlen += tmp_rlen;
   }
 
-  return signal_rlen;
+  return chan->signal_rlen;
 }
 
 /**
