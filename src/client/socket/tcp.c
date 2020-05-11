@@ -125,6 +125,7 @@ static void teavpn_client_tcp_handle_pkt_data()
     debug_log(5, "Re-receiving packet...");
     signal_rlen = recv(net_fd, (srv_pkt->data + total_received), SIGNAL_RECV_BUFFER, 0);
     RECV_ERROR_HANDLE(signal_rlen, {});
+    total_received += (uint16_t)signal_rlen;
   }
 
   wbytes = write(tun_fd, srv_pkt->data, srv_pkt->len);
