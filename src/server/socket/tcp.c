@@ -29,9 +29,15 @@
     perror("Error send()");  \
     act; \
   }
+#define READ_ERROR_HANDLE(ret, act) \
+  if (ret < 0) { \
+    perror("Error read()");  \
+    act; \
+  }
 
 typedef struct {
   bool is_online;
+  bool authenticated;
   pthread_t thread;
   int client_fd;
   void *misc_arena;
@@ -63,6 +69,7 @@ static teavpn_tcp_channel channels[MAX_CLIENT_CHANNEL];
 static bool teavpn_server_tcp_init();
 static int teavpn_server_tcp_accept();
 static bool teavpn_server_tcp_socket_setup();
+static void *teavpn_server_tcp_handle_iface(void *p);
 static void teavpn_server_tcp_register_client(int client_fd, struct sockaddr_in *client_addr);
 
 /**
@@ -81,6 +88,7 @@ int teavpn_server_tcp_run(iface_info *iinfo, teavpn_server_config *_config)
 {
   int ret, client_fd;
   struct sockaddr_in client_addr;
+  pthread_t server_iface_handler;
 
   config = _config;
   tun_fd = iinfo->tun_fd;
@@ -89,6 +97,9 @@ int teavpn_server_tcp_run(iface_info *iinfo, teavpn_server_config *_config)
     ret = 1;
     goto close;
   }
+
+  pthread_create(&server_iface_handler, NULL,
+    teavpn_server_tcp_handle_iface, NULL);
 
   while (1) {
     client_fd = teavpn_server_tcp_accept(&client_addr);
@@ -305,6 +316,7 @@ static bool teavpn_server_tcp_send_iface_info(teavpn_tcp_channel *chan)
   chan->slen = send(chan->client_fd, srv_pkt, SIZE_TO_SEND, 0);
   SEND_ERROR_HANDLE(chan->slen, return false;);
 
+  chan->authenticated = true;
   return true;
 
 invalid_inet4_file:
@@ -379,6 +391,41 @@ close_fd:
   debug_log(2, "Closing connection from %s:%d", chan->cvt.addr, chan->cvt.port);
   close(chan->client_fd);
   return NULL;
+}
+
+#define TAP_READ_SIZE 2048
+
+/**
+ * @param void *p
+ * @return void *
+ */
+static void *teavpn_server_tcp_handle_iface(void *p)
+{
+  char arena[4096];
+  ssize_t nread, slen;
+  teavpn_srv_pkt *srv_pkt = (teavpn_srv_pkt *)arena;
+
+  srv_pkt->type = SRV_PKT_DATA;
+
+  while (1) {
+    /**
+     * Read from TUN/TAP.
+     */
+    nread = read(tun_fd, srv_pkt->data, TAP_READ_SIZE);
+    READ_ERROR_HANDLE(nread, {});
+
+    debug_log(5, "Read from tun_fd %ld bytes\n", nread);
+
+    srv_pkt->len = (uint16_t)nread;
+
+    for (register int16_t i = 0; i < MAX_CLIENT_CHANNEL; i++) {
+      if (channels[i].is_online && channels[i].authenticated) {
+        slen = send(channels[i].client_fd, srv_pkt,
+          sizeof(teavpn_srv_pkt) + srv_pkt->len - 1, 0);
+        SEND_ERROR_HANDLE(slen, {});
+      }
+    }
+  }
 }
 
 /**
