@@ -13,78 +13,77 @@
 #include <sys/socket.h>
 
 #include <teavpn2/global/iface.h>
-#include <teavpn2/global/data_struct.h>
 #include <teavpn2/server/common.h>
 #include <teavpn2/server/socket/tcp.h>
+#include <teavpn2/global/data_struct.h>
 
+#define RECV_BUFFER 4096
+#define TUN_READ_SIZE 4096
 #define MAX_CLIENT_CHANNEL 10
-#define SIGNAL_RECV_BUFFER 4096
-#define RECV_ERROR_HANDLE(ret, act) \
-  if (ret < 0) { \
-    perror("Error recv()");  \
-    act; \
-  }
-#define SEND_ERROR_HANDLE(ret, act) \
-  if (ret < 0) { \
-    perror("Error send()");  \
-    act; \
-  }
-#define READ_ERROR_HANDLE(ret, act) \
-  if (ret < 0) { \
-    perror("Error read()");  \
-    act; \
-  }
-#define WRITE_ERROR_HANDLE(ret, act) \
-  if (ret < 0) { \
-    perror("Error write()");  \
-    act; \
-  }
+#define TUN_MAX_READ_ERROR 1000
+#define CLIENT_MAX_WRITE_ERROR 1000
+#define MIN_WAIT_RECV_BYTES (sizeof(teavpn_cli_pkt))
+#define CLI_PKT(A) ((teavpn_cli_pkt *)(A.cli_pkt_arena))
+#define SRV_PKT(A) ((teavpn_srv_pkt *)(A.srv_pkt_arena))
+#define CLI_PKT_P(A) ((teavpn_cli_pkt *)(A->cli_pkt_arena))
+#define SRV_PKT_P(A) ((teavpn_srv_pkt *)(A->srv_pkt_arena))
+#define MZERO_HANDLE(FUNC, RETVAL, ACT) if (RETVAL == 0) { ACT; }
+#define MERROR_HANDLE(FUNC, RETVAL, ACT) if (RETVAL < 0) { perror("Error "#FUNC); ACT; }
+#define RECV_ZERO_HANDLE(RETVAL, ACT) MZERO_HANDLE(recv(), RETVAL, ACT)  
+#define SEND_ZERO_HANDLE(RETVAL, ACT) MZERO_HANDLE(send(), RETVAL, ACT)
+#define READ_ZERO_HANDLE(RETVAL, ACT) MZERO_HANDLE(read(), RETVAL, ACT)
+#define WRITE_ZERO_HANDLE(RETVAL, ACT) MZERO_HANDLE(write(), RETVAL, ACT)
+#define RECV_ERROR_HANDLE(RETVAL, ACT) MERROR_HANDLE(recv(), RETVAL, ACT)  
+#define SEND_ERROR_HANDLE(RETVAL, ACT) MERROR_HANDLE(send(), RETVAL, ACT)
+#define READ_ERROR_HANDLE(RETVAL, ACT) MERROR_HANDLE(read(), RETVAL, ACT)
+#define WRITE_ERROR_HANDLE(RETVAL, ACT) MERROR_HANDLE(write(), RETVAL, ACT)
 
 typedef struct {
   bool is_online;
-  bool authenticated;
+  bool is_authenticated;
+
   pthread_t thread;
-  int client_fd;
-  void *misc_arena;
+  int fd;
+
+  /* Readable client address and port. */
   struct {
-    char *addr;
+    char addr[32];
     uint8_t addr_len;
     uint16_t port;
-  } cvt;
+  } rdb;
+
   struct {
-    char *username;
+    char username[255];
     uint8_t username_len;
-  } user;
-  teavpn_srv_pkt *srv_pkt;
-  teavpn_cli_pkt *cli_pkt;
+  };
+
+  char srv_pkt_arena[4096 + 1024];
+  char cli_pkt_arena[4096 + 1024];
+
   ssize_t signal_rlen;
   ssize_t slen;
+
+  uint16_t write_error_count;
+
   struct sockaddr_in client_addr;
+
 } teavpn_tcp_channel;
 
 static int tun_fd;
 static int net_fd;
+static bool stop_main = false;
 static teavpn_server_config *config;
-static struct sockaddr_in server_addr;
+static int16_t free_chan_index = 0; /* Set -1 if the channel array is full. */
+static teavpn_tcp_channel *channels;
 
-static int16_t online_chan = 0;
-static int16_t free_chan_pos = 0; /* set -1 if channel is full. */
-static teavpn_tcp_channel channels[MAX_CLIENT_CHANNEL];
-
-static bool teavpn_server_tcp_init();
-static int teavpn_server_tcp_accept();
+static bool teavpn_server_tcp_init(struct sockaddr_in *server_addr);
 static bool teavpn_server_tcp_socket_setup();
-static void *teavpn_server_tcp_handle_iface_read(void *p);
-static void teavpn_server_tcp_register_client(int client_fd, struct sockaddr_in *client_addr);
-
-/**
- * Functions that are called by threads.
- */
-static bool teavpn_server_tcp_auth(teavpn_tcp_channel *chan);
-static int teavpn_server_tcp_wait_signal(teavpn_tcp_channel *chan);
+static void teavpn_server_tcp_accept_client();
+static void *teavpn_server_tcp_host_dispatcher(void *p);
 static void *teavpn_server_tcp_serve_client(teavpn_tcp_channel *chan);
-static bool teavpn_server_tcp_send_iface_info(teavpn_tcp_channel *chan);
-static void teavpn_server_tcp_handle_client_pkt_data(teavpn_tcp_channel *chan);
+static int teavpn_server_tcp_client_wait(teavpn_tcp_channel *chan);
+static bool teavpn_server_tcp_client_auth(teavpn_tcp_channel *chan);
+static void teavpn_server_tcp_handle_client_data(teavpn_tcp_channel *chan);
 
 /**
  * @param teavpn_server_config *config
@@ -92,26 +91,34 @@ static void teavpn_server_tcp_handle_client_pkt_data(teavpn_tcp_channel *chan);
  */
 int teavpn_server_tcp_run(iface_info *iinfo, teavpn_server_config *_config)
 {
-  int ret, client_fd;
-  struct sockaddr_in client_addr;
-  pthread_t server_iface_handler_thread;
+  int ret;
+  pthread_t dispatcher_thread;
+  struct sockaddr_in server_addr;
+  teavpn_tcp_channel _channels[MAX_CLIENT_CHANNEL] = {0};
+
+  bzero(_channels, sizeof(channels));
 
   config = _config;
+  channels = _channels;
   tun_fd = iinfo->tun_fd;
 
-  if (!teavpn_server_tcp_init()) {
+  if (!teavpn_server_tcp_init(&server_addr)) {
     ret = 1;
     goto close;
   }
 
-  pthread_create(&server_iface_handler_thread, NULL,
-    teavpn_server_tcp_handle_iface_read, NULL);
-  pthread_detach(server_iface_handler_thread);
 
-  while (1) {
-    client_fd = teavpn_server_tcp_accept(&client_addr);
-    teavpn_server_tcp_register_client(client_fd, &client_addr);
+  /* Create the thread that is responsible to read and broadcast tun data.  */
+  pthread_create(&dispatcher_thread, NULL, teavpn_server_tcp_host_dispatcher, NULL);
+  pthread_detach(dispatcher_thread);
+
+  while (true) {
+    teavpn_server_tcp_accept_client();
+    if (stop_main) {
+      goto close;
+    }
   }
+
 
 close:
   /* Close main TCP socket fd. */
@@ -122,379 +129,10 @@ close:
 }
 
 /**
- * @param struct sockaddr_in *client_addr
- * @return int
- */
-static int teavpn_server_tcp_accept(struct sockaddr_in *client_addr)
-{
-  int client_fd;
-  socklen_t rlen = sizeof(struct sockaddr_in);
-
-  /**
-   * Accepting client connection.
-   */
-  client_fd = accept(net_fd, (struct sockaddr *)client_addr, &rlen);
-  if (client_fd < 0) {
-    debug_log(1, "An error occured when accepting connection!");
-    perror("accept()");
-  }
-
-  debug_log(2, "Accepting client (%s:%d)...",
-    inet_ntoa(client_addr->sin_addr), ntohs(client_addr->sin_port));
-
-  return client_fd;
-}
-
-/**
- * @param int client_fd
- * @param struct sockaddr_in *client_addr
- * @return void
- */
-static void teavpn_server_tcp_register_client(register int client_fd, struct sockaddr_in *client_addr)
-{
-
-  /* Save client_fd. */
-  channels[free_chan_pos].client_fd = client_fd;
-
-  /* Copy client_addr information to the channel. */
-  channels[free_chan_pos].client_addr = *client_addr;
-  channels[free_chan_pos].is_online = true;
-
-  /* Create a new thread to serve the client. */
-  pthread_create(&(channels[free_chan_pos].thread), NULL,
-    (void * (*)(void *))teavpn_server_tcp_serve_client,
-    (void *)&(channels[free_chan_pos]));
-
-  /* Detach thread, let the thread do the job. */
-  pthread_detach(channels[free_chan_pos].thread);
-
-  free_chan_pos = -1;
-
-prepare_channel:
-  /* Prepare for free channel. */
-  for (register uint16_t i = 0; i < MAX_CLIENT_CHANNEL; i++) {
-    if (!channels[i].is_online) {
-      free_chan_pos = i;
-      break;
-    }
-  }
-
-  /* Don't accept new connection if channel is full. */
-  if (free_chan_pos == -1) {
-    sleep(1);
-    goto prepare_channel;
-  }
-}
-
-/**
- * @param teavpn_tcp_channel *chan
+ * @param struct sockaddr_in *server_addr
  * @return bool
  */
-static bool teavpn_server_tcp_auth(teavpn_tcp_channel *chan)
-{
-  ssize_t slen, rlen;
-  uint8_t password_len;
-  teavpn_srv_pkt *srv_pkt = chan->srv_pkt;
-  teavpn_cli_pkt *cli_pkt = chan->cli_pkt;
-  teavpn_cli_auth *auth = (teavpn_cli_auth *)cli_pkt->data;
-
-  if (cli_pkt->len != sizeof(teavpn_cli_auth)) {
-    debug_log(2, "Invalid packet from client");
-    goto auth_reject;
-  }
-
-  /* Check password. */
-  {
-    int file_fd;
-    ssize_t frlen;
-    bool reject = false;
-    char auth_file[512], *password = auth_file;
-
-    sprintf(auth_file, "%s/users/%s/password", config->data_dir, auth->username);
-    file_fd = open(auth_file, O_RDONLY);
-
-    if (file_fd < 0) {
-      debug_log(2, "Invalid username or password!");
-      goto auth_reject; /* No need to close fd, since it fails. */
-    }
-
-    password_len = (uint8_t)strlen(auth->password);
-    frlen = read(file_fd, password, password_len);
-    if (frlen < 0) {
-      reject = true;
-      debug_log(2, "Cannot read password from file");
-      goto close_file_fd;
-    }
-    password[password_len] = '\0';
-
-    reject = !(
-      (password_len == ((uint8_t)frlen)) && (!strcmp(password, auth->password))
-    );
-
-close_file_fd:
-    close(file_fd);
-    if (reject) goto auth_reject;
-  }
-
-  debug_log(2, "Auth OK");
-  srv_pkt->type = SRV_PKT_AUTH_ACCEPTED;
-  chan->slen = send(chan->client_fd, srv_pkt, sizeof(teavpn_srv_pkt), 0);
-  SEND_ERROR_HANDLE(chan->slen, return false;);
-
-  /* Allocate some arena to store username. */
-  chan->user.username = (char *)chan->misc_arena;
-  strcpy(chan->user.username, auth->username);
-  chan->user.username_len = strlen(chan->user.username);
-
-  /* Increase arena pointer. */
-  chan->misc_arena = (void *)( ((char *)chan->misc_arena) + chan->user.username_len + 2);
-
-  return true;
-
-auth_reject:
-  srv_pkt->type = SRV_PKT_AUTH_REJECTED;
-  chan->slen = send(chan->client_fd, srv_pkt, sizeof(teavpn_srv_pkt), 0);
-  SEND_ERROR_HANDLE(chan->slen, return false;);
-  return false;
-}
-
-/**
- * @param teavpn_tcp_channel *chan
- * @return bool
- */
-static bool teavpn_server_tcp_send_iface_info(teavpn_tcp_channel *chan)
-{
-  int file_fd;
-  ssize_t frlen;
-  struct stat file_stat;
-  char arena[512], *inet4_file = arena, *inet4, *inet4_bc = NULL;
-  teavpn_srv_pkt *srv_pkt = chan->srv_pkt;
-  teavpn_cli_pkt *cli_pkt = chan->cli_pkt;
-  teavpn_srv_iface_info *iface = (teavpn_srv_iface_info *)srv_pkt->data;
-  
-  srv_pkt->type = SRV_PKT_IFACE_INFO;
-  sprintf(inet4_file, "%s/users/%s/inet4", config->data_dir, chan->user.username);
-  file_fd = open(inet4_file, O_RDONLY);
-  if (file_fd < 0) {
-    perror("open()");
-    debug_log(2, "Cannot open inet4 file to serve %s:%d", chan->cvt.addr, chan->cvt.port);
-    return false;
-  }
-
-  if (fstat(file_fd, &file_stat) < 0) {
-    perror("fstat()");
-    debug_log(2, "Cannot stat inet4 file to serve %s:%d", chan->cvt.addr, chan->cvt.port);
-    return false; 
-  }
-
-  frlen = read(file_fd, arena, file_stat.st_size);
-  if (frlen < 0) {
-    perror("read()");
-    debug_log(2, "Cannot read inet4 file to serve %s:%d", chan->cvt.addr, chan->cvt.port);
-    return false;
-  }
-
-  arena[frlen] = '\0';
-
-  { 
-    register ssize_t i;
-    inet4 = arena;
-    for (i = 0; i < frlen; i++) {
-      if (i >= 255) {
-        break;
-      }
-      if (inet4[i] == ' ') {
-        inet4[i] = '\0';
-        inet4_bc = &(inet4[i + 1]);
-        break;
-      }
-    }
-
-    if (inet4_bc == NULL) {
-      goto invalid_inet4_file;
-    }
-  }
-
-  strcpy(iface->inet4, inet4);
-  strcpy(iface->inet4_bc, inet4_bc);
-
-  #define SIZE_TO_SEND (sizeof(teavpn_srv_pkt) + sizeof(teavpn_srv_iface_info))
-
-  chan->slen = send(chan->client_fd, srv_pkt, SIZE_TO_SEND, 0);
-  SEND_ERROR_HANDLE(chan->slen, return false;);
-
-  chan->authenticated = true;
-  return true;
-
-invalid_inet4_file:
-  debug_log(0, "Invalid inet4 file for user %s", chan->user.username);
-  return false;
-}
-
-/**
- * @param teavpn_tcp_channel *chan
- * @return int
- */
-static int teavpn_server_tcp_wait_signal(teavpn_tcp_channel *chan)
-{
-  ssize_t tmp_rlen;
-  chan->signal_rlen = 0;
-
-  /* Wait for signal. */
-  while (chan->signal_rlen < sizeof(teavpn_cli_pkt)) {
-    tmp_rlen = recv(chan->client_fd, chan->cli_pkt, SIGNAL_RECV_BUFFER, 0);
-    RECV_ERROR_HANDLE(tmp_rlen, return -1;);
-    chan->signal_rlen += tmp_rlen;
-  }
-
-  return chan->signal_rlen;
-}
-
-/**
- * @param teavpn_tcp_channel *chan
- * @return void *
- */
-static void *teavpn_server_tcp_serve_client(teavpn_tcp_channel *chan)
-{
-  int ret;
-  char rd_client_info_arena[64] = {0},
-    misc_arena[256] = {0},
-    cli_pkt_arena[SIGNAL_RECV_BUFFER + 1024] = {0},
-    srv_pkt_arena[SIGNAL_RECV_BUFFER + 1024] = {0};
-
-  /* Store readable client address and port info. */
-  strcpy(rd_client_info_arena, inet_ntoa(chan->client_addr.sin_addr));
-  chan->cvt.addr = rd_client_info_arena;
-  chan->cvt.port = ntohs(chan->client_addr.sin_port);
-  chan->cvt.addr_len = strlen(chan->cvt.addr);
-
-  /* Allocate arena. */
-  chan->srv_pkt = (teavpn_srv_pkt *)srv_pkt_arena;
-  chan->cli_pkt = (teavpn_cli_pkt *)cli_pkt_arena;
-  chan->misc_arena = (void *)misc_arena;
-
-  /* Send auth required signal after connection established. */
-  chan->srv_pkt->type = SRV_PKT_AUTH_REQUIRED;
-  chan->slen = send(chan->client_fd, chan->srv_pkt, sizeof(teavpn_srv_pkt), 0);
-  SEND_ERROR_HANDLE(chan->slen, return false;);
-
-  /* Event loop. */
-  while (1) {
-
-    if (teavpn_server_tcp_wait_signal(chan) == -1) {
-      debug_log(0, "Error when waiting for signal from %s:%d", chan->cvt.addr, chan->cvt.port);
-      continue;
-    }
-
-    switch (chan->cli_pkt->type) {
-      case CLI_PKT_AUTH:
-        if (!teavpn_server_tcp_auth(chan)) {
-          debug_log(3, "Auth failed from %s:%d!", chan->cvt.addr, chan->cvt.port);
-          goto close_fd;
-        }
-
-        if (!teavpn_server_tcp_send_iface_info(chan)) {
-          goto close_fd;
-        }
-        break;
-      case CLI_PKT_DATA:
-        teavpn_server_tcp_handle_client_pkt_data(chan);
-        break;
-    }
-
-  }
-
-close_fd:
-  chan->is_online = false;
-  debug_log(2, "Closing connection from %s:%d", chan->cvt.addr, chan->cvt.port);
-  close(chan->client_fd);
-  return NULL;
-}
-
-/**
- * @param teavpn_tcp_channel *chan
- * @return void
- */
-void teavpn_server_tcp_handle_client_pkt_data(teavpn_tcp_channel *chan)
-{
-  ssize_t wbytes;
-  teavpn_cli_pkt *cli_pkt = chan->cli_pkt;
-  uint16_t total_signal_received = chan->signal_rlen;
-  uint16_t total_data_received;
-
-  /* Make sure data length information is retrivied completely. */
-  while (total_signal_received < sizeof(teavpn_cli_pkt)) {
-    debug_log(5, "Re-receiving signal packet...");
-    chan->signal_rlen = recv(
-      chan->client_fd,
-      &(((char *)cli_pkt)[total_signal_received]),
-      SIGNAL_RECV_BUFFER,
-      0
-    );
-    RECV_ERROR_HANDLE(chan->signal_rlen, {});
-    total_signal_received += (uint16_t)chan->signal_rlen;
-  }
-
-  total_data_received = total_signal_received - (sizeof(teavpn_cli_pkt) - 1);
-
-  /* Make sure data is retrivied completely. */
-  while (total_data_received < cli_pkt->len) {
-    debug_log(5, "Re-receiving packet...");
-    chan->signal_rlen = recv(
-      chan->client_fd,
-      &(cli_pkt->data[total_data_received]),
-      SIGNAL_RECV_BUFFER,
-      0
-    );
-    RECV_ERROR_HANDLE(chan->signal_rlen, {});
-    total_data_received += (uint16_t)chan->signal_rlen;
-  }
-
-
-  wbytes = write(tun_fd, cli_pkt->data, cli_pkt->len);
-  WRITE_ERROR_HANDLE(wbytes, {});
-  debug_log(5, "Write to tun_fd %ld bytes", wbytes);
-}
-
-#define TAP_READ_SIZE 4096
-
-/**
- * @param void *p
- * @return void *
- */
-static void *teavpn_server_tcp_handle_iface_read(void *p)
-{
-  char arena[4096 + 2048];
-  ssize_t nread, slen;
-  teavpn_srv_pkt *srv_pkt = (teavpn_srv_pkt *)arena;
-
-  srv_pkt->type = SRV_PKT_DATA;
-
-  while (1) {
-    /**
-     * Read from TUN/TAP.
-     */
-    nread = read(tun_fd, srv_pkt->data, TAP_READ_SIZE);
-    READ_ERROR_HANDLE(nread, {});
-
-    debug_log(5, "Read from tun_fd %ld bytes", nread);
-
-    srv_pkt->len = (uint16_t)nread;
-
-    for (register int16_t i = 0; i < MAX_CLIENT_CHANNEL; i++) {
-      if (channels[i].is_online && channels[i].authenticated) {
-        slen = send(channels[i].client_fd, srv_pkt,
-          sizeof(teavpn_srv_pkt) + srv_pkt->len - 1, 0);
-        SEND_ERROR_HANDLE(slen, {});
-      }
-    }
-  }
-}
-
-/**
- * @return bool
- */
-static bool teavpn_server_tcp_init()
+static bool teavpn_server_tcp_init(struct sockaddr_in *server_addr)
 {
   /**
    * Create TCP socket.
@@ -520,15 +158,15 @@ static bool teavpn_server_tcp_init()
   /**
    * Prepare server bind address data.
    */
-  memset(&server_addr, 0, sizeof(server_addr));
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_port = htons(config->socket.bind_port);
-  server_addr.sin_addr.s_addr = inet_addr(config->socket.bind_addr);
+  bzero(server_addr, sizeof(struct sockaddr_in));
+  server_addr->sin_family = AF_INET;
+  server_addr->sin_port = htons(config->socket.bind_port);
+  server_addr->sin_addr.s_addr = inet_addr(config->socket.bind_addr);
 
   /**
    * Bind socket to corresponding address.
    */
-  if (bind(net_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+  if (bind(net_fd, (struct sockaddr *)server_addr, sizeof(struct sockaddr_in)) < 0) {
     error_log("Bind socket failed");
     perror("Bind failed");
     return false;
@@ -550,9 +188,6 @@ static bool teavpn_server_tcp_init()
 
   debug_log(4, "Listening on %s:%d...", config->socket.bind_addr, config->socket.bind_port);
 
-  /* Init channels with zero bytes. */
-  memset(channels, 0, sizeof(channels));
-
   return true;
 }
 
@@ -567,4 +202,246 @@ static bool teavpn_server_tcp_socket_setup()
     return false;
   }
   return true;
+}
+
+/**
+ * @return void
+ */
+static void teavpn_server_tcp_accept_client()
+{
+  int client_fd;
+  teavpn_tcp_channel *chan;
+  struct sockaddr_in client_addr;
+  socklen_t rlen = sizeof(struct sockaddr_in);
+
+  if (free_chan_index == -1) {
+    goto prepare_free_channel;
+  }
+
+  /**
+   * Accepting client connection.
+   */
+  chan = &(channels[free_chan_index]);
+  client_fd = accept(net_fd, (struct sockaddr *)&(chan->client_addr), &rlen);
+  MERROR_HANDLE(accept(), client_fd,
+    {
+      debug_log(1, "An error occured when accepting connection!");
+    }
+  );
+
+  chan->fd = client_fd;
+  chan->is_online = true;
+  chan->is_authenticated = false;
+
+  /* Copy readable address and port. */
+  chan->rdb.port = chan->client_addr.sin_port;
+  strcpy(chan->rdb.addr, inet_ntoa(chan->client_addr.sin_addr));
+  chan->rdb.addr_len = strlen(chan->rdb.addr);
+
+  debug_log(1, "Accepting client (%s:%d)...", chan->rdb.addr, chan->rdb.port);
+
+  /* Create a new thread to serve the client. */
+  pthread_create(&(chan->thread), NULL, (void * (*)(void *))teavpn_server_tcp_serve_client, chan);
+  pthread_detach(chan->thread);
+
+  free_chan_index = -1;
+
+prepare_free_channel:
+  /* Prepare free channel for next accept. */
+  debug_log(5, "Preparing free channel for next accept...");
+  for (register uint16_t i = 0; i < MAX_CLIENT_CHANNEL; i++) {
+    if (!channels[i].is_online) {
+      debug_log(5, "Got free channel at index %d", i);
+      free_chan_index = i;
+      break;
+    }
+  }
+
+  /* Don't accept new connection if channel is full. */
+  if (free_chan_index == -1) {
+    debug_log(5, "Channel is full, sleep 1 second and try again.");
+    sleep(1);
+    goto prepare_free_channel;
+  }
+}
+
+/**
+ * @param void *p
+ * @return void *
+ */
+static void *teavpn_server_tcp_host_dispatcher(void *p)
+{
+  #define srv_pkt ((teavpn_srv_pkt *)arena)
+  #define send_size (sizeof(teavpn_srv_pkt) + srv_pkt->len - 1)
+
+  char arena[sizeof(teavpn_srv_pkt) + 4096];
+  ssize_t nread, slen;
+  uint16_t read_fails = 0;
+
+  srv_pkt->type = SRV_PKT_DATA;
+
+  while (true) {
+
+    /**
+     * Read from TUN.
+     */
+    nread = read(tun_fd, srv_pkt->data, TUN_READ_SIZE);
+    READ_ERROR_HANDLE(nread, {
+      read_fails++;
+
+      if (read_fails >= TUN_MAX_READ_ERROR) {
+        stop_main = true;
+        break;
+      }
+
+      continue;
+    });
+
+    srv_pkt->len = (uint16_t)nread;
+    debug_log(5, "Read from tun_fd: %d bytes", srv_pkt->len);
+
+
+    for (register int16_t i = 0; i < MAX_CLIENT_CHANNEL; i++) {
+      /* Send data to all authenticated clients. */
+      if (channels[i].is_online && channels[i].is_authenticated) {
+        slen = send(channels[i].fd, srv_pkt, send_size, 0);
+        SEND_ERROR_HANDLE(slen,
+          {
+            channels[i].write_error_count++;
+
+            if (channels[i].write_error_count >= CLIENT_MAX_WRITE_ERROR) {
+              channels[i].is_online = false;
+              continue;
+            }
+          }
+        );
+      }
+    }
+
+    if (read_fails > 0) {
+      read_fails--;
+    }
+  }
+
+  #undef srv_pkt
+  #undef send_size
+  return NULL;
+}
+
+/**
+ * @param teavpn_tcp_channel *chan
+ * @return void *
+ */
+static void *teavpn_server_tcp_serve_client(teavpn_tcp_channel *chan)
+{
+  uint16_t wait_fails = 0;
+
+  while (true) {
+
+    if (!chan->is_online) {
+      goto close_client;
+    }
+
+    if (teavpn_server_tcp_client_wait(chan) == -1) {
+      wait_fails++;
+
+      debug_log(5, "[%s:%d] wait_fails got increased %d",
+        chan->rdb.addr, chan->rdb.port, wait_fails);
+
+      if (wait_fails >= 1000) {
+        debug_log(3, "[%s:%d] Too many wait_fails", chan->rdb.addr, chan->rdb.port);
+        goto close_client;
+      }
+
+      continue;
+    }
+
+    SRV_PKT_P(chan)->type = SRV_PKT_AUTH_REQUIRED;
+    chan->slen = send(chan->fd, SRV_PKT_P(chan), sizeof(teavpn_srv_pkt), 0);
+    SEND_ERROR_HANDLE(chan->slen, {
+      goto close_client;
+    });
+
+    switch (CLI_PKT_P(chan)->type) {
+
+      case CLI_PKT_AUTH:
+        if (!teavpn_server_tcp_client_auth(chan)) {
+          goto close_client;
+        }
+        break;
+
+      case CLI_PKT_DATA:
+        teavpn_server_tcp_handle_client_data(chan);
+        break;
+
+      default:
+        debug_log(5, "[%s:%d] Got unknown packet", chan->rdb.addr, chan->rdb.port);
+        break;
+    }
+
+    if (wait_fails > 0) {
+      wait_fails--;
+    }
+  }
+
+close_client:
+  debug_log(2, "[%s:%d] Closing connection...", chan->rdb.addr, chan->rdb.port);
+  close(chan->fd);
+  bzero(chan, sizeof(teavpn_tcp_channel));
+  return NULL;
+}
+
+/**
+ * @param teavpn_tcp_channel *chan
+ * @return int
+ */
+static int teavpn_server_tcp_client_wait(register teavpn_tcp_channel *chan)
+{
+  register ssize_t recv_ret;
+  register uint16_t total_recv_bytes = 0;
+
+  while (total_recv_bytes < MIN_WAIT_RECV_BYTES) {
+
+    recv_ret = recv(
+      chan->fd,
+      &(((char *)CLI_PKT_P(chan))[total_recv_bytes]),
+      RECV_BUFFER,
+      0
+    );
+
+    /* Error occured when calling recv. */
+    RECV_ERROR_HANDLE(recv_ret, return -1);
+
+    /* Client has been disconnected. */
+    RECV_ZERO_HANDLE(recv_ret, {
+      chan->is_online = false;
+      debug_log(5,
+        "[%s:%d] Got zero byte read (assuming as disconnected)",
+        chan->rdb.addr, chan->rdb.port);
+      return -1;
+    });
+
+
+    total_recv_bytes += (uint16_t)recv_ret;
+  }
+
+  return (int)total_recv_bytes;
+}
+
+/**
+ * @param teavpn_tcp_channel *chan
+ * @return bool
+ */
+static bool teavpn_server_tcp_client_auth(teavpn_tcp_channel *chan)
+{
+
+}
+
+/**
+ * @param teavpn_tcp_channel *chan
+ * @return void
+ */
+static void teavpn_server_tcp_handle_client_data(teavpn_tcp_channel *chan)
+{
+
 }
