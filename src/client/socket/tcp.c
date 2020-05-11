@@ -1,11 +1,15 @@
 
+#include <fcntl.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
+#include <stdbool.h>
 #include <pthread.h>
 #include <linux/ip.h>
+#include <sys/stat.h>
 #include <arpa/inet.h>
+#include <sys/types.h>
 #include <sys/socket.h>
 
 #include <teavpn2/global/iface.h>
@@ -13,43 +17,32 @@
 #include <teavpn2/client/socket/tcp.h>
 #include <teavpn2/global/data_struct.h>
 
-#define SIGNAL_RECV_BUFFER 4096
-#define RECV_ERROR_HANDLE(ret, act) \
-  if (ret < 0) { \
-    perror("Error recv()");  \
-    act; \
-  }
-#define SEND_ERROR_HANDLE(ret, act) \
-  if (ret < 0) { \
-    perror("Error send()");  \
-    act; \
-  }
-#define READ_ERROR_HANDLE(ret, act) \
-  if (ret < 0) { \
-    perror("Error read()");  \
-    act; \
-  }
-#define WRITE_ERROR_HANDLE(ret, act) \
-  if (ret < 0) { \
-    perror("Error write()");  \
-    act; \
-  }
+#define RECV_BUFFER 4096
+#define TUN_READ_SIZE 4096
+#define MAX_CLIENT_CHANNEL 10
+#define TUN_MAX_READ_ERROR 1000
+#define CLIENT_MAX_WRITE_ERROR 1000
+#define MIN_WAIT_RECV_BYTES (SRV_PKT_HSIZE)
+#define MZERO_HANDLE(FUNC, RETVAL, ACT) if (RETVAL == 0) { ACT; }
+#define MERROR_HANDLE(FUNC, RETVAL, ACT) if (RETVAL < 0) { perror("Error "#FUNC); ACT; }
+#define RECV_ZERO_HANDLE(RETVAL, ACT) MZERO_HANDLE(recv(), RETVAL, ACT)  
+#define SEND_ZERO_HANDLE(RETVAL, ACT) MZERO_HANDLE(send(), RETVAL, ACT)
+#define READ_ZERO_HANDLE(RETVAL, ACT) MZERO_HANDLE(read(), RETVAL, ACT)
+#define WRITE_ZERO_HANDLE(RETVAL, ACT) MZERO_HANDLE(write(), RETVAL, ACT)
+#define RECV_ERROR_HANDLE(RETVAL, ACT) MERROR_HANDLE(recv(), RETVAL, ACT)  
+#define SEND_ERROR_HANDLE(RETVAL, ACT) MERROR_HANDLE(send(), RETVAL, ACT)
+#define READ_ERROR_HANDLE(RETVAL, ACT) MERROR_HANDLE(read(), RETVAL, ACT)
+#define WRITE_ERROR_HANDLE(RETVAL, ACT) MERROR_HANDLE(write(), RETVAL, ACT)
 
 static int tun_fd;
 static int net_fd;
-ssize_t signal_rlen;
-static teavpn_srv_pkt *srv_pkt;
-static teavpn_cli_pkt *cli_pkt;
 static teavpn_client_config *config;
-static struct sockaddr_in server_addr;
 
 static bool teavpn_client_tcp_init();
 static bool teavpn_client_tcp_socket_setup();
-static bool teavpn_client_tcp_send_auth();
-static int teavpn_client_tcp_wait_signal();
-static bool teavpn_client_tcp_init_iface();
-static void *teavpn_server_tcp_handle_iface_read(void *p);
-static void teavpn_client_tcp_handle_pkt_data();
+static int teavpn_client_tcp_server_wait(teavpn_srv_pkt *srv_pkt);
+static bool teavpn_client_tcp_send_auth(teavpn_cli_pkt *cli_pkt);
+static void teavpn_client_tcp_handle_pkt_data(teavpn_srv_pkt *srv_pkt);
 
 /**
  * @param teavpn_client_config *config
@@ -57,199 +50,75 @@ static void teavpn_client_tcp_handle_pkt_data();
  */
 int teavpn_client_tcp_run(iface_info *iinfo, teavpn_client_config *_config)
 {
+  #define srv_pkt ((teavpn_srv_pkt *)srv_pkt_arena)
+  #define cli_pkt ((teavpn_cli_pkt *)cli_pkt_arena)
+
   int ret;
-  char arena1[8096], arena2[8096];
-  pthread_t client_iface_handler_thread;
+  uint16_t wait_fails = 0;
+  pthread_t dispatcher_thread;
+  char srv_pkt_arena[4096 + 1024], cli_pkt_arena[4096 + 1024];
 
   config = _config;
-  tun_fd = iinfo->tun_fd;
-  srv_pkt = (teavpn_srv_pkt *)arena1;
-  cli_pkt = (teavpn_cli_pkt *)arena2;
 
   if (!teavpn_client_tcp_init()) {
     ret = 1;
-    goto close;
+    goto close_net;
   }
 
-  while (1) {
-    
-    if (teavpn_client_tcp_wait_signal() == -1) {
-      goto close;
+  while (true) {
+
+    debug_log(5, "Waiting for data...");
+    if (teavpn_client_tcp_server_wait(srv_pkt) == -1) {
+      wait_fails++;
+
+      debug_log(5, "wait_fails got increased %d", wait_fails);
+
+      if (wait_fails >= 1000) {
+        debug_log(3, "Too many wait_fails");
+        goto close_net;
+      }
+
+      continue;
     }
 
     switch (srv_pkt->type) {
       case SRV_PKT_AUTH_REQUIRED:
-        debug_log(3, "Got SRV_PKT_AUTH_REQUIRED signal");
-        teavpn_client_tcp_send_auth();
+        debug_log(0, "Got SRV_PKT_AUTH_REQUIRED signal");
+        if (!teavpn_client_tcp_send_auth(cli_pkt)) {
+          debug_log(0, "Failed to send authentication data");
+          goto close_net;
+        }
         break;
       case SRV_PKT_AUTH_ACCEPTED:
-        debug_log(3, "Authenticated!");
+        debug_log(0, "Authenticated!");
         break;
-      case SRV_PKT_IFACE_INFO:
-        debug_log(3, "Got interface information");
-        if (!teavpn_client_tcp_init_iface()) {
-          goto close;
-        }
-        pthread_create(&client_iface_handler_thread, NULL,
-          teavpn_server_tcp_handle_iface_read, NULL);
-        pthread_detach(client_iface_handler_thread);
-        break;
+      // case SRV_PKT_IFACE_INFO:
+      //   debug_log(3, "Got interface information");
+      //   if (!teavpn_client_tcp_init_iface()) {
+      //     goto close;
+      //   }
+      //   pthread_create(&dispatcher_thread, NULL,
+      //     teavpn_server_tcp_handle_iface_read, NULL);
+      //   pthread_detach(dispatcher_thread);
+      //   break;
       case SRV_PKT_DATA:
-        teavpn_client_tcp_handle_pkt_data();
+        teavpn_client_tcp_handle_pkt_data(srv_pkt);
         break;
       default:
-        debug_log(3, "Got invalid packet type");
+        debug_log(5, "Got unknown packet");
         break;
     }
-
   }
 
-
-close:
+close_net:
   /* Close main TCP socket fd. */
   if (net_fd != -1) {
     close(net_fd);
   }
   return ret;
-}
 
-/**
- * @return void
- */
-static void teavpn_client_tcp_handle_pkt_data()
-{
-  ssize_t wbytes;
-  uint16_t total_signal_received = signal_rlen;
-  uint16_t total_data_received;
-
-  /* Make sure data length information is retrivied completely. */
-  while (total_signal_received < sizeof(teavpn_srv_pkt)) {
-    debug_log(5, "Re-receiving signal packet...");
-    signal_rlen = recv(
-      net_fd,
-      &(((char *)srv_pkt)[total_signal_received]),
-      SIGNAL_RECV_BUFFER,
-      0
-    );
-    RECV_ERROR_HANDLE(signal_rlen, {});
-    total_signal_received += (uint16_t)signal_rlen;
-  }
-
-  total_data_received = total_signal_received - (sizeof(teavpn_srv_pkt) - 1);
-
-  /* Make sure data is retrivied completely. */
-  while (total_data_received < srv_pkt->len) {
-    debug_log(5, "Re-receiving packet...");
-    signal_rlen = recv(
-      net_fd,
-      &(srv_pkt->data[total_data_received]),
-      SIGNAL_RECV_BUFFER,
-      0
-    );
-    RECV_ERROR_HANDLE(signal_rlen, {});
-    total_data_received += (uint16_t)signal_rlen;
-  }
-
-  wbytes = write(tun_fd, srv_pkt->data, srv_pkt->len);
-  WRITE_ERROR_HANDLE(wbytes, {});
-  debug_log(5, "Write to tun_fd %ld bytes", wbytes);
-}
-
-#define TAP_READ_SIZE 4096
-
-/**
- * @param void *p
- * @return void *
- */
-static void *teavpn_server_tcp_handle_iface_read(void *p)
-{
-  char arena[4096 + 2048];
-  ssize_t nread, slen;
-  teavpn_cli_pkt *cli_pkt = (teavpn_cli_pkt *)arena;
-
-  cli_pkt->type = CLI_PKT_DATA;
-
-  while (1) {
-    /**
-     * Read from TUN/TAP.
-     */
-    nread = read(tun_fd, cli_pkt->data, TAP_READ_SIZE);
-    READ_ERROR_HANDLE(nread, {});
-
-    debug_log(5, "Read from tun_fd %ld bytes", nread);
-
-    cli_pkt->len = (uint16_t)nread;
-
-    slen = send(net_fd, cli_pkt, sizeof(teavpn_srv_pkt) + cli_pkt->len - 1, 0);
-    SEND_ERROR_HANDLE(slen, {});
-  }
-}
-
-/**
- * @return int
- */
-static int teavpn_client_tcp_wait_signal()
-{
-  ssize_t tmp_rlen;
-  signal_rlen = 0;
-
-  /* Wait for signal. */
-  while (signal_rlen < sizeof(teavpn_srv_pkt)) {
-    tmp_rlen = recv(net_fd, srv_pkt, SIGNAL_RECV_BUFFER, 0);
-    RECV_ERROR_HANDLE(tmp_rlen, return -1;);
-    signal_rlen += tmp_rlen;
-  }
-
-  return signal_rlen;
-}
-
-/**
- * @return bool
- */
-static bool teavpn_client_tcp_init_iface()
-{
-  teavpn_srv_iface_info *iface = (teavpn_srv_iface_info *)srv_pkt->data;
-
-  debug_log(0, "inet4: \"%s\"", iface->inet4);
-  debug_log(0, "inet4_bc: \"%s\"", iface->inet4_bc);
-
-  strcpy(config->iface.inet4, iface->inet4);
-  strcpy(config->iface.inet4_bcmask, iface->inet4_bc);
-
-  debug_log(2, "Setting up teavpn network interface...");
-  if (!teavpn_iface_init(&config->iface)) {
-    error_log("Cannot set up teavpn network interface");
-    return false;
-  }
-
-  return true;
-}
-
-/**
- * @return int
- */
-static bool teavpn_client_tcp_send_auth()
-{
-  ssize_t slen;
-  teavpn_cli_auth *auth;
-
-  debug_log(1, "Authenticating...");
-
-  cli_pkt->type = CLI_PKT_AUTH;
-  cli_pkt->len = sizeof(teavpn_cli_auth);
-  auth = (teavpn_cli_auth *)&(cli_pkt->data[0]);
-
-  strcpy(auth->username, config->auth.username);
-  strcpy(auth->password, config->auth.password);
-
-  #define SIZE_TO_BE_SENT (sizeof(teavpn_cli_pkt) + sizeof(teavpn_cli_auth) - 1)
-
-  slen = send(net_fd, cli_pkt, SIZE_TO_BE_SENT, 0);
-  SEND_ERROR_HANDLE(slen, return false;);
-
-
-  return true;
-  #undef SIZE_TO_BE_SENT
+  #undef srv_pkt
+  #undef cli_pkt
 }
 
 /**
@@ -257,6 +126,8 @@ static bool teavpn_client_tcp_send_auth()
  */
 static bool teavpn_client_tcp_init()
 {
+  struct sockaddr_in server_addr;
+
   /**
    * Create TCP socket.
    */
@@ -272,7 +143,7 @@ static bool teavpn_client_tcp_init()
   /**
    * Setup TCP socket.
    */
-  debug_log(3, "Setting up socket file descriptor...");
+  debug_log(1, "Setting up socket file descriptor...");
   if (!teavpn_client_tcp_socket_setup()) {
     perror("Error setsockopt()");
     return false;
@@ -314,4 +185,72 @@ static bool teavpn_client_tcp_socket_setup()
   }
 
   return true;
+}
+
+#define HANDLE_RECV do { \
+  recv_ret = recv( \
+    net_fd, &(((char *)srv_pkt)[total_recv_bytes]), \
+    RECV_BUFFER, 0); \
+  /* Error occured when calling recv. */ \
+  RECV_ERROR_HANDLE(recv_ret, return -1); \
+  /* Client has been disconnected. */ \
+  RECV_ZERO_HANDLE(recv_ret, { \
+    debug_log(5, \
+      "Got zero byte read (assuming as disconnected from server)"); \
+    return -1; \
+  }); \
+} while (0)
+
+
+/**
+ * @param register teavpn_srv_pkt *srv_pkt
+ * @return int
+ */
+static int teavpn_client_tcp_server_wait(register teavpn_srv_pkt *srv_pkt)
+{
+  register ssize_t recv_ret;
+  register uint16_t total_recv_bytes = 0;
+  register uint16_t total_data_only = 0;
+
+  while (total_recv_bytes < MIN_WAIT_RECV_BYTES) {
+    HANDLE_RECV;
+    total_recv_bytes += (uint16_t)recv_ret;
+  }
+
+  return (int)total_recv_bytes;
+}
+
+/**
+ * @param teavpn_cli_pkt *cli_pkt
+ * @return bool
+ */
+static bool teavpn_client_tcp_send_auth(teavpn_cli_pkt *cli_pkt)
+{
+  ssize_t slen;
+  teavpn_cli_auth *auth;
+
+  debug_log(0, "Authenticating...");
+
+  cli_pkt->type = CLI_PKT_AUTH;
+  cli_pkt->len = sizeof(teavpn_cli_auth);
+  auth = (teavpn_cli_auth *)cli_pkt->data;
+
+  strcpy(auth->username, config->auth.username);
+  strcpy(auth->password, config->auth.password);
+
+  slen = send(net_fd, cli_pkt, sizeof(teavpn_cli_pkt) + sizeof(teavpn_cli_auth), 0);
+  SEND_ERROR_HANDLE(slen, return false;);
+
+  debug_log(5, "Authentication data has been sent!");
+
+  return true;
+}
+
+/**
+ * @param teavpn_srv_pkt *srv_pkt
+ * @return void
+ */
+static void teavpn_client_tcp_handle_pkt_data(teavpn_srv_pkt *srv_pkt)
+{
+
 }

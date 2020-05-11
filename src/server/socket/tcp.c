@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
+#include <teavpn2/server/auth.h>
 #include <teavpn2/global/iface.h>
 #include <teavpn2/server/common.h>
 #include <teavpn2/server/socket/tcp.h>
@@ -55,7 +56,7 @@ typedef struct {
   struct {
     char username[255];
     uint8_t username_len;
-  };
+  } user;
 
   char srv_pkt_arena[4096 + 1024];
   char cli_pkt_arena[4096 + 1024];
@@ -336,6 +337,13 @@ static void *teavpn_server_tcp_serve_client(teavpn_tcp_channel *chan)
 {
   uint16_t wait_fails = 0;
 
+  /* Send auth required signal. */
+  SRV_PKT_P(chan)->type = SRV_PKT_AUTH_REQUIRED;
+  chan->slen = send(chan->fd, SRV_PKT_P(chan), sizeof(teavpn_srv_pkt), 0);
+  SEND_ERROR_HANDLE(chan->slen, {
+    goto close_client;
+  });
+
   while (true) {
 
     if (!chan->is_online) {
@@ -356,22 +364,25 @@ static void *teavpn_server_tcp_serve_client(teavpn_tcp_channel *chan)
       continue;
     }
 
-    SRV_PKT_P(chan)->type = SRV_PKT_AUTH_REQUIRED;
-    chan->slen = send(chan->fd, SRV_PKT_P(chan), sizeof(teavpn_srv_pkt), 0);
-    SEND_ERROR_HANDLE(chan->slen, {
-      goto close_client;
-    });
-
     switch (CLI_PKT_P(chan)->type) {
 
       case CLI_PKT_AUTH:
+        debug_log(7, "[%s:%d] Got CLI_PKT_AUTH", chan->rdb.addr, chan->rdb.port);
         if (!teavpn_server_tcp_client_auth(chan)) {
           goto close_client;
         }
         break;
 
       case CLI_PKT_DATA:
-        teavpn_server_tcp_handle_client_data(chan);
+        debug_log(7, "[%s:%d] Got CLI_PKT_DATA", chan->rdb.addr, chan->rdb.port);
+        if (chan->is_authenticated) {
+          teavpn_server_tcp_handle_client_data(chan);
+        } else {
+          debug_log(0, "[%s:%d] Force disconnecting... | "
+            "Reason: The client send CLI_PKT_DATA without authenticated state (possible hijacking).",
+            chan->rdb.addr, chan->rdb.port);
+          goto close_client;
+        }
         break;
 
       default:
@@ -391,37 +402,34 @@ close_client:
   return NULL;
 }
 
+#define HANDLE_RECV do { \
+  recv_ret = recv( \
+    chan->fd, &(((char *)CLI_PKT_P(chan))[total_recv_bytes]), \
+    RECV_BUFFER, 0); \
+  /* Error occured when calling recv. */ \
+  RECV_ERROR_HANDLE(recv_ret, return -1); \
+  /* Client has been disconnected. */ \
+  RECV_ZERO_HANDLE(recv_ret, { \
+    chan->is_online = false; \
+    debug_log(5, \
+      "[%s:%d] Got zero byte read (assuming as disconnected client)", \
+      chan->rdb.addr, chan->rdb.port); \
+    return -1; \
+  }); \
+} while (0)
+
 /**
- * @param teavpn_tcp_channel *chan
+ * @param register teavpn_tcp_channel *chan
  * @return int
  */
 static int teavpn_server_tcp_client_wait(register teavpn_tcp_channel *chan)
 {
   register ssize_t recv_ret;
   register uint16_t total_recv_bytes = 0;
+  register uint16_t total_data_only = 0;
 
   while (total_recv_bytes < MIN_WAIT_RECV_BYTES) {
-
-    recv_ret = recv(
-      chan->fd,
-      &(((char *)CLI_PKT_P(chan))[total_recv_bytes]),
-      RECV_BUFFER,
-      0
-    );
-
-    /* Error occured when calling recv. */
-    RECV_ERROR_HANDLE(recv_ret, return -1);
-
-    /* Client has been disconnected. */
-    RECV_ZERO_HANDLE(recv_ret, {
-      chan->is_online = false;
-      debug_log(5,
-        "[%s:%d] Got zero byte read (assuming as disconnected)",
-        chan->rdb.addr, chan->rdb.port);
-      return -1;
-    });
-
-
+    HANDLE_RECV;
     total_recv_bytes += (uint16_t)recv_ret;
   }
 
@@ -434,7 +442,32 @@ static int teavpn_server_tcp_client_wait(register teavpn_tcp_channel *chan)
  */
 static bool teavpn_server_tcp_client_auth(teavpn_tcp_channel *chan)
 {
+  teavpn_cli_auth *auth = (teavpn_cli_auth *)(CLI_PKT_P(chan)->data);
+  teavpn_srv_iface_info iface_info;
 
+  /* Prevent bad case for strlen. */
+  auth->username[254] = '\0';
+  auth->password[254] = '\0';
+
+  if (teavpn_server_auth_handle(auth->username, auth->password, config, &iface_info)) {
+
+    SRV_PKT_P(chan)->type = SRV_PKT_AUTH_ACCEPTED;
+    SRV_PKT_P(chan)->len = 0;
+    chan->slen = send(chan->fd, SRV_PKT_P(chan), SRV_PKT_HSIZE, 0);
+    SEND_ERROR_HANDLE(chan->slen, {
+      return false;
+    });
+
+    strcpy(chan->user.username, auth->username);
+    chan->user.username_len = strlen(chan->user.username);
+    return true;
+  }
+
+  SRV_PKT_P(chan)->type = SRV_PKT_AUTH_REJECTED;
+  SRV_PKT_P(chan)->len = 0;
+  chan->slen = send(chan->fd, SRV_PKT_P(chan), SRV_PKT_HSIZE, 0);
+  SEND_ERROR_HANDLE(chan->slen, return false;);
+  return false;
 }
 
 /**

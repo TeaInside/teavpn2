@@ -5,6 +5,10 @@
 #include <stdbool.h>
 #include <teavpn2/global/config.h>
 
+typedef struct {
+  int tun_fd;
+} iface_info;
+
 int teavpn_iface_allocate(char *dev);
 bool teavpn_iface_init(struct teavpn_iface *iface);
 

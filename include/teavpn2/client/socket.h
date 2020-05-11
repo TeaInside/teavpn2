@@ -3,9 +3,6 @@
 #define TEAVPN__CLIENT__SOCKET_H
 
 #include <stdlib.h>
-
-typedef struct {
-  int tun_fd;
-} iface_info;
+#include <teavpn2/global/iface.h>
 
 #endif
