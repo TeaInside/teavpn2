@@ -337,9 +337,17 @@ invalid_inet4_file:
  */
 static int teavpn_server_tcp_wait_signal(teavpn_tcp_channel *chan)
 {
+  ssize_t tmp_rlen;
+  chan->signal_rlen = 0;
+
   /* Wait for signal. */
-  chan->signal_rlen = recv(chan->client_fd, chan->cli_pkt, SIGNAL_RECV_BUFFER, 0);
-  RECV_ERROR_HANDLE(chan->signal_rlen, return -1;);
+  while (chan->signal_rlen < sizeof(teavpn_cli_pkt)) {
+    tmp_rlen = recv(chan->client_fd, chan->cli_pkt, SIGNAL_RECV_BUFFER, 0);
+    RECV_ERROR_HANDLE(tmp_rlen, return -1;);
+    chan->signal_rlen += tmp_rlen;
+  }
+
+  return signal_rlen;
 }
 
 /**

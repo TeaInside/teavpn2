@@ -150,13 +150,6 @@ static void teavpn_client_tcp_handle_pkt_data()
     total_data_received += (uint16_t)signal_rlen;
   }
 
-
-  wbytes = write(tun_fd, srv_pkt->data, srv_pkt->len);
-  WRITE_ERROR_HANDLE(wbytes, {});
-  debug_log(5, "Write to tun_fd %ld bytes", wbytes);
-
-
-
   wbytes = write(tun_fd, srv_pkt->data, srv_pkt->len);
   WRITE_ERROR_HANDLE(wbytes, {});
   debug_log(5, "Write to tun_fd %ld bytes", wbytes);
@@ -197,10 +190,15 @@ static void *teavpn_server_tcp_handle_iface_read(void *p)
  */
 static int teavpn_client_tcp_wait_signal()
 {
+  ssize_t tmp_rlen;
+  signal_rlen = 0;
 
   /* Wait for signal. */
-  signal_rlen = recv(net_fd, srv_pkt, SIGNAL_RECV_BUFFER, 0);
-  RECV_ERROR_HANDLE(signal_rlen, return -1;);
+  while (signal_rlen < sizeof(teavpn_srv_pkt)) {
+    tmp_rlen = recv(net_fd, srv_pkt, SIGNAL_RECV_BUFFER, 0);
+    RECV_ERROR_HANDLE(tmp_rlen, return -1;);
+    signal_rlen += tmp_rlen;
+  }
 
   return signal_rlen;
 }
