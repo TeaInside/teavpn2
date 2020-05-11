@@ -411,21 +411,44 @@ void teavpn_server_tcp_handle_client_pkt_data(teavpn_tcp_channel *chan)
 {
   ssize_t wbytes;
   teavpn_cli_pkt *cli_pkt = chan->cli_pkt;
-  uint16_t total_received = chan->signal_rlen - (sizeof(cli_pkt->type) + sizeof(cli_pkt->len) + 1);
+  uint16_t total_signal_received = chan->signal_rlen;
+  uint16_t total_data_received;
 
-  while (total_received < cli_pkt->len) {
-    debug_log(5, "Re-receiving packet...");
-    chan->signal_rlen = recv(chan->client_fd, &(cli_pkt->data[total_received]), SIGNAL_RECV_BUFFER, 0);
+  /* Make sure data length information is retrivied completely. */
+  while (total_signal_received < sizeof(teavpn_cli_pkt)) {
+    debug_log(5, "Re-receiving signal packet...");
+    chan->signal_rlen = recv(
+      chan->client_fd,
+      &(((char *)cli_pkt)[total_signal_received]),
+      SIGNAL_RECV_BUFFER,
+      0
+    );
     RECV_ERROR_HANDLE(chan->signal_rlen, {});
-    total_received += (uint16_t)chan->signal_rlen;
+    total_signal_received += (uint16_t)chan->signal_rlen;
   }
+
+  total_data_received = total_signal_received - (sizeof(teavpn_cli_pkt) - 1);
+
+  /* Make sure data is retrivied completely. */
+  while (total_data_received < cli_pkt->len) {
+    debug_log(5, "Re-receiving packet...");
+    chan->signal_rlen = recv(
+      chan->client_fd,
+      &(cli_pkt->data[total_data_received]),
+      SIGNAL_RECV_BUFFER,
+      0
+    );
+    RECV_ERROR_HANDLE(chan->signal_rlen, {});
+    total_data_received += (uint16_t)chan->signal_rlen;
+  }
+
 
   wbytes = write(tun_fd, cli_pkt->data, cli_pkt->len);
   WRITE_ERROR_HANDLE(wbytes, {});
   debug_log(5, "Write to tun_fd %ld bytes", wbytes);
 }
 
-#define TAP_READ_SIZE 2048
+#define TAP_READ_SIZE 4096
 
 /**
  * @param void *p
@@ -433,7 +456,7 @@ void teavpn_server_tcp_handle_client_pkt_data(teavpn_tcp_channel *chan)
  */
 static void *teavpn_server_tcp_handle_iface_read(void *p)
 {
-  char arena[4096];
+  char arena[4096 + 2048];
   ssize_t nread, slen;
   teavpn_srv_pkt *srv_pkt = (teavpn_srv_pkt *)arena;
 
