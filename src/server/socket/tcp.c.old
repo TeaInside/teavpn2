@@ -427,7 +427,7 @@ void teavpn_server_tcp_handle_client_pkt_data(teavpn_tcp_channel *chan)
     debug_log(5, "Re-receiving signal packet...");
     chan->signal_rlen = recv(
       chan->client_fd,
-      &(((char *)cli_pkt)[total_signal_received]),
+      &(((char *)cli_pkt)[total_signal_received])
       SIGNAL_RECV_BUFFER,
       0
     );

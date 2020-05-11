@@ -85,6 +85,7 @@ static void *teavpn_server_tcp_serve_client(teavpn_tcp_channel *chan);
 static int teavpn_server_tcp_client_wait(teavpn_tcp_channel *chan);
 static bool teavpn_server_tcp_client_auth(teavpn_tcp_channel *chan);
 static void teavpn_server_tcp_handle_client_data(teavpn_tcp_channel *chan);
+static bool teavpn_server_tcp_get_iface_info(teavpn_tcp_channel *chan);
 
 /**
  * @param teavpn_server_config *config
@@ -433,6 +434,8 @@ static int teavpn_server_tcp_client_wait(register teavpn_tcp_channel *chan)
     total_recv_bytes += (uint16_t)recv_ret;
   }
 
+  chan->signal_rlen = total_recv_bytes;
+
   return (int)total_recv_bytes;
 }
 
@@ -443,13 +446,13 @@ static int teavpn_server_tcp_client_wait(register teavpn_tcp_channel *chan)
 static bool teavpn_server_tcp_client_auth(teavpn_tcp_channel *chan)
 {
   teavpn_cli_auth *auth = (teavpn_cli_auth *)(CLI_PKT_P(chan)->data);
-  teavpn_srv_iface_info iface_info;
+  teavpn_srv_iface_info *iface_info = (teavpn_srv_iface_info *)SRV_PKT_P(chan)->data;
 
   /* Prevent bad case for strlen. */
   auth->username[254] = '\0';
   auth->password[254] = '\0';
 
-  if (teavpn_server_auth_handle(auth->username, auth->password, config, &iface_info)) {
+  if (teavpn_server_auth_handle(auth->username, auth->password, config, iface_info)) {
 
     SRV_PKT_P(chan)->type = SRV_PKT_AUTH_ACCEPTED;
     SRV_PKT_P(chan)->len = 0;
@@ -460,9 +463,23 @@ static bool teavpn_server_tcp_client_auth(teavpn_tcp_channel *chan)
 
     strcpy(chan->user.username, auth->username);
     chan->user.username_len = strlen(chan->user.username);
+
+    chan->is_authenticated = true;
+    if (!teavpn_server_tcp_get_iface_info(chan)) {
+      goto auth_reject;
+    }
+
+    SRV_PKT_P(chan)->type = SRV_PKT_IFACE_INFO;
+    SRV_PKT_P(chan)->len = sizeof(teavpn_srv_iface_info);
+    chan->slen = send(chan->fd, SRV_PKT_P(chan), SRV_PKT_HSIZE_A(sizeof(teavpn_srv_iface_info)), 0);
+    SEND_ERROR_HANDLE(chan->slen, {
+      return false;
+    });
+
     return true;
   }
 
+auth_reject:
   SRV_PKT_P(chan)->type = SRV_PKT_AUTH_REJECTED;
   SRV_PKT_P(chan)->len = 0;
   chan->slen = send(chan->fd, SRV_PKT_P(chan), SRV_PKT_HSIZE, 0);
@@ -476,5 +493,91 @@ static bool teavpn_server_tcp_client_auth(teavpn_tcp_channel *chan)
  */
 static void teavpn_server_tcp_handle_client_data(teavpn_tcp_channel *chan)
 {
+  ssize_t wbytes;
+  uint16_t total_signal_received = chan->signal_rlen;
+  uint16_t total_data_received = total_signal_received - CLI_PKT_HSIZE;
 
+  while (total_signal_received < (CLI_PKT_P(chan)->len)) {
+    chan->signal_rlen = recv(
+      chan->fd,
+      &(((char *)CLI_PKT_P(chan))[total_signal_received]),
+      RECV_BUFFER,
+      0
+    );
+    RECV_ERROR_HANDLE(chan->signal_rlen, {});
+    RECV_ZERO_HANDLE(chan->signal_rlen, {
+      chan->is_authenticated = false;
+      chan->is_online = false;
+      return;
+    });
+    total_signal_received += (uint16_t)chan->signal_rlen;
+  }
+
+  wbytes = write(tun_fd, CLI_PKT_P(chan)->data, CLI_PKT_P(chan)->len);
+  WRITE_ERROR_HANDLE(wbytes, {});
+  debug_log(5, "Write to tun_fd %ld bytes", wbytes);
+}
+
+/**
+ * @param teavpn_tcp_channel *chan
+ * @return void
+ */
+static bool teavpn_server_tcp_get_iface_info(teavpn_tcp_channel *chan)
+{
+  int file_fd;
+  ssize_t frlen;
+  struct stat file_stat;
+  char arena[512], *inet4_file = arena, *inet4, *inet4_bc = NULL;
+  teavpn_srv_iface_info *iface = (teavpn_srv_iface_info *)SRV_PKT_P(chan)->data;
+
+  sprintf(inet4_file, "%s/users/%s/inet4", config->data_dir, chan->user.username);
+  file_fd = open(inet4_file, O_RDONLY);
+  if (file_fd < 0) {
+    perror("open()");
+    debug_log(0, "Cannot open inet4 file to serve %s:%d", chan->rdb.addr, chan->rdb.port);
+    return false;
+  }
+
+  if (fstat(file_fd, &file_stat) < 0) {
+    perror("fstat()");
+    debug_log(0, "Cannot stat inet4 file to serve %s:%d", chan->rdb.addr, chan->rdb.port);
+    return false; 
+  }
+
+  frlen = read(file_fd, arena, file_stat.st_size);
+  if (frlen < 0) {
+    perror("read()");
+    debug_log(0, "Cannot read inet4 file to serve %s:%d", chan->rdb.addr, chan->rdb.port);
+    return false;
+  }
+
+  arena[frlen] = '\0';
+
+  { 
+    register ssize_t i;
+    inet4 = arena;
+    for (i = 0; i < frlen; i++) {
+      if (i >= 255) {
+        break;
+      }
+      if (inet4[i] == ' ') {
+        inet4[i] = '\0';
+        inet4_bc = &(inet4[i + 1]);
+        break;
+      }
+    }
+
+    if (inet4_bc == NULL) {
+      goto invalid_inet4_file;
+    }
+  }
+
+  strcpy(iface->inet4, inet4);
+  strcpy(iface->inet4_bc, inet4_bc);
+
+  return true;
+
+invalid_inet4_file:
+  debug_log(0, "Invalid inet4 file for user %s", chan->user.username);
+  return false;
 }

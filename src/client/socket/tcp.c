@@ -42,7 +42,9 @@ static bool teavpn_client_tcp_init();
 static bool teavpn_client_tcp_socket_setup();
 static int teavpn_client_tcp_server_wait(teavpn_srv_pkt *srv_pkt);
 static bool teavpn_client_tcp_send_auth(teavpn_cli_pkt *cli_pkt);
-static void teavpn_client_tcp_handle_pkt_data(teavpn_srv_pkt *srv_pkt);
+static void *teavpn_client_tcp_handle_pkt_data(teavpn_srv_pkt *srv_pkt);
+static bool teavpn_client_tcp_init_iface(teavpn_srv_pkt *srv_pkt);
+static void *teavpn_server_tcp_handle_iface_read(void *p);
 
 /**
  * @param teavpn_client_config *config
@@ -92,15 +94,15 @@ int teavpn_client_tcp_run(iface_info *iinfo, teavpn_client_config *_config)
       case SRV_PKT_AUTH_ACCEPTED:
         debug_log(0, "Authenticated!");
         break;
-      // case SRV_PKT_IFACE_INFO:
-      //   debug_log(3, "Got interface information");
-      //   if (!teavpn_client_tcp_init_iface()) {
-      //     goto close;
-      //   }
-      //   pthread_create(&dispatcher_thread, NULL,
-      //     teavpn_server_tcp_handle_iface_read, NULL);
-      //   pthread_detach(dispatcher_thread);
-      //   break;
+      case SRV_PKT_IFACE_INFO:
+        debug_log(3, "Got interface information");
+        if (!teavpn_client_tcp_init_iface(srv_pkt)) {
+          goto close_net;
+        }
+        pthread_create(&dispatcher_thread, NULL,
+          teavpn_server_tcp_handle_iface_read, NULL);
+        pthread_detach(dispatcher_thread);
+        break;
       case SRV_PKT_DATA:
         teavpn_client_tcp_handle_pkt_data(srv_pkt);
         break;
@@ -250,7 +252,60 @@ static bool teavpn_client_tcp_send_auth(teavpn_cli_pkt *cli_pkt)
  * @param teavpn_srv_pkt *srv_pkt
  * @return void
  */
-static void teavpn_client_tcp_handle_pkt_data(teavpn_srv_pkt *srv_pkt)
+static void *teavpn_client_tcp_handle_pkt_data(teavpn_srv_pkt *srv_pkt)
 {
 
+}
+
+/**
+ * @param teavpn_srv_pkt *srv_pkt
+ * @return void
+ */
+static bool teavpn_client_tcp_init_iface(teavpn_srv_pkt *srv_pkt)
+{
+  teavpn_srv_iface_info *iface = (teavpn_srv_iface_info *)srv_pkt->data;
+
+  debug_log(2, "inet4: \"%s\"", iface->inet4);
+  debug_log(2, "inet4_bc: \"%s\"", iface->inet4_bc);
+
+  strcpy(config->iface.inet4, iface->inet4);
+  strcpy(config->iface.inet4_bcmask, iface->inet4_bc);
+
+  debug_log(2, "Setting up teavpn network interface...");
+  if (!teavpn_iface_init(&config->iface)) {
+    error_log("Cannot set up teavpn network interface");
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * @param void *p
+ * @return void *
+ */
+static void *teavpn_server_tcp_handle_iface_read(void *p)
+{
+  char arena[4096 + 2048];
+  ssize_t nread, slen;
+  teavpn_cli_pkt *cli_pkt = (teavpn_cli_pkt *)arena;
+
+  cli_pkt->type = CLI_PKT_DATA;
+
+  while (1) {
+    /**
+     * Read from TUN/TAP.
+     */
+    nread = read(tun_fd, cli_pkt->data, TUN_READ_SIZE);
+    READ_ERROR_HANDLE(nread, {});
+
+    debug_log(5, "Read from tun_fd %ld bytes", nread);
+
+    cli_pkt->len = (uint16_t)nread;
+
+    slen = send(net_fd, cli_pkt, sizeof(teavpn_srv_pkt) + cli_pkt->len - 1, 0);
+    SEND_ERROR_HANDLE(slen, {});
+  }
+
+  return NULL;
 }
