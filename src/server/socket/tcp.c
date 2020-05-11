@@ -414,7 +414,7 @@ static void *teavpn_server_tcp_handle_iface(void *p)
     nread = read(tun_fd, srv_pkt->data, TAP_READ_SIZE);
     READ_ERROR_HANDLE(nread, {});
 
-    debug_log(5, "Read from tun_fd %ld bytes\n", nread);
+    debug_log(5, "Read from tun_fd %ld bytes", nread);
 
     srv_pkt->len = (uint16_t)nread;
 
