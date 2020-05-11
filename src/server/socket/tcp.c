@@ -34,6 +34,11 @@
     perror("Error read()");  \
     act; \
   }
+#define WRITE_ERROR_HANDLE(ret, act) \
+  if (ret < 0) { \
+    perror("Error write()");  \
+    act; \
+  }
 
 typedef struct {
   bool is_online;
@@ -79,6 +84,7 @@ static bool teavpn_server_tcp_auth(teavpn_tcp_channel *chan);
 static int teavpn_server_tcp_wait_signal(teavpn_tcp_channel *chan);
 static void *teavpn_server_tcp_serve_client(teavpn_tcp_channel *chan);
 static bool teavpn_server_tcp_send_iface_info(teavpn_tcp_channel *chan);
+static void teavpn_server_tcp_handle_client_pkt_data(teavpn_tcp_channel *chan);
 
 /**
  * @param teavpn_server_config *config
@@ -382,6 +388,9 @@ static void *teavpn_server_tcp_serve_client(teavpn_tcp_channel *chan)
           goto close_fd;
         }
         break;
+      case CLI_PKT_DATA:
+        teavpn_server_tcp_handle_client_pkt_data(chan);
+        break;
     }
 
   }
@@ -391,6 +400,26 @@ close_fd:
   debug_log(2, "Closing connection from %s:%d", chan->cvt.addr, chan->cvt.port);
   close(chan->client_fd);
   return NULL;
+}
+
+/**
+ * @param teavpn_tcp_channel *chan
+ * @return void
+ */
+void teavpn_server_tcp_handle_client_pkt_data(teavpn_tcp_channel *chan)
+{
+  ssize_t wbytes;
+  teavpn_cli_pkt *cli_pkt = chan->cli_pkt;
+  uint16_t total_received = chan->signal_rlen;
+
+  while (total_received < cli_pkt->len) {
+    chan->signal_rlen = recv(chan->client_fd, (cli_pkt->data + total_received), SIGNAL_RECV_BUFFER, 0);
+    RECV_ERROR_HANDLE(chan->signal_rlen, {});
+  }
+
+  wbytes = write(tun_fd, cli_pkt->data, cli_pkt->len);
+  WRITE_ERROR_HANDLE(wbytes, {});
+  debug_log(5, "Write to tun_fd %ld bytes", wbytes);
 }
 
 #define TAP_READ_SIZE 2048
