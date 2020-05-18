@@ -218,8 +218,9 @@ accept:
   /**
    * Accepting client connection.
    */
+  bzero(&(channels[free_chan_pos].cvt.client_addr), sizeof(struct sockaddr_in));
   client_fd = accept(state->net_fd,
-    (struct sockaddr *)&(channels[free_chan_pos].cvt.client_addr.sin_addr), &rlen);
+    (struct sockaddr *)&(channels[free_chan_pos].cvt.client_addr), &rlen);
   if (client_fd < 0) {
     debug_log(1, "An error occured when accepting connection!");
     perror("accept()");
@@ -284,7 +285,7 @@ prepare_channel:
 static void *teavpn_server_tcp_iface_dispatcher(teavpn_tcp *state)
 {
   ssize_t read_ret, send_ret;
-  uint16_t error = 0;
+  uint16_t error_count = 0;
   char srv_pkt_arena[PACKET_ARENA_SIZE];
   teavpn_srv_pkt *srv_pkt = (teavpn_srv_pkt *)srv_pkt_arena;
   int tun_fd = state->tun_fd;
@@ -294,26 +295,21 @@ static void *teavpn_server_tcp_iface_dispatcher(teavpn_tcp *state)
 read_from_tun:
   read_ret = read(tun_fd, srv_pkt->data, SERVER_READ_BUFFER);
   READ_ERROR_HANDLE(read_ret, {
-    error++;
+    error_count++;
     debug_log(5, "Read from tun_fd got error");
-    if (error > SERVER_TUN_READ_MAX_ERROR) {
+    if (error_count > SERVER_TUN_READ_MAX_ERROR) {
       debug_log(5, "Read from tun_fd has reached the max number error");
       debug_log(5, "Stopping everything...");
       stop_all = true;
-      sleep(100);
+      return NULL;
     }
     goto read_from_tun;
   });
   READ_ZERO_HANDLE(read_ret, {
-    error++;
     debug_log(5, "Read from tun_fd returned zero");
-    if (error > SERVER_TUN_READ_MAX_ERROR) {
-      debug_log(5, "Read from tun_fd has reached the max number error");
-      debug_log(5, "Stopping everything...");
-      stop_all = true;
-      sleep(100);
-    }
-    goto read_from_tun;
+    debug_log(5, "Stopping everything...");
+    stop_all = true;
+    return NULL;
   });
 
   debug_log(5, "Read from tun_fd %d bytes", read_ret);
@@ -327,8 +323,9 @@ read_from_tun:
         SEND_ERROR_HANDLE(send_ret, {
           channels[i].send_error++;
           if (channels[i].send_error > SERVER_SEND_CLIENT_MAX_ERROR) {
-            debug_log(5, "[%s:%d] Reached the max number of error",
+            debug_log(5, "[%s:%d] Reached the max number of send error",
               channels[i].cvt.addr, channels[i].cvt.port);
+            channels[i].is_online = false;
           }
         });
         SEND_ZERO_HANDLE(send_ret, {
@@ -369,6 +366,9 @@ static void *teavpn_server_tcp_serve_client(tcp_client_channel *chan)
 
   chan->srv_pkt = srv_pkt;
   chan->cli_pkt = cli_pkt;
+
+  bzero(cli_pkt_arena, PACKET_ARENA_SIZE);
+  bzero(srv_pkt_arena, PACKET_ARENA_SIZE);
 
   /* Send auth required signal after connect. */
   srv_pkt->type = SRV_PKT_AUTH_REQUIRED;
@@ -449,6 +449,7 @@ static void teavpn_server_tcp_handle_auth(tcp_client_channel *chan)
   teavpn_cli_auth *auth = (teavpn_cli_auth *)cli_pkt->data;
   teavpn_srv_iface_info *iface_info = (teavpn_srv_iface_info *)srv_pkt->data;
 
+  bzero(iface_info, sizeof(teavpn_srv_iface_info));
   teavpn_server_tcp_handle_extra_recv(chan);
 
   /* Worst case here is client sends bad auth data. */
@@ -458,6 +459,7 @@ static void teavpn_server_tcp_handle_auth(tcp_client_channel *chan)
 
   if (teavpn_server_auth_handle(auth->username, auth->password, chan->state->config, iface_info)) {
     chan->is_online = true;
+    chan->is_authenticated = true;
 
     /* Send auth accepted signal. */
     srv_pkt->type = SRV_PKT_AUTH_ACCEPTED;
