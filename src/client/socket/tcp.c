@@ -15,7 +15,7 @@
 #include <teavpn2/server/auth.h>
 #include <teavpn2/global/iface.h>
 #include <teavpn2/global/data_struct.h>
-#include <teavpn2/server/common.h>
+#include <teavpn2/client/common.h>
 #include <teavpn2/server/socket/tcp.h>
 
 
@@ -45,13 +45,18 @@ typedef struct _teavpn_tcp teavpn_tcp;
 struct _teavpn_tcp {
   int tun_fd;
   int net_fd;
-  teavpn_server_config *config;
+  teavpn_client_config *config;
+  iface_info *iinfo;
   struct sockaddr_in server_addr;
   pthread_t recv_worker_thread;
   pthread_t iface_dispatcher_thread;
 };
 
+static bool stop_all = false;
 static bool teavpn_client_tcp_init(teavpn_tcp *state);
+static bool teavpn_client_tcp_socket_setup(int net_fd);
+static void *teavpn_client_tcp_recv_worker(teavpn_tcp *state);
+static void *teavpn_client_tcp_iface_dispatcher(teavpn_tcp *state);
 
 /**
  * @param teavpn_client_config *config
@@ -62,17 +67,29 @@ int teavpn_client_tcp_run(iface_info *iinfo, teavpn_client_config *config)
   int ret;
   teavpn_tcp state;
 
-  state.config = config;
+  bzero(&state, sizeof(state));
 
-  if (!teavpn_client_tcp_init()) {
+  state.config = config;
+  state.tun_fd = iinfo->tun_fd;
+  state.iinfo = iinfo;
+
+  if (!teavpn_client_tcp_init(&state)) {
     ret = 1;
     goto close_net;
   }
 
+  pthread_create(&(state.recv_worker_thread), NULL,
+    (void * (*)(void *))teavpn_client_tcp_recv_worker, (void *)&state);
+  pthread_create(&(state.iface_dispatcher_thread), NULL,
+    (void * (*)(void *))teavpn_client_tcp_iface_dispatcher, (void *)&state);
+
+  pthread_detach(state.recv_worker_thread);
+  pthread_detach(state.iface_dispatcher_thread);
+
 close_net:
   /* Close main TCP socket fd. */
-  if (net_fd != -1) {
-    close(net_fd);
+  if (state.net_fd != -1) {
+    close(state.net_fd);
   }
   return ret;
 }
@@ -99,7 +116,7 @@ static bool teavpn_client_tcp_init(teavpn_tcp *state)
    * Setup TCP socket.
    */
   debug_log(1, "Setting up socket file descriptor...");
-  if (!teavpn_client_tcp_socket_setup()) {
+  if (!teavpn_client_tcp_socket_setup(state->net_fd)) {
     perror("Error setsockopt()");
     return false;
   }
@@ -108,7 +125,7 @@ static bool teavpn_client_tcp_init(teavpn_tcp *state)
   /**
    * Prepare server address and port.
    */
-  memset(&(state->server_addr), 0, sizeof(server_addr));
+  bzero(&(state->server_addr), sizeof(state->server_addr));
   state->server_addr.sin_family = AF_INET;
   state->server_addr.sin_port = htons(state->config->socket.server_port);
   state->server_addr.sin_addr.s_addr = inet_addr(state->config->socket.server_addr);
@@ -128,4 +145,37 @@ static bool teavpn_client_tcp_init(teavpn_tcp *state)
   debug_log(0, "Connection established!");
 
   return true;
+}
+
+/**
+ * @param int net_fd
+ * @return bool
+ */
+static bool teavpn_client_tcp_socket_setup(int net_fd)
+{
+  int optval = 1;
+  if (setsockopt(net_fd, SOL_SOCKET, SO_REUSEADDR, (char *)&optval, sizeof(optval)) < 0) {
+    perror("setsockopt()");
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * @param teavpn_tcp *state
+ * @return void *
+ */
+static void *teavpn_client_tcp_recv_worker(teavpn_tcp *state)
+{
+
+}
+
+/**
+ * @param teavpn_tcp *state
+ * @return void *
+ */
+static void *teavpn_client_tcp_iface_dispatcher(teavpn_tcp *state)
+{
+
 }

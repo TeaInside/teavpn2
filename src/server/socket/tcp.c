@@ -104,6 +104,7 @@ int teavpn_server_tcp_run(iface_info *iinfo, teavpn_server_config *config)
 
   state.config = config;
   state.tun_fd = iinfo->tun_fd;
+  state.iinfo = iinfo;
 
   if (!teavpn_server_tcp_init(&state)) {
     ret = 1;
