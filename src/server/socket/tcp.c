@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
+#include <teavpn2/server/auth.h>
 #include <teavpn2/global/iface.h>
 #include <teavpn2/global/data_struct.h>
 #include <teavpn2/server/common.h>
@@ -19,8 +20,11 @@
 
 
 #define SERVER_RECV_BUFFER 4096
-#define SERVER_RECV_CLIENT_MAX_ERROR 1000
-#define SERVER_SEND_CLIENT_MAX_ERROR 1000
+#define SERVER_READ_BUFFER 4096
+#define SERVER_RECV_CLIENT_MAX_ERROR 1024
+#define SERVER_SEND_CLIENT_MAX_ERROR 1024
+#define SERVER_TUN_READ_MAX_ERROR 1024
+#define SERVER_TUN_WRITE_MAX_ERROR 1024
 #define PACKET_ARENA_SIZE (4096 + 1024)
 #define MAX_CLIENT_CHANNEL 10
 #define MIN_CLIENT_WAIT_RECV_BYTES (sizeof(teavpn_srv_pkt) - 1)
@@ -47,6 +51,8 @@ typedef struct {
   uint8_t username_len;
   uint16_t recv_error;
   uint16_t send_error;
+  uint16_t write_error;
+  uint16_t read_error;
   struct {
     char addr[32];
     uint8_t addr_len;
@@ -274,6 +280,63 @@ prepare_channel:
  */
 static void *teavpn_server_tcp_iface_dispatcher(teavpn_tcp *state)
 {
+  ssize_t read_ret, send_ret;
+  uint16_t error = 0;
+  char srv_pkt_arena[PACKET_ARENA_SIZE];
+  teavpn_srv_pkt *srv_pkt = (teavpn_srv_pkt *)srv_pkt_arena;
+  int tun_fd = state->tun_fd;
+
+  srv_pkt->type = SRV_PKT_DATA;
+
+read_from_tun:
+  read_ret = read(tun_fd, srv_pkt->data, SERVER_READ_BUFFER);
+  READ_ERROR_HANDLE(read_ret, {
+    error++;
+    debug_log(5, "Read from tun_fd got error");
+    if (error > SERVER_TUN_READ_MAX_ERROR) {
+      debug_log(5, "Read from tun_fd has reached the max number error");
+      debug_log(5, "Stopping everything...");
+      stop_all = true;
+      sleep(100);
+    }
+    goto read_from_tun;
+  });
+  READ_ZERO_HANDLE(read_ret, {
+    error++;
+    debug_log(5, "Read from tun_fd returned zero");
+    if (error > SERVER_TUN_READ_MAX_ERROR) {
+      debug_log(5, "Read from tun_fd has reached the max number error");
+      debug_log(5, "Stopping everything...");
+      stop_all = true;
+      sleep(100);
+    }
+    goto read_from_tun;
+  });
+
+  debug_log(5, "Read from tun_fd %d bytes", read_ret);
+  srv_pkt->len = (uint16_t)read_ret;
+
+  {
+    register tcp_client_channel *channels = state->channels;
+    for (register int16_t i = 0; i < MAX_CLIENT_CHANNEL; i++) {
+      if (channels[i].is_online && channels[i].is_authenticated) {
+        send_ret = send(channels[i].client_fd, srv_pkt, MIN_CLIENT_WAIT_RECV_BYTES + srv_pkt->len, 0);
+        SEND_ERROR_HANDLE(send_ret, {
+          channels[i].send_error++;
+          if (channels[i].send_error > SERVER_SEND_CLIENT_MAX_ERROR) {
+            debug_log(5, "[%s:%d] Reached the max number of error",
+              channels[i].cvt.addr, channels[i].cvt.port);
+          }
+        });
+        SEND_ZERO_HANDLE(send_ret, {
+          channels[i].is_online = false;
+          debug_log(5, "[%s:%d] Got zero send_ret, assuming client has been disconnected");
+        });
+      }
+    }
+  }
+
+goto read_from_tun;
   return NULL;
 }
 
@@ -378,7 +441,64 @@ static bool teavpn_server_tcp_socket_setup(int net_fd)
  */
 static void teavpn_server_tcp_handle_auth(tcp_client_channel *chan)
 {
+  teavpn_srv_pkt *srv_pkt = chan->srv_pkt;
   teavpn_cli_pkt *cli_pkt = chan->cli_pkt;
+  teavpn_cli_auth *auth = (teavpn_cli_auth *)cli_pkt->data;
+  teavpn_srv_iface_info *iface_info = (teavpn_srv_iface_info *)srv_pkt->data;
+
+  teavpn_server_tcp_handle_extra_recv(chan);
+
+  /* Worst case here is client sends bad auth data. */
+  /* Prevent non null terminated auth data. */
+  auth->username[254] = '\0';
+  auth->password[254] = '\0';
+
+  if (teavpn_server_auth_handle(auth->username, auth->password, chan->state->config, iface_info)) {
+    chan->is_online = true;
+
+    /* Send auth accepted signal. */
+    srv_pkt->type = SRV_PKT_AUTH_ACCEPTED;
+    chan->send_ret = send(chan->client_fd, srv_pkt, MIN_CLIENT_WAIT_RECV_BYTES, 0);
+    SEND_ZERO_HANDLE(chan->send_ret, {
+      chan->is_online = false;
+      debug_log(6, "[%s:%d] Got zero send_ret", chan->cvt.addr, chan->cvt.port);
+      return;
+    });
+    SEND_ERROR_HANDLE(chan->send_ret, {
+      chan->is_online = false;
+      debug_log(6, "[%s:%d] Got error send_ret", chan->cvt.addr, chan->cvt.port);
+      return;
+    });
+
+    /* Send interface information. */
+    srv_pkt->type = SRV_PKT_IFACE_INFO;
+    chan->send_ret = send(chan->client_fd, srv_pkt, MIN_CLIENT_WAIT_RECV_BYTES + sizeof(teavpn_srv_iface_info), 0);
+    SEND_ZERO_HANDLE(chan->send_ret, {
+      chan->is_online = false;
+      debug_log(6, "[%s:%d] Got zero send_ret", chan->cvt.addr, chan->cvt.port);
+      return;
+    });
+    SEND_ERROR_HANDLE(chan->send_ret, {
+      chan->is_online = false;
+      debug_log(6, "[%s:%d] Got error send_ret", chan->cvt.addr, chan->cvt.port);
+      return;
+    });
+
+  } else {
+    /* Auth failed, send reject signal. */
+    debug_log(4, "[%s:%d] Authentication failed!", chan->cvt.addr, chan->cvt.port);
+    chan->is_online = false;
+    srv_pkt->type = SRV_PKT_AUTH_REJECTED;
+    chan->send_ret = send(chan->client_fd, srv_pkt, MIN_CLIENT_WAIT_RECV_BYTES, 0);
+    SEND_ZERO_HANDLE(chan->send_ret, {
+      debug_log(6, "[%s:%d] Got zero send_ret", chan->cvt.addr, chan->cvt.port);
+      return;
+    });
+    SEND_ERROR_HANDLE(chan->send_ret, {
+      debug_log(6, "[%s:%d] Got error send_ret", chan->cvt.addr, chan->cvt.port);
+      return;
+    });
+  }
 }
 
 /**
@@ -387,7 +507,24 @@ static void teavpn_server_tcp_handle_auth(tcp_client_channel *chan)
  */
 static void teavpn_server_tcp_handle_data(tcp_client_channel *chan)
 {
+  ssize_t write_ret;
+  int tun_fd = chan->state->tun_fd;
   teavpn_cli_pkt *cli_pkt = chan->cli_pkt;
+
+  teavpn_server_tcp_handle_extra_recv(chan);
+
+  write_ret = write(tun_fd, cli_pkt->data, cli_pkt->len);
+  WRITE_ERROR_HANDLE(write_ret, {
+    chan->write_error++;
+    if (chan->write_error >= SERVER_TUN_WRITE_MAX_ERROR) {
+      debug_log(6, "[%s:%d] Reached the max number of tun write error", chan->cvt.addr, chan->cvt.port);
+      debug_log(6, "Stopping everything...");
+      stop_all = true;
+      sleep(100);
+    }
+  });
+
+  debug_log(5, "Write to tun_fd %d bytes", write_ret);
 }
 
 /**
