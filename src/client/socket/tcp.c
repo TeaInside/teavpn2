@@ -101,11 +101,8 @@ int teavpn_client_tcp_run(iface_info *iinfo, teavpn_client_config *config)
 
   pthread_create(&(state.recv_worker_thread), NULL,
     (void * (*)(void *))teavpn_client_tcp_recv_worker, (void *)&state);
-  pthread_create(&(state.iface_dispatcher_thread), NULL,
-    (void * (*)(void *))teavpn_client_tcp_iface_dispatcher, (void *)&state);
 
   pthread_detach(state.recv_worker_thread);
-  pthread_detach(state.iface_dispatcher_thread);
 
   while (true) {
     sleep(1);
@@ -235,14 +232,19 @@ static void *teavpn_client_tcp_recv_worker(teavpn_tcp *state)
         debug_log(0, "Authentication failed!");
         return NULL;
         break;
-      case SRV_PKT_AUTH_ACCEPTED:
-        debug_log(0, "Authenticated!");
+      // case SRV_PKT_AUTH_ACCEPTED:
+      //   debug_log(0, "Authenticated!");
         break;
       case SRV_PKT_IFACE_INFO:
+        debug_log(0, "Authenticated!");
         if (!teavpn_client_tcp_init_iface(state)) {
           stop_all = true;
           debug_log(0, "Stopping everything...");
           return NULL;
+        } else {
+          pthread_create(&(state->iface_dispatcher_thread), NULL,
+            (void * (*)(void *))teavpn_client_tcp_iface_dispatcher, (void *)state);
+          pthread_detach(state->iface_dispatcher_thread);
         }
         break;
       case SRV_PKT_DATA:
@@ -313,6 +315,7 @@ static bool teavpn_client_tcp_send_auth(teavpn_tcp *state)
   teavpn_cli_pkt *cli_pkt = state->cli_pkt;
   teavpn_cli_auth *auth = (teavpn_cli_auth *)cli_pkt->data;
 
+  bzero(auth, sizeof(teavpn_cli_auth));
   strcpy(auth->username, state->config->auth.username);
   strcpy(auth->password, state->config->auth.password);
   cli_pkt->type = CLI_PKT_AUTH;

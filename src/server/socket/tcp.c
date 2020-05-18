@@ -461,19 +461,19 @@ static void teavpn_server_tcp_handle_auth(tcp_client_channel *chan)
     chan->is_online = true;
     chan->is_authenticated = true;
 
-    /* Send auth accepted signal. */
-    srv_pkt->type = SRV_PKT_AUTH_ACCEPTED;
-    chan->send_ret = send(chan->client_fd, srv_pkt, MIN_CLIENT_WAIT_RECV_BYTES, 0);
-    SEND_ZERO_HANDLE(chan->send_ret, {
-      chan->is_online = false;
-      debug_log(6, "[%s:%d] Got zero send_ret", chan->cvt.addr, chan->cvt.port);
-      return;
-    });
-    SEND_ERROR_HANDLE(chan->send_ret, {
-      chan->is_online = false;
-      debug_log(6, "[%s:%d] Got error send_ret", chan->cvt.addr, chan->cvt.port);
-      return;
-    });
+    // /* Send auth accepted signal. */
+    // srv_pkt->type = SRV_PKT_AUTH_ACCEPTED;
+    // chan->send_ret = send(chan->client_fd, srv_pkt, MIN_CLIENT_WAIT_RECV_BYTES, 0);
+    // SEND_ZERO_HANDLE(chan->send_ret, {
+    //   chan->is_online = false;
+    //   debug_log(6, "[%s:%d] Got zero send_ret", chan->cvt.addr, chan->cvt.port);
+    //   return;
+    // });
+    // SEND_ERROR_HANDLE(chan->send_ret, {
+    //   chan->is_online = false;
+    //   debug_log(6, "[%s:%d] Got error send_ret", chan->cvt.addr, chan->cvt.port);
+    //   return;
+    // });
 
     /* Send interface information. */
     srv_pkt->type = SRV_PKT_IFACE_INFO;
