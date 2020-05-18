@@ -269,7 +269,7 @@ prepare_channel:
     goto prepare_channel;
   }
 
-  explicit_bzero(&(channels[free_chan_pos]), sizeof(tcp_client_channel));
+  bzero(&(channels[free_chan_pos]), sizeof(tcp_client_channel));
   goto accept;
 
   return NULL;
