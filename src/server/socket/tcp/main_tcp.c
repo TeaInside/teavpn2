@@ -601,7 +601,7 @@ inline static void teavpn_server_tcp_handle_client_data(tcp_channel *chan)
 
   debug_log(5, "Write to tun_fd %d bytes", write_ret);
 
-  /*srv_pkt->type = SRV_PKT_DATA;
+  srv_pkt->type = SRV_PKT_DATA;
   srv_pkt->len  = cli_pkt->len;
   memcpy(srv_pkt->data, cli_pkt->data, srv_pkt->len);
 
@@ -640,5 +640,5 @@ inline static void teavpn_server_tcp_handle_client_data(tcp_channel *chan)
       }
 
     }
-  }*/
+  }
 }
