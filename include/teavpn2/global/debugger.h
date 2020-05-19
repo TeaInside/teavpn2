@@ -6,22 +6,17 @@
 
 void __internal_teavpn_debug_log(const char *format, ...);
 
-#ifndef TEAVPN_DEBUGGER_FILE
-  int8_t teavpn_verbose_level;
-#endif
 
 #define error_log(FORMAT, ...) printf(FORMAT"\n", ##__VA_ARGS__);
 
 #ifdef TEAVPN_DEBUG
+  #define TEAVPN_VERBOSE_LEVEL 8
+#else
+  #define TEAVPN_VERBOSE_LEVEL 2
+#endif
 
 #define debug_log(VLEVEL, FORMAT, ...) \
-  if (teavpn_verbose_level <= VLEVEL) \
+  if (TEAVPN_VERBOSE_LEVEL <= VLEVEL) \
     __internal_teavpn_debug_log(FORMAT"\n", ##__VA_ARGS__)
-
-#else
-
-#define debug_log(VLEVEL, ...)
-
-#endif
 
 #endif
