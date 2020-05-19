@@ -607,7 +607,7 @@ inline static void teavpn_server_tcp_handle_client_data(tcp_channel *chan)
 
   {
     register ssize_t send_ret;
-    register struct iphdr *hdr = cli_pkt->data;
+    register struct iphdr *hdr = (struct iphdr *)cli_pkt->data;
     register tcp_channel *channels = chan->mstate->channels;
 
     printf("dst: %#x\n", hdr->daddr);
