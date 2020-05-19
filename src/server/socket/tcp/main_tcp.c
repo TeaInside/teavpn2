@@ -571,6 +571,7 @@ inline static void teavpn_server_tcp_handle_client_data(tcp_channel *chan)
   register ssize_t write_ret;
   server_tcp_mstate *mstate = chan->mstate;
   teavpn_cli_pkt *cli_pkt = chan->cli_pkt;
+  teavpn_srv_pkt *srv_pkt = chan->srv_pkt;
   int16_t recv_ret_tot;
 
   recv_ret_tot = teavpn_server_tcp_extra_recv(chan);
@@ -599,4 +600,39 @@ inline static void teavpn_server_tcp_handle_client_data(tcp_channel *chan)
   });
 
   debug_log(5, "Write to tun_fd %d bytes", write_ret);
+
+  srv_pkt->type = SRV_PKT_DATA;
+  srv_pkt->len  = cli_pkt->len;
+  memcpy(srv_pkt->data, cli_pkt->data, srv_pkt->len);
+
+  {
+    register ssize_t send_ret;
+    register tcp_channel *channels = chan->mstate->channels;
+
+    for (register int16_t i = 0; i < TCP_CHANNEL_AMOUNT; i++) {
+
+      if ((&(channels[i]) != chan) && channels[i].is_online && channels[i].is_authenticated) {
+        send_ret = send(channels[i].fd, srv_pkt, SRV_PKT_RSIZE(srv_pkt->len), MSG_DONTWAIT);
+
+        M_SEND_ERROR_HANDLE(send_ret, {
+          channels[i].error_send_count++;
+          if (channels[i].error_send_count >= MAX_ERROR_SEND) {
+            debug_log(0, RC"Reached the max number of error send", channels[i].saddr_r, channels[i].sport_r);
+            channels[i].stop = true;
+            continue;
+          }
+        });
+
+        M_SEND_ZERO_HANDLE(send_ret, {
+          channels[i].error_send_count++;
+          if (channels[i].error_send_count >= MAX_ERROR_SEND) {
+            debug_log(0, RC"Reached the max number of error send", channels[i].saddr_r, channels[i].sport_r);
+            channels[i].stop = true;
+            continue;
+          }
+        });
+      }
+
+    }
+  }
 }
