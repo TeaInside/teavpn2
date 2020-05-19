@@ -19,8 +19,19 @@ struct _client_tcp_mstate {
   iface_info *iinfo;
   teavpn_client_config *config;
   struct sockaddr_in server_addr;
+
+  int16_t error_recv_count;
+  int16_t error_send_count;
+  int16_t error_write_count;
+
+  ssize_t recv_ret;
+  ssize_t send_ret;
+
   pthread_t iface_reader;
   pthread_t recv_worker;
+
+  teavpn_cli_pkt *cli_pkt;
+  teavpn_srv_pkt *srv_pkt;
   bool stop_all;
 };
 

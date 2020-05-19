@@ -49,8 +49,12 @@ struct _server_tcp_mstate {
   teavpn_server_config *config;
   struct sockaddr_in server_addr;
   tcp_channel *channels;
+
+  uint16_t error_write_count;
+
   pthread_t iface_reader;
   pthread_t accept_worker;
+
   bool stop_all;
 };
 
