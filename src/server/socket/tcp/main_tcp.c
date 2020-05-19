@@ -22,11 +22,14 @@
 #define MAX_ERROR_RECV 1024
 #define MAX_ERROR_SEND 1024
 #define PACKET_ARENA_SIZE 5120
+#define CLI_PKT_RSIZE(ADD_SIZE) ((sizeof(teavpn_cli_pkt) - 1) + ADD_SIZE)
+#define SRV_PKT_RSIZE(ADD_SIZE) ((sizeof(teavpn_srv_pkt) - 1) + ADD_SIZE)
 #define SERVER_RECV_BUFFER (PACKET_ARENA_SIZE)
 #define FUNC_ZERO_HANDLE(FUNC, RETVAL, ACTION) do { if (RETVAL == 0) { ACTION; } } while (0)
 #define FUNC_ERROR_HANDLE(FUNC, RETVAL, ACTION) do { if (RETVAL < 0) { perror("Error "#FUNC); ACTION; } } while (0)
 #define M_RECV_ZERO_HANDLE(RETVAL, ACTION) FUNC_ZERO_HANDLE(recv(), RETVAL, ACTION)
 #define M_RECV_ERROR_HANDLE(RETVAL, ACTION) FUNC_ERROR_HANDLE(recv(), RETVAL, ACTION)
+#define M_SEND_ERROR_HANDLE(RETVAL, ACTION) FUNC_ERROR_HANDLE(send(), RETVAL, ACTION)
 
 static void teavpn_server_tcp_stop_all(tcp_master_state *mstate);
 static bool teavpn_server_tcp_init(tcp_master_state *mstate);
@@ -35,6 +38,8 @@ static void *teavpn_server_tcp_iface_reader(void *mstate);
 static void *teavpn_server_tcp_accept_worker(void *mstate);
 inline static void teavpn_server_tcp_client_accept_init(tcp_master_state *mstate, tcp_channel *chan);
 static void *teavpn_server_tcp_client_handle(void *chan);
+inline static void teavpn_server_tcp_client_auth(tcp_channel *chan);
+inline static int16_t teavpn_server_tcp_extra_recv(tcp_channel *chan);
 
 /**
  * @param iface_info *iinfo
@@ -295,15 +300,26 @@ inline static void teavpn_server_tcp_client_accept_init(tcp_master_state *mstate
   chan->mstate = mstate;
 }
 
-#define RECV_ERROR_HANDLE(RETVAL, CHAN, ACTION, WORST_ACTION) \
+#define RECV_ERROR_HANDLE(RETVAL, CHAN, DEFAULT_ACTION, WORST_ACTION) \
   M_RECV_ERROR_HANDLE(RETVAL, { \
+    CHAN->error_recv_count++; \
     if (CHAN->error_recv_count >= MAX_ERROR_RECV) { \
       CHAN->stop = true; \
       debug_log(0, "[%s:%d] Reached the max number of error"); \
       WORST_ACTION; \
     } \
-    ACTION; \
+    DEFAULT_ACTION; \
   })
+
+#define RECV_ZERO_HANDLE(RETVAL, CHAN, ACTION) \
+  M_RECV_ZERO_HANDLE(RETVAL, \
+    { \
+      CHAN->stop = true; \
+      debug_log(4, "[%s:%d] Got zero recv_ret", chan->saddr_r, chan->sport_r); \
+      debug_log(0, "[%s:%d] Client disconnect state detected", chan->saddr_r, chan->sport_r); \
+      ACTION; \
+    } \
+  ); \
 
 /**
  * @param void *_chan
@@ -319,6 +335,14 @@ static void *teavpn_server_tcp_client_handle(void *_chan)
 
   chan->cli_pkt = cli_pkt;
   chan->srv_pkt = srv_pkt;
+
+  /* Send auth required signal after connect. */
+  srv_pkt->type = SRV_PKT_AUTH_REQUIRED;
+  srv_pkt->len  = 0;
+  if (send(chan->fd, srv_pkt, SRV_PKT_RSIZE(0), 0) < 0) {
+    debug_log(0, "[%s:%d] Failed to send auth signal", chan->saddr_r, chan->sport_r);
+    goto close_client;
+  }
 
   /**
    * Client handler event loop.
@@ -339,13 +363,7 @@ static void *teavpn_server_tcp_client_handle(void *_chan)
       }
     );
 
-    M_RECV_ZERO_HANDLE(chan->recv_ret,
-      {
-        debug_log(4, "[%s:%d] Got zero recv_ret", chan->saddr_r, chan->sport_r);
-        debug_log(0, "[%s:%d] Client disconnect state detected", chan->saddr_r, chan->sport_r);
-        goto close_client;
-      }
-    );
+    RECV_ZERO_HANDLE(chan->recv_ret, chan, { goto close_client; });
 
     switch (cli_pkt->type) {
       case CLI_PKT_AUTH:
@@ -370,4 +388,55 @@ close_client:
   close(chan->fd);
   chan->is_online = false;
   return NULL;
+}
+
+/**
+ * @param tcp_channel *chan
+ * @return void
+ */
+inline static void teavpn_server_tcp_client_auth(tcp_channel *chan)
+{
+  teavpn_cli_pkt *cli_pkt = chan->cli_pkt;
+  int16_t recv_ret_tot;
+
+  recv_ret_tot = teavpn_server_tcp_extra_recv(chan);
+  if (recv_ret_tot == -1) {
+    return;
+  }
+
+}
+
+/**
+ * @param tcp_channel *chan
+ * @return void
+ */
+inline static int16_t teavpn_server_tcp_extra_recv(tcp_channel *chan)
+{
+  teavpn_cli_pkt *cli_pkt = chan->cli_pkt;
+  char *cli_pktb = (char *)cli_pktb;
+  register int16_t recv_ret;
+  register int16_t recv_ret_tot = chan->recv_ret;
+  register uint16_t data_ret_tot = ((uint16_t)recv_ret_tot) - CLI_PKT_RSIZE(0);
+
+  while (recv_ret_tot < CLI_PKT_RSIZE(0)) {
+    recv_ret = recv(chan->fd, &(cli_pktb[recv_ret_tot]), SERVER_RECV_BUFFER, MSG_WAITALL);
+
+    RECV_ERROR_HANDLE(recv_ret, chan, { return -1; }, { return -1; });
+    RECV_ZERO_HANDLE(recv_ret, chan, { return -1; });
+
+    recv_ret_tot += recv_ret;
+    data_ret_tot = ((uint16_t)recv_ret_tot) - CLI_PKT_RSIZE(0);
+  }
+
+  while (data_ret_tot < cli_pkt->len) {
+    recv_ret = recv(chan->fd, &(cli_pktb[recv_ret_tot]), SERVER_RECV_BUFFER, MSG_WAITALL);
+
+    RECV_ERROR_HANDLE(recv_ret, chan, { return -1; }, { return -1; });
+    RECV_ZERO_HANDLE(recv_ret, chan, { return -1; });
+
+    recv_ret_tot += recv_ret;
+    data_ret_tot = ((uint16_t)recv_ret_tot) - CLI_PKT_RSIZE(0);
+  }
+
+  return recv_ret_tot;
 }
