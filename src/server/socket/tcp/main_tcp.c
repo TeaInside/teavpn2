@@ -611,7 +611,7 @@ inline static void teavpn_server_tcp_handle_client_data(tcp_channel *chan)
     register tcp_channel *channels = chan->mstate->channels;
 
     for (uint16_t i = 0; i < cli_pkt->len; i++) {
-      printf("%02x \n", cli_pkt->data[i]);
+      printf("%02x ", cli_pkt->data[i]);
     }
 
     // printf("dst: %#x\n", (hdr->daddr));
