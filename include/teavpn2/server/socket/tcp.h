@@ -9,7 +9,7 @@
 #include <teavpn2/server/socket.h>
 #include <teavpn2/global/data_struct.h>
 
-typedef struct _tcp_master_state tcp_master_state;
+typedef struct _server_tcp_mstate server_tcp_mstate;
 
 typedef struct {
   bool stop;
@@ -34,14 +34,14 @@ typedef struct {
 
   /* Thread that serves the client. */
   pthread_t thread;
-  tcp_master_state *mstate;
+  server_tcp_mstate *mstate;
 
   /* Packet pointer. */
   teavpn_cli_pkt *cli_pkt;
   teavpn_srv_pkt *srv_pkt;
 } tcp_channel;
 
-struct _tcp_master_state {
+struct _server_tcp_mstate {
   int net_fd;
   int tun_fd;
   int pipe_fd[2];

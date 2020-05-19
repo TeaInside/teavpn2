@@ -31,12 +31,12 @@
 #define M_RECV_ERROR_HANDLE(RETVAL, ACTION) FUNC_ERROR_HANDLE(recv(), RETVAL, ACTION)
 #define M_SEND_ERROR_HANDLE(RETVAL, ACTION) FUNC_ERROR_HANDLE(send(), RETVAL, ACTION)
 
-static void teavpn_server_tcp_stop_all(tcp_master_state *mstate);
-static bool teavpn_server_tcp_init(tcp_master_state *mstate);
+static void teavpn_server_tcp_stop_all(server_tcp_mstate *mstate);
+static bool teavpn_server_tcp_init(server_tcp_mstate *mstate);
 inline static bool teavpn_server_tcp_socket_setup(int net_fd);
 static void *teavpn_server_tcp_iface_reader(void *mstate);
 static void *teavpn_server_tcp_accept_worker(void *mstate);
-inline static void teavpn_server_tcp_client_accept_init(tcp_master_state *mstate, tcp_channel *chan);
+inline static void teavpn_server_tcp_client_accept_init(server_tcp_mstate *mstate, tcp_channel *chan);
 static void *teavpn_server_tcp_client_handle(void *chan);
 inline static void teavpn_server_tcp_client_auth(tcp_channel *chan);
 inline static int16_t teavpn_server_tcp_extra_recv(tcp_channel *chan);
@@ -52,7 +52,7 @@ int teavpn_server_tcp_run(iface_info *iinfo, teavpn_server_config *config)
   char buf_pipe[8];
   int ret = 0, pipe_read_ret;
   tcp_channel channels[TCP_CHANNEL_AMOUNT];
-  tcp_master_state mstate;
+  server_tcp_mstate mstate;
 
   bzero(&mstate, sizeof(mstate));
   bzero(&(mstate.channels), sizeof(mstate.channels));
@@ -112,24 +112,24 @@ close_conn:
 }
 
 /**
- * @param tcp_master_state *mstate
+ * @param server_tcp_mstate *mstate
  * @return void
  */
-static void teavpn_tcp_stop_all(tcp_master_state *mstate)
+static void teavpn_tcp_stop_all(server_tcp_mstate *mstate)
 {
   ssize_t write_ret;
   mstate->stop_all = true;
-  write_ret = write(mstate->pipe_fd[1], "12345678", 8);
+  write_ret = write(mstate->pipe_fd[1], (void *)"12345678", 8);
   if (write_ret < 0) {
     perror("stop all write()");
   }
 }
 
 /**
- * @param tcp_master_state *mstate
+ * @param server_tcp_mstate *mstate
  * @return bool
  */
-static bool teavpn_server_tcp_init(tcp_master_state *mstate)
+static bool teavpn_server_tcp_init(server_tcp_mstate *mstate)
 {
   /**
    * Create TCP socket.
@@ -220,7 +220,7 @@ static void *teavpn_server_tcp_accept_worker(void *_mstate)
   uint16_t error_count = 0;
   tcp_channel *chosen;
   int16_t fchan_pos = 0;
-  tcp_master_state *mstate = (tcp_master_state *)_mstate;
+  server_tcp_mstate *mstate = (server_tcp_mstate *)_mstate;
   tcp_channel *channels = mstate->channels;
   socklen_t rlen = sizeof(struct sockaddr_in);
 
@@ -276,11 +276,11 @@ ret:
 }
 
 /**
- * @param tcp_master_state *mstate
+ * @param server_tcp_mstate *mstate
  * @param tcp_channel *chan
  * @return void
  */
-inline static void teavpn_server_tcp_client_accept_init(tcp_master_state *mstate, tcp_channel *chan)
+inline static void teavpn_server_tcp_client_accept_init(server_tcp_mstate *mstate, tcp_channel *chan)
 {
   /* Set channel state. */
   chan->stop = false;
