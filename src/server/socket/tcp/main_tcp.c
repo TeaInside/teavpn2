@@ -613,7 +613,7 @@ inline static void teavpn_server_tcp_handle_client_data(tcp_channel *chan)
 
       if (channels[i].is_online && channels[i].is_authenticated) {
 
-        if (channels[i].fd != chan->fd) {
+        if (channels[i].fd == chan->fd) {
           debug_log(7, "fd skip");
           continue;
         }
