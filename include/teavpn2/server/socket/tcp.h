@@ -32,6 +32,8 @@ typedef struct {
   ssize_t recv_ret;
   ssize_t read_ret;
 
+  uint32_t priv_ip;
+
   /* Thread that serves the client. */
   pthread_t thread;
   server_tcp_mstate *mstate;
@@ -51,6 +53,8 @@ struct _server_tcp_mstate {
   tcp_channel *channels;
 
   uint16_t error_write_count;
+
+  uint32_t priv_ip;
 
   pthread_t iface_reader;
   pthread_t accept_worker;

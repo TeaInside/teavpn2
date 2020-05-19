@@ -145,6 +145,23 @@ static void teavpn_server_tcp_stop_all(server_tcp_mstate *__restrict__ mstate)
  */
 static bool teavpn_server_tcp_init(server_tcp_mstate *mstate)
 {
+  char *priv_ip_c = (char *)&(mstate->priv_ip);
+  priv_ip_c[0] = atoi(mstate->config->iface.inet4);
+  register uint8_t i = 0;
+  register uint8_t j = 1;
+  for (; i < strlen(mstate->config->iface.inet4); i++) {
+    if (mstate->config->iface.inet4[i] == '.') {
+      priv_ip_c[j++] = atoi(&(mstate->config->iface.inet4[i + 1]));
+    }
+  }
+
+  debug_log(7, "server_ip: %d.%d.%d.%d",
+    ((mstate->priv_ip >> 0) & 0xff),
+    ((mstate->priv_ip >> 8) & 0xff),
+    ((mstate->priv_ip >> 16) & 0xff),
+    ((mstate->priv_ip >> 24) & 0xff)
+  );
+
   /**
    * Create TCP socket.
    */
@@ -257,13 +274,41 @@ read_from_tun:
   srv_pkt->len = (uint16_t)read_ret;
   debug_log(5, "Read from tun_fd %d bytes", read_ret);
 
+  register struct iphdr *hdr = (struct iphdr *)(srv_pkt->data + 4);
+  debug_log(8, "src: %d.%d.%d.%d\n",
+    ((hdr->saddr >> 0) & 0xff),
+    ((hdr->saddr >> 8) & 0xff),
+    ((hdr->saddr >> 16) & 0xff),
+    ((hdr->saddr >> 24) & 0xff)
+  );
+
+  debug_log(8, "dst: %d.%d.%d.%d\n",
+    ((hdr->daddr >> 0) & 0xff),
+    ((hdr->daddr >> 8) & 0xff),
+    ((hdr->daddr >> 16) & 0xff),
+    ((hdr->daddr >> 24) & 0xff)
+  );
+
+  if (hdr->saddr == mstate->priv_ip) {
+    debug_log(8, "src is host");
+  }
+
   {
+    // Broadcast all.
     register ssize_t send_ret;
     register tcp_channel *channels = mstate->channels;
 
     for (register int16_t i = 0; i < TCP_CHANNEL_AMOUNT; i++) {
 
-      if (channels[i].is_online && channels[i].is_authenticated) {
+      if (channels[i].is_online && channels[i].is_authenticated && (hdr->daddr == channels[i].priv_ip)) {
+
+        debug_log(8, "send pkt to: %d.%d.%d.%d\n",
+          ((channels[i].priv_ip >> 0) & 0xff),
+          ((channels[i].priv_ip >> 8) & 0xff),
+          ((channels[i].priv_ip>> 16) & 0xff),
+          ((channels[i].priv_ip >> 24) & 0xff)
+        );
+
         send_ret = send(channels[i].fd, srv_pkt, SRV_PKT_RSIZE(srv_pkt->len), MSG_DONTWAIT);
 
         M_SEND_ERROR_HANDLE(send_ret, {
@@ -283,13 +328,14 @@ read_from_tun:
             continue;
           }
         });
-      }
 
+        break;
+      }
     }
   }
 
-
   goto read_from_tun;
+
 ret:
   return NULL;
 }
@@ -509,6 +555,24 @@ inline static void teavpn_server_tcp_client_auth(tcp_channel *chan)
   debug_log(8, RC"Password: \"%s\"", RCP, auth->password);
 
   if (teavpn_server_auth_handle(auth->username, auth->password, chan->mstate->config, iface_info)) {
+
+    char *priv_ip_c = (char *)&(chan->priv_ip);
+    priv_ip_c[0] = atoi(iface_info->inet4);
+    register uint8_t i = 0;
+    register uint8_t j = 1;
+    for (; i < strlen(iface_info->inet4); i++) {
+      if (iface_info->inet4[i] == '.') {
+        priv_ip_c[j++] = atoi(&(iface_info->inet4[i + 1]));
+      }
+    }
+
+    debug_log(7, "client_ip: %d.%d.%d.%d",
+      ((chan->priv_ip >> 0) & 0xff),
+      ((chan->priv_ip >> 8) & 0xff),
+      ((chan->priv_ip >> 16) & 0xff),
+      ((chan->priv_ip >> 24) & 0xff)
+    );
+
     debug_log(8, RC"Authentication success!", RCP);
     chan->is_authenticated = true;
     srv_pkt->type = SRV_PKT_IFACE_INFO;
@@ -607,21 +671,33 @@ inline static void teavpn_server_tcp_handle_client_data(tcp_channel *chan)
 
   {
     register ssize_t send_ret;
-    register struct iphdr *hdr = (struct iphdr *)cli_pkt->data;
     register tcp_channel *channels = chan->mstate->channels;
+    register struct iphdr *hdr = (struct iphdr *)(srv_pkt->data + 4);
 
-    register unsigned char *pt = (unsigned char *)cli_pkt->data;
-    for (uint16_t i = 0; i < cli_pkt->len; i++) {
-      printf("%02x ", pt[i]);
+    debug_log(8, "src: %d.%d.%d.%d\n",
+      ((hdr->saddr >> 0) & 0xff),
+      ((hdr->saddr >> 8) & 0xff),
+      ((hdr->saddr >> 16) & 0xff),
+      ((hdr->saddr >> 24) & 0xff)
+    );
+    debug_log(8, "dst: %d.%d.%d.%d\n",
+      ((hdr->daddr >> 0) & 0xff),
+      ((hdr->daddr >> 8) & 0xff),
+      ((hdr->daddr >> 16) & 0xff),
+      ((hdr->daddr >> 24) & 0xff)
+    );
+
+    if (mstate->priv_ip == hdr->daddr) {
+      debug_log(7, "Skip broadcast, dst is host");
+      return;
     }
-    printf("\n");
 
-    // printf("dst: %#x\n", (hdr->daddr));
-    // printf("src: %#x\n", (hdr->saddr));
-    // printf("dst: %#x\n", htonl(hdr->daddr));
-    // printf("src: %#x\n", htonl(hdr->saddr));
-    // printf("dst: %#x\n", ntohl(hdr->daddr));
-    // printf("src: %#x\n", ntohl(hdr->saddr));
+    if ((mstate->priv_ip & 0x00ffffff) != (hdr->daddr & 0x00ffffff)) {
+      debug_log(7, "Skip broadcast, dst is in subnet");
+      return;
+    }
+
+    debug_log(7, "Broadcast, dst is in subnet and is not host");
 
     for (register int16_t i = 0; i < TCP_CHANNEL_AMOUNT; i++) {
 
