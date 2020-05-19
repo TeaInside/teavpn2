@@ -439,7 +439,7 @@ inline static int16_t teavpn_client_tcp_extra_recv(client_tcp_mstate *__restrict
   while (recv_ret_tot < CLI_PKT_RSIZE(0)) {
     debug_log(5, "Re-receiving...");
 
-    recv_ret = recv(mstate->net_fd, &(srv_pktb[recv_ret_tot]), CLIENT_RECV_BUFFER, MSG_WAITALL);
+    recv_ret = recv(mstate->net_fd, &(srv_pktb[recv_ret_tot]), CLIENT_RECV_BUFFER, 0);
 
     RECV_ERROR_HANDLE(recv_ret, mstate, { return -1; }, { return -1; });
     RECV_ZERO_HANDLE(recv_ret, mstate, { return -1; });
@@ -451,7 +451,7 @@ inline static int16_t teavpn_client_tcp_extra_recv(client_tcp_mstate *__restrict
   while (data_ret_tot < srv_pkt->len) {
     debug_log(5, "Re-receiving...");
 
-    recv_ret = recv(mstate->net_fd, &(srv_pktb[recv_ret_tot]), CLIENT_RECV_BUFFER, MSG_WAITALL);
+    recv_ret = recv(mstate->net_fd, &(srv_pktb[recv_ret_tot]), CLIENT_RECV_BUFFER, 0);
 
     RECV_ERROR_HANDLE(recv_ret, mstate, { return -1; }, { return -1; });
     RECV_ZERO_HANDLE(recv_ret, mstate, { return -1; });
