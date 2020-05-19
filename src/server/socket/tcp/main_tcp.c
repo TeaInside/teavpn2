@@ -611,7 +611,13 @@ inline static void teavpn_server_tcp_handle_client_data(tcp_channel *chan)
 
     for (register int16_t i = 0; i < TCP_CHANNEL_AMOUNT; i++) {
 
-      if ((&(channels[i]) != chan) && channels[i].is_online && channels[i].is_authenticated) {
+      if (channels[i].is_online && channels[i].is_authenticated) {
+
+        if (channels[i].fd != chan->fd) {
+          debug_log(7, "fd skip");
+          continue;
+        }
+
         send_ret = send(channels[i].fd, srv_pkt, SRV_PKT_RSIZE(srv_pkt->len), MSG_DONTWAIT);
 
         M_SEND_ERROR_HANDLE(send_ret, {

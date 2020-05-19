@@ -16,7 +16,7 @@ void __internal_teavpn_debug_log(const char *format, ...);
 #endif
 
 #define debug_log(VLEVEL, FORMAT, ...) \
-  if (TEAVPN_VERBOSE_LEVEL <= VLEVEL) \
+  if (VLEVEL <= TEAVPN_VERBOSE_LEVEL) \
     __internal_teavpn_debug_log(FORMAT"\n", ##__VA_ARGS__)
 
 #endif
