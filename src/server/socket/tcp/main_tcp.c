@@ -610,9 +610,11 @@ inline static void teavpn_server_tcp_handle_client_data(tcp_channel *chan)
     register struct iphdr *hdr = (struct iphdr *)cli_pkt->data;
     register tcp_channel *channels = chan->mstate->channels;
 
+    register unsigned char *pt = (unsigned char *)cli_pkt->data[i];
     for (uint16_t i = 0; i < cli_pkt->len; i++) {
-      printf("%02x ", cli_pkt->data[i]);
+      printf("%02x ", pt[i]);
     }
+    printf("\n");
 
     // printf("dst: %#x\n", (hdr->daddr));
     // printf("src: %#x\n", (hdr->saddr));
