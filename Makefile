@@ -11,7 +11,7 @@ LINK_LIBRARIES = -lpthread
 RELEASE_MODE = 0
 CC_COMPILE_FLAGS = -std=c11
 CXX_COMPILE_FLAGS = -std=c++17 -D_GLIBCXX_ASSERTIONS
-ALL_COMPILE_FLAGS = -rdynamic -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -D_GNU_SOURCE
+ALL_COMPILE_FLAGS = -rdynamic -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -D_GNU_SOURCE -D_REENTRANT
 
 RELEASE_COMPILE_FLAG = -fno-stack-protector -Ofast 
 DEBUG_COMPILE_FLAG = -fstack-protector-strong -ggdb3 -O0 -DTEAVPN_DEBUG -grecord-gcc-switches
