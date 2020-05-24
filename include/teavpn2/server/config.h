@@ -16,4 +16,6 @@ typedef struct {
   void *mstate;
 } teavpn_server_config;
 
+bool teavpn_server_config_parser(char *ini_file, teavpn_server_config *config);
+
 #endif
