@@ -10,6 +10,7 @@
 #define SRV_PKT_AUTH_REJECTED 4
 #define SRV_PKT_AUTH_ACCEPTED 5
 #define SRV_PKT_IFACE_INFO    6
+#define SRV_PKT_CHAN_IS_FULL  7
 
 enum teavpn_server_packet_type {
   srv_pkt_type_msg            = SRV_PKT_MSG,
@@ -17,7 +18,8 @@ enum teavpn_server_packet_type {
   srv_pkt_type_auth_required  = SRV_PKT_AUTH_REQUIRED,
   srv_pkt_type_auth_rejected  = SRV_PKT_AUTH_REJECTED,
   srv_pkt_type_auth_accepted  = SRV_PKT_AUTH_ACCEPTED,
-  srv_pkt_iface_info          = SRV_PKT_IFACE_INFO
+  srv_pkt_iface_info          = SRV_PKT_IFACE_INFO,
+  srv_pkt_chan_is_full        = SRV_PKT_CHAN_IS_FULL
 };
 
 

@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <linux/ip.h>
 #include <arpa/inet.h>
 #include <teavpn2/server/socket.h>
 #include <teavpn2/global/data_struct.h>
@@ -44,22 +45,32 @@ typedef struct {
 } tcp_channel;
 
 struct _server_tcp_mstate {
+  /* File descriptors. */
   int net_fd;
   int tun_fd;
   int pipe_fd[2];
+
+  /* Interface info and config. */
   iface_info *iinfo;
   teavpn_server_config *config;
+
+  /* Server addr for socket init. */
   struct sockaddr_in server_addr;
+
+  /* Pointer to channels (array). */
   tcp_channel *channels;
 
-  uint16_t error_write_count;
+  /* Free channel index. */
+  int16_t fci;
 
-  uint32_t priv_ip;
-
-  pthread_t iface_reader;
-  pthread_t accept_worker;
-
+  /* Stop signal. */
   bool stop_all;
+
+  /* Pointer to fds array (for poll). */
+  struct pollfd *fds;
+
+  /* Server tunnel address in __be32 */
+  __be32 s_ip;
 };
 
 int teavpn_server_tcp_run(iface_info *iinfo, teavpn_server_config *_config);
