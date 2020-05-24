@@ -3,7 +3,6 @@
 #include <unistd.h>
 
 #include <teavpn2/global/iface.h>
-#include <teavpn2/server/socket.h>
 #include <teavpn2/server/common.h>
 #include <teavpn2/server/socket/tcp.h>
 #include <teavpn2/server/socket/udp.h>

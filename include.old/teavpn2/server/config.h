@@ -2,6 +2,7 @@
 #ifndef TEAVPN__SERVER__CONFIG_H
 #define TEAVPN__SERVER__CONFIG_H
 
+#include <stdbool.h>
 #include <teavpn2/global/config.h>
 
 typedef struct {

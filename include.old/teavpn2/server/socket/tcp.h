@@ -8,7 +8,6 @@
 #include <stdbool.h>
 #include <linux/ip.h>
 #include <arpa/inet.h>
-#include <teavpn2/server/socket.h>
 #include <teavpn2/global/data_struct.h>
 
 typedef struct _server_tcp_mstate server_tcp_mstate;
