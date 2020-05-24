@@ -2,6 +2,7 @@
 #ifndef TEAVPN__SERVER__TCP_H
 #define TEAVPN__SERVER__TCP_H
 
+#include <poll.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <stdbool.h>
@@ -59,6 +60,7 @@ struct _server_tcp_mstate {
 
   /* Pointer to channels (array). */
   tcp_channel *channels;
+  int16_t online_chan;
 
   /* Free channel index. */
   int16_t fci;
@@ -68,9 +70,15 @@ struct _server_tcp_mstate {
 
   /* Pointer to fds array (for poll). */
   struct pollfd *fds;
+  nfds_t nfds;
+  int timeout;
 
   /* Server tunnel address in __be32 */
   __be32 s_ip;
+
+  /* Error count */
+  uint16_t read_tun_err;
+  uint16_t write_tun_err;
 };
 
 int teavpn_server_tcp_run(iface_info *iinfo, teavpn_server_config *_config);

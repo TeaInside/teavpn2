@@ -111,7 +111,7 @@ int teavpn_server_tcp_run(iface_info *iinfo, teavpn_server_config *config)
   fds[2].events = POLLIN;
 
   nfds = 3;
-  timeout = 5;
+  timeout = 3000;
 
 
   /**
