@@ -6,5 +6,6 @@
 *.lock
 *.dump
 /.deps/
+/.phpintel/
 /teavpn_server
 /teavpn_client
