@@ -13,6 +13,7 @@ typedef struct {
     char *bind_addr;
     uint16_t bind_port;
   } socket;
+  void *mstate;
 } teavpn_server_config;
 
 #endif

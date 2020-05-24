@@ -11,5 +11,6 @@ typedef struct {
 
 int teavpn_iface_allocate(char *dev);
 bool teavpn_iface_init(struct teavpn_iface *iface);
+bool teavpn_iface_clean_up(struct teavpn_iface *iface);
 
 #endif

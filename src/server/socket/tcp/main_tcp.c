@@ -64,7 +64,7 @@ inline static void teavpn_server_tcp_handle_iface_data(server_tcp_mstate *mstate
 __attribute__((force_align_arg_pointer))
 int teavpn_server_tcp_run(iface_info *iinfo, teavpn_server_config *config)
 {
-  int ret, rc;
+  int ret = 0, rc;
   server_tcp_mstate mstate;
 
   /* Initialize mstate values. */
@@ -74,6 +74,7 @@ int teavpn_server_tcp_run(iface_info *iinfo, teavpn_server_config *config)
   mstate.config = config;
   mstate.stop_all = false;
   mstate.tun_fd = iinfo->tun_fd;
+  config->mstate = (void *)&mstate;
 
 
   /* Allocate heap for channels and fds. */

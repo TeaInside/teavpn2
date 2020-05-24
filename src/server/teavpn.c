@@ -54,6 +54,7 @@ int teavpn_server_run(teavpn_server_config *config)
 
 close:
   /* Close tun_fd. */
+  debug_log(0, "Closing tun_fd...");
   close(iinfo.tun_fd);
   return ret;
 }
