@@ -32,6 +32,12 @@ int main(int argc, char *argv[], char *envp[])
   signal(SIGINT, teavpn_sig_handler);
   signal(SIGHUP, teavpn_sig_handler);
   signal(SIGQUIT, teavpn_sig_handler);
+
+#ifdef TEAVPN_DEBUG
+  print_server_config(&config);
+#endif
+
+  return teavpn_server_run(&config);
 }
 
 
