@@ -1,11 +1,10 @@
 
-#include <stdio.h>
 #include <signal.h>
 #include <teavpn2/global/iface.h>
 #include <teavpn2/server/common.h>
 #include <teavpn2/server/socket/tcp.h>
 
-#define ARENA_SIZE (1024 * 100)
+#define ARENA_SIZE (1024 * 30)
 
 inline static void teavpn_sig_handler(int sig);
 static teavpn_server_config *config_p;
@@ -54,7 +53,7 @@ int main(int argc, char *argv[], char *envp[])
  */
 inline static void teavpn_sig_handler(int sig)
 {
-  server_tcp_mstate *mstate = config_p->mstate;
+  server_tcp_mstate *mstate = (server_tcp_mstate *)config_p->mstate;
   teavpn_iface_clean_up(&(config_p->iface));
 
   if (mstate != NULL) {

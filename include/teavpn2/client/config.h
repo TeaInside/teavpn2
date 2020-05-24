@@ -16,6 +16,7 @@ typedef struct {
     char *username;
     char *password;
   } auth;
+  void *mstate;
 } teavpn_client_config;
 
 #endif
