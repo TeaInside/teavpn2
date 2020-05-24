@@ -72,6 +72,8 @@ int teavpn_server_tcp_run(iface_info *iinfo, teavpn_server_config *config)
   mstate.stop_all = false;
   mstate.tun_fd = iinfo->tun_fd;
   config->mstate = (void *)&mstate;
+  mstate.pipe_fd[0] = -1;
+  mstate.pipe_fd[1] = -1;
 
 
   /* Allocate heap for channels and fds. */
@@ -166,9 +168,17 @@ close_conn:
     }
   }
 
-  close(mstate.net_fd);
-  close(mstate.pipe_fd[0]);
-  close(mstate.pipe_fd[1]);
+  if (mstate.net_fd != -1) {
+    close(mstate.net_fd);
+  }
+
+  if (mstate.pipe_fd[0] != -1) {
+    close(mstate.pipe_fd[0]);
+  }
+
+  if (mstate.pipe_fd[1] != -1) {
+    close(mstate.pipe_fd[1]);
+  }
 
   /* Release heap. */
   free(mstate.fds);
@@ -210,7 +220,7 @@ inline static bool teavpn_server_tcp_init(server_tcp_mstate *mstate)
     error_log("Cannot create TCP socket");
     return false;
   }
-  debug_log(2, "TCP socket created successfully");
+  debug_log(0, "TCP socket created successfully");
 
 
   /**
