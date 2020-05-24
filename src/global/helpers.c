@@ -2,7 +2,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include <teavpn2/global/arena.h>
 #include <teavpn2/global/helpers.h>
 
 /**
