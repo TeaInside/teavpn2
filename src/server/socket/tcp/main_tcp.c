@@ -28,9 +28,6 @@
 #define READ_TUN_ERR_MAX   1024
 #define WRITE_TUN_ERR_MAX  1024
 
-#define CLI_PKT_RSIZE(ADD_SIZE) ((sizeof(teavpn_cli_pkt) - 1) + ADD_SIZE)
-#define SRV_PKT_RSIZE(ADD_SIZE) ((sizeof(teavpn_srv_pkt) - 1) + ADD_SIZE)
-
 #define READ_TUN_BUFFER (PKT_ARENA_SIZE - SRV_PKT_RSIZE(0))
 #define RECV_NET_BUFFER (PKT_ARENA_SIZE - CLI_PKT_RSIZE(0))
 
