@@ -14,6 +14,7 @@ typedef struct _server_config {
    */
   char                  *bind_addr;
   uint16_t              bind_port;
+  int                   backlog;
   enum socket_type      sock_type;
 
   /*

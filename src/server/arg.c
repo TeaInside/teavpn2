@@ -44,6 +44,7 @@ inline static void set_default_config(server_config *config)
    */
   config->bind_addr      = (char *)"0.0.0.0";
   config->bind_port      = 55555;
+  config->backlog        = 10; 
   config->sock_type      = TEAVPN_SOCK_TCP;
 
   /*
@@ -64,6 +65,7 @@ const static struct option long_options[] = {
    */
   {"bind-addr",    required_argument, 0, 'h'},
   {"bind-port",    required_argument, 0, 'p'},
+  {"backlog",      required_argument, 0, 'B'},
   {"sock-type",    required_argument, 0, 's'},
 
   /*
@@ -122,6 +124,10 @@ inline static bool getopt_handler(int argc, char **argv, server_config *config)
 
       case 'p':
         config->bind_port = (uint16_t)atoi(optarg);
+        break;
+
+      case 'B':
+        config->backlog = (int)atoi(optarg);
         break;
 
       case 's':
