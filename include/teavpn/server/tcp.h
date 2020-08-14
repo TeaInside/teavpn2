@@ -7,10 +7,13 @@
 typedef struct _server_tcp_state {
 
   int                   sock_fd;
-  struct sockaddr_in    server_addr;
+  int                   pipe_fd[2];
   struct pollfd         *fds;
-  server_state          *server_state;
   bool                  stop_all;
+
+
+  server_state          *server_state;
+  struct sockaddr_in    server_addr;
 
 } server_tcp_state;
 
