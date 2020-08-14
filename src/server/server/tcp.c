@@ -36,6 +36,11 @@ int teavpn_server_tcp_run(server_state *state)
     goto close_conn;
   }
 
+  /* Init pipe. */
+  if (pipe(tcp_state.pipe_fd) == -1) {
+    perror("pipe()");
+    goto close_conn;
+  }
 
 close_conn:
 
@@ -51,7 +56,6 @@ inline static bool teavpn_server_tcp_init(server_tcp_state *tcp_state)
   server_state  *state = tcp_state->server_state;
   server_config *config = state->config;
 
-
   /* Create TCP socket (SOCK_STREAM). */
   debug_log(0, "Creating TCP socket...");
 
@@ -65,9 +69,7 @@ inline static bool teavpn_server_tcp_init(server_tcp_state *tcp_state)
   debug_log(0, "TCP socket created successfully");
 
 
-  /**
-   * Setup TCP socket.
-   */
+  /* Setup TCP socket. */
   debug_log(0, "Setting up socket file descriptor...");
   if (!teavpn_server_tcp_socket_setup(tcp_state->sock_fd)) {
     return false;
@@ -75,18 +77,14 @@ inline static bool teavpn_server_tcp_init(server_tcp_state *tcp_state)
   debug_log(0, "Socket file descriptor set up successfully");
 
 
-  /**
-   * Prepare server bind address data.
-   */
+  /* Prepare server bind address data. */
   bzero(&(tcp_state->server_addr), sizeof(struct sockaddr_in));
   tcp_state->server_addr.sin_family = AF_INET;
   tcp_state->server_addr.sin_port = htons(config->bind_port);
   tcp_state->server_addr.sin_addr.s_addr = inet_addr(config->bind_addr);
 
 
-  /**
-   * Bind socket to address.
-   */
+  /* Bind socket to address. */
   if (
       bind(
         tcp_state->sock_fd,
@@ -100,9 +98,7 @@ inline static bool teavpn_server_tcp_init(server_tcp_state *tcp_state)
   }
 
 
-  /**
-   * Listen socket.
-   */
+  /* Listen socket. */
   if (listen(tcp_state->sock_fd, config->backlog) < 0) {
     perror("Listen failed");
     error_log("Listen socket failed");

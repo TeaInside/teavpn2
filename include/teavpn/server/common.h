@@ -17,6 +17,7 @@ typedef struct _server_config {
   uint16_t              bind_port;
   int                   backlog;
   enum socket_type      sock_type;
+  uint16_t              max_connections;
 
   /*
    * Virtual network interface configuration.

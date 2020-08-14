@@ -42,10 +42,11 @@ inline static void set_default_config(server_config *config)
   /*
    * Socket communication configuration.
    */
-  config->bind_addr      = (char *)"0.0.0.0";
-  config->bind_port      = 55555;
-  config->backlog        = 10; 
-  config->sock_type      = TEAVPN_SOCK_TCP;
+  config->bind_addr         = (char *)"0.0.0.0";
+  config->bind_port         = 55555;
+  config->backlog           = 10; 
+  config->sock_type         = TEAVPN_SOCK_TCP;
+  config->max_connections   = 10;
 
   /*
    * Virtual network interface configuration.
@@ -57,26 +58,27 @@ inline static void set_default_config(server_config *config)
 }
 
 const static struct option long_options[] = {
-  {"config",       required_argument, 0, 'c'},
-  {"data-dir",     required_argument, 0, 'u'},
+  {"config",              required_argument, 0, 'c'},
+  {"data-dir",            required_argument, 0, 'u'},
 
   /*
    * Socket communication configuration.
    */
-  {"bind-addr",    required_argument, 0, 'h'},
-  {"bind-port",    required_argument, 0, 'p'},
-  {"backlog",      required_argument, 0, 'B'},
-  {"sock-type",    required_argument, 0, 's'},
+  {"bind-addr",           required_argument, 0, 'h'},
+  {"bind-port",           required_argument, 0, 'p'},
+  {"backlog",             required_argument, 0, 'B'},
+  {"sock-type",           required_argument, 0, 's'},
+  {"max-connections",     required_argument, 0, 'M'},
 
   /*
    * Virtual network interface configuration.
    */
-  {"dev",          required_argument, 0, 'd'},
-  {"mtu",          required_argument, 0, 'm'},
-  {"inet4",        required_argument, 0, '4'},
-  {"inet4-bcmask", required_argument, 0, 'b'},
+  {"dev",                 required_argument, 0, 'd'},
+  {"mtu",                 required_argument, 0, 'm'},
+  {"inet4",               required_argument, 0, '4'},
+  {"inet4-bcmask",        required_argument, 0, 'b'},
 
-  {0,           0,            0,           0}
+  {0,               0,              0,            0}
 };
 
 #if DEBUG_GETOPT
@@ -140,6 +142,9 @@ inline static bool getopt_handler(int argc, char **argv, server_config *config)
         }
         break;
 
+      case 'M':
+        config->max_connections = (uint16_t)atoi(optarg);
+        break;
 
       /*
        * Virtual network interface configuration.

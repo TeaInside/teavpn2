@@ -17,6 +17,9 @@ inline static bool teavpn_validate_config(server_config *config);
 int teavpn_server_run(server_config *config)
 {
   server_state state;
+
+  state.config = config;
+
   if (config->config_file != NULL) {
 
     debug_log(5, "Loading config file: \"%s\"...", config->config_file);
@@ -36,6 +39,7 @@ int teavpn_server_run(server_config *config)
   CFG_MACRO("%d", config->bind_port);
   CFG_MACRO("%d", config->backlog);
   CFG_MACRO("%d", config->sock_type);
+  CFG_MACRO("%d", config->max_connections);
 
   CFG_MACRO("%s", config->net.dev);
   CFG_MACRO("%s", config->net.inet4);
