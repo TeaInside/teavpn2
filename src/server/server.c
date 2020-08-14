@@ -63,7 +63,7 @@ int teavpn_server_run(server_config *config)
     return 1;
   }
 
-  debug_log(5, "Virtual interface successfully created: \"%s\"", config->net.dev);
+  debug_log(5, "Virtual interface created successfully: \"%s\"", config->net.dev);
 
   if (inet_pton(AF_INET, config->net.inet4, &(state.inet4)) < 0) {
     perror("inet_pton");

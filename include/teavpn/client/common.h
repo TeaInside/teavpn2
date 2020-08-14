@@ -15,10 +15,6 @@ typedef struct _client_config {
   uint16_t              server_port;
   enum socket_type      sock_type;
 
-  /*
-   * Virtual network interface configuration.
-   */
-  teavpn_net            net;
 
   /*
    * Authentication.
@@ -35,6 +31,11 @@ typedef struct _client_state {
   __be32              inet4_bcmask;
 
   client_config       *config;
+
+  /*
+   * Virtual network interface configuration.
+   */
+  teavpn_net            net;
 
 } client_state;
 
