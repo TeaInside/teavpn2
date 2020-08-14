@@ -1,4 +1,5 @@
 
+#include <string.h>
 #include <inih/ini.h>
 #include <teavpn/server/common.h>
 
@@ -31,26 +32,26 @@ bool teavpn_server_config_parser(char *ini_file, server_config *config)
  */
 static int parser_handler(void *user, const char *section, const char *name, const char *value, int lineno)
 {
-  teavpn_server_config *config = (server_config *)user;
+  server_config *config = (server_config *)user;
 
   #define CMP(A, B) (!strcmp(A, B))
   #define RMATCH(A) if (CMP(A, name))
 
   if (CMP(section, "iface")) {
     RMATCH("dev") {
-      config->iface.dev = arena_strdup(value);
+      config->net.dev = stack_strdup(value);
       return 1;
     } else
     RMATCH("mtu") {
-      config->iface.mtu = (uint16_t)atoi((char *)value);
+      config->net.mtu = (uint16_t)atoi((char *)value);
       return 1;
     } else
     RMATCH("inet4") {
-      config->iface.inet4 = arena_strdup(value);
+      config->net.inet4 = stack_strdup(value);
       return 1;
     } else
     RMATCH("inet4_bcmask") {
-      config->iface.inet4_bcmask = arena_strdup(value);
+      config->net.inet4_bcmask = stack_strdup(value);
       return 1;
     } else {
       goto invalid_opt;
@@ -59,26 +60,26 @@ static int parser_handler(void *user, const char *section, const char *name, con
   if (CMP(section, "socket")) {
     RMATCH("type") {
       if (CMP(value, "tcp")) {
-        config->socket_type = teavpn_sock_tcp;
+        config->sock_type = TEAVPN_SOCK_TCP;
       } else if (CMP(value, "udp")) {
-        config->socket_type = teavpn_sock_udp;
+        config->sock_type = TEAVPN_SOCK_UDP;
       } else {
         printf("Invalid socket type: \"%s\" on line %d\n", value, lineno);
         return 0;
       }
     } else
     RMATCH("bind_addr") {
-      config->socket.bind_addr = arena_strdup(value);
+      config->bind_addr = stack_strdup(value);
     } else
     RMATCH("bind_port") {
-      config->socket.bind_port = (uint16_t)atoi(value);
+      config->bind_port = (uint16_t)atoi(value);
     } else {
       goto invalid_opt;
     }
   } else
   if (CMP(section, "data")) {
     RMATCH("data_dir") {
-      config->data_dir = arena_strdup(value);
+      config->data_dir = stack_strdup(value);
     }
   }
 

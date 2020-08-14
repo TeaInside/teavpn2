@@ -4,6 +4,7 @@
 
 #include <stdarg.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <stdbool.h>
 
 /* Socket communication type. */
@@ -27,9 +28,8 @@ int teavpn_iface_allocate(char *dev);
 
 
 
-/**
- * Debug and error logger.
- */
+
+/* Debug and error logger. */
 int __teavpn_debug_log(const char *format, ...);
 int __teavpn_error_log(const char *format, ...);
 
@@ -44,5 +44,13 @@ extern uint8_t __debug_log_level;
   )
 
 #define error_log(...) __teavpn_error_log(__VA_ARGS__)
+
+
+
+
+/* Stack arena. */
+void init_stack_arena(void *ptr, size_t length);
+void *stack_arena_alloc(register size_t length);
+char *stack_strdup(const char *str);
 
 #endif
