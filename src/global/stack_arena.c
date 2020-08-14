@@ -42,7 +42,7 @@ char *stack_strdup(const char *str)
 {
   register char *ret;
 
-  ret = (char *)stack_arena_alloc(strlen(str));
+  ret = (char *)stack_arena_alloc(strlen(str) + 1);
   strcpy(ret, str);
 
   return ret;

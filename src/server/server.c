@@ -41,6 +41,7 @@ int teavpn_server_run(server_config *config)
   CFG_MACRO("%s", config->net.inet4);
   CFG_MACRO("%s", config->net.inet4_bcmask);
   CFG_MACRO("%d", config->net.mtu);
+
   #undef CFG_MACRO
 #endif
 

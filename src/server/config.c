@@ -73,6 +73,9 @@ static int parser_handler(void *user, const char *section, const char *name, con
     } else
     RMATCH("bind_port") {
       config->bind_port = (uint16_t)atoi(value);
+    } else
+    RMATCH("backlog") {
+      config->backlog = (int)atoi(value);
     } else {
       goto invalid_opt;
     }
