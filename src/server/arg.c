@@ -128,7 +128,7 @@ inline static bool getopt_handler(int argc, char **argv, server_config *config)
         if (!strcmp(optarg, "tcp")) {
           config->sock_type = TEAVPN_SOCK_TCP;
         } else if (!strcmp(optarg, "udp")) {
-          config->sock_type = TEAVPN_SOCK_UDP; 
+          config->sock_type = TEAVPN_SOCK_UDP;
         } else {
           return false;
         }

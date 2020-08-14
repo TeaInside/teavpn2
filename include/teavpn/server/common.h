@@ -34,6 +34,7 @@ typedef struct _server_state {
 } server_state;
 
 bool teavpn_server_arg_parser(int argc, char **argv, char **envp, server_config *config);
+bool teavpn_server_config_parser(char *ini_file, server_config *config);
 int teavpn_server_run(server_config *config);
 int teavpn_server_tcp_run(server_state *config);
 int teavpn_server_udp_run(server_state *config);

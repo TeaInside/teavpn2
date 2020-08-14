@@ -14,6 +14,15 @@ int teavpn_server_run(server_config *config)
 {
   server_state state;
 
+  if (config->config_file != NULL) {
+
+    debug_log(5, "Loading config file: \"%s\"...", config->config_file);
+
+    if (!teavpn_server_config_parser(config->config_file, config)) {
+      return 1;
+    }
+  }
+
   debug_log(5, "Validating config...");
   if (!teavpn_validate_config(config)) {
     return 1;
