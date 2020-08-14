@@ -4,6 +4,10 @@
 #include <arpa/inet.h>
 #include <teavpn/server/common.h>
 
+#ifndef DEBUG_CONFIG_VALUES
+#define DEBUG_CONFIG_VALUES 1
+#endif
+
 inline static bool teavpn_validate_config(server_config *config);
 
 /**
@@ -13,7 +17,6 @@ inline static bool teavpn_validate_config(server_config *config);
 int teavpn_server_run(server_config *config)
 {
   server_state state;
-
   if (config->config_file != NULL) {
 
     debug_log(5, "Loading config file: \"%s\"...", config->config_file);
@@ -22,6 +25,25 @@ int teavpn_server_run(server_config *config)
       return 1;
     }
   }
+
+#if DEBUG_CONFIG_VALUES
+  #define CFG_MACRO(FORMAT, VALUE) debug_log(0, #VALUE " = " FORMAT, VALUE)
+
+  CFG_MACRO("%s", config->config_file);
+  CFG_MACRO("%s", config->data_dir);
+
+  CFG_MACRO("%s", config->bind_addr);
+  CFG_MACRO("%d", config->bind_port);
+  CFG_MACRO("%d", config->backlog);
+  CFG_MACRO("%d", config->sock_type);
+
+  CFG_MACRO("%s", config->net.dev);
+  CFG_MACRO("%s", config->net.inet4);
+  CFG_MACRO("%s", config->net.inet4_bcmask);
+  CFG_MACRO("%d", config->net.mtu);
+  #undef CFG_MACRO
+#endif
+
 
   debug_log(5, "Validating config...");
   if (!teavpn_validate_config(config)) {
