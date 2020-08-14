@@ -35,15 +35,11 @@ int __teavpn_error_log(const char *format, ...)
 {
   int ret;
   va_list ap;
-  register char *formatted;
-  time_t unixnow = time(NULL);
 
   va_start(ap, format);
 
-  formatted = asctime(localtime(&unixnow));
-  formatted[strlen(formatted) - 1] = '\0';
-
-  ret = fprintf(stderr, "\n");
+  ret  = vfprintf(stderr, format, ap);
+  ret += fprintf(stderr, "\n");
 
   fflush(stderr);
 

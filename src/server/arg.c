@@ -22,7 +22,7 @@ inline static bool getopt_handler(int argc, char **argv, server_config *config);
 bool teavpn_server_arg_parser(int argc, char **argv, char **envp, server_config *config)
 {
   if (argc == 1) {
-    error_log("Usage: %s [options]\n", argv[0]);
+    error_log("Usage: %s [options]", argv[0]);
     return false;
   }
 
