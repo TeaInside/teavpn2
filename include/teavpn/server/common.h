@@ -2,6 +2,7 @@
 #ifndef TEAVPN__SERVER__COMMON_H
 #define TEAVPN__SERVER__COMMON_H
 
+#include <arpa/inet.h>
 #include <linux/kernel.h>
 #include <teavpn/global/common.h>
 
@@ -25,12 +26,12 @@ typedef struct _server_config {
 
 typedef struct _server_state {
 
-  int                 iface_fd;
+  int                   iface_fd;
 
-  __be32              inet4;
-  __be32              inet4_bcmask;
+  __be32                inet4;
+  __be32                inet4_bcmask;
 
-  server_config       *config;
+  server_config         *config;
 
 } server_state;
 
