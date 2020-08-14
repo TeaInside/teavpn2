@@ -5,7 +5,7 @@
  * @param server_state *config
  * @return int
  */
-int teavpn_server_tcp_run(server_state *config)
+int teavpn_server_udp_run(server_state *config)
 {
   int ret = 0;
 

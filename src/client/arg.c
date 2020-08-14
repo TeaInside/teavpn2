@@ -3,23 +3,21 @@
 #include <getopt.h>
 #include <stdlib.h>
 #include <string.h>
-#include <teavpn/server/common.h>
+#include <teavpn/client/common.h>
 
-#ifndef DEBUG_GETOPT
 #define DEBUG_GETOPT 1
-#endif
 
-inline static void set_default_config(server_config *config);
-inline static bool getopt_handler(int argc, char **argv, server_config *config);
+inline static void set_default_config(client_config *config);
+inline static bool getopt_handler(int argc, char **argv, client_config *config);
 
 /**
  * @param int             argc
  * @param char            **argv
  * @param char            **envp
- * @param server_config   *config
+ * @param client_config   *config
  * @return bool
  */
-bool teavpn_server_arg_parser(int argc, char **argv, char **envp, server_config *config)
+bool teavpn_client_arg_parser(int argc, char **argv, char **envp, client_config *config)
 {
   if (argc == 1) {
     error_log("Usage: %s [options]\n", argv[0]);
@@ -31,50 +29,58 @@ bool teavpn_server_arg_parser(int argc, char **argv, char **envp, server_config 
 }
 
 /**
- * @param server_config *config
+ * @param client_config *config
  * @return void
  */
-inline static void set_default_config(server_config *config)
+inline static void set_default_config(client_config *config)
 {
   config->config_file    = NULL;
-  config->data_dir       = NULL;
 
   /*
    * Socket communication configuration.
    */
-  config->bind_addr      = (char *)"0.0.0.0";
-  config->bind_port      = 55555;
+  config->server_addr    = NULL;
+  config->server_port    = 55555;
   config->sock_type      = TEAVPN_SOCK_TCP;
 
   /*
    * Virtual network interface configuration.
    */
-  config->net.dev            = (char *)"tuns0";
+  config->net.dev            = (char *)"tunc0";
   config->net.inet4          = NULL;
   config->net.inet4_bcmask   = NULL;
   config->net.mtu            = 1500;
+
+  /*
+   * Authentication.
+   */
+  config->username           = NULL;
+  config->password           = NULL;
 }
 
 const static struct option long_options[] = {
-  {"config",       required_argument, 0, 'c'},
-  {"data-dir",     required_argument, 0, 'u'},
+  {"config",         required_argument, 0, 'c'},
 
   /*
    * Socket communication configuration.
    */
-  {"bind-addr",    required_argument, 0, 'h'},
-  {"bind-port",    required_argument, 0, 'p'},
-  {"sock-type",    required_argument, 0, 's'},
+  {"client-addr",    required_argument, 0, 'h'},
+  {"client-port",    required_argument, 0, 'p'},
+  {"sock-type",      required_argument, 0, 's'},
 
   /*
    * Virtual network interface configuration.
    */
-  {"dev",          required_argument, 0, 'd'},
-  {"mtu",          required_argument, 0, 'm'},
-  {"inet4",        required_argument, 0, '4'},
-  {"inet4-bcmask", required_argument, 0, 'b'},
+  {"dev",            required_argument, 0, 'd'},
+  {"mtu",            required_argument, 0, 'm'},
 
-  {0,           0,            0,           0}
+  /*
+   * Authentication.
+   */
+  {"username",       required_argument, 0, 'u'},
+  {"password",       required_argument, 0, 'P'},
+
+  {0,            0,             0,           0}
 };
 
 #if DEBUG_GETOPT
@@ -86,10 +92,10 @@ const static struct option long_options[] = {
 /**
  * @param int            argc
  * @param char           **argv
- * @param server_config  *config
+ * @param client_config  *config
  * @return bool
  */
-inline static bool getopt_handler(int argc, char **argv, server_config *config)
+inline static bool getopt_handler(int argc, char **argv, client_config *config)
 {
   int c;
 
@@ -98,7 +104,7 @@ inline static bool getopt_handler(int argc, char **argv, server_config *config)
   while (1) {
     // int this_option_optind = optind ? optind : 1;
     int option_index = 0;
-    c = getopt_long(argc, argv, "c:u:h:p:s:d:m:4:b:", long_options, &option_index);
+    c = getopt_long(argc, argv, "c:h:p:s:d:m:u:P:", long_options, &option_index);
 
     if (c == -1)
       break;
@@ -108,20 +114,15 @@ inline static bool getopt_handler(int argc, char **argv, server_config *config)
         config->config_file = optarg;
         break;
 
-      case 'u':
-        config->data_dir = optarg;
-        break;
-
-
       /*
        * Socket communication configuration.
        */
       case 'h':
-        config->bind_addr = optarg;
+        config->server_addr = optarg;
         break;
 
       case 'p':
-        config->bind_port = (uint16_t)atoi(optarg);
+        config->server_port = (uint16_t)atoi(optarg);
         break;
 
       case 's':
@@ -146,12 +147,16 @@ inline static bool getopt_handler(int argc, char **argv, server_config *config)
         config->net.mtu = (uint32_t)atoi(optarg);
         break;
 
-      case '4':
-        config->net.inet4 = optarg;
+
+     /*
+      * Authentication.
+      */
+      case 'u':
+        config->username = optarg;
         break;
 
-      case 'b':
-        config->net.inet4_bcmask = optarg;
+      case 'P':
+        config->password = optarg;
         break;
 
       default:
