@@ -9,6 +9,8 @@ typedef struct _server_tcp_state {
   int                   sock_fd;
   int                   pipe_fd[2];
   struct pollfd         *fds;
+  nfds_t                nfds;
+  int                   timeout;
   bool                  stop_all;
 
 

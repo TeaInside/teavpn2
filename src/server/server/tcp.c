@@ -6,6 +6,7 @@
 #include <string.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <pthread.h>
 #include <arpa/inet.h>
 #include <sys/types.h>
@@ -24,7 +25,8 @@ inline static bool teavpn_server_tcp_socket_setup(int sock_fd);
 __attribute__((force_align_arg_pointer))
 int teavpn_server_tcp_run(server_state *state)
 {
-  int ret = 0;
+  int ret = 0, rc;
+  server_config *config = state->config;
   server_tcp_state tcp_state;
 
   tcp_state.server_state = state;
@@ -36,13 +38,79 @@ int teavpn_server_tcp_run(server_state *state)
     goto close_conn;
   }
 
+  tcp_state.fds =
+    (struct pollfd *)malloc(config->max_connections * sizeof(struct pollfd));
+
   /* Init pipe. */
   if (pipe(tcp_state.pipe_fd) == -1) {
     perror("pipe()");
     goto close_conn;
   }
 
+
+  /* Main TCP socket fd, for accepting new connection. */
+  tcp_state.fds[0].fd = tcp_state.sock_fd;
+  tcp_state.fds[0].events = POLLIN;  
+
+  /* Virtual network interface fd. */
+  tcp_state.fds[1].fd = state->iface_fd;
+  tcp_state.fds[1].events = POLLIN;
+
+  /* Pipe fd for interrupt. */
+  tcp_state.fds[2].fd = tcp_state.pipe_fd[0];
+  tcp_state.fds[2].events = POLLIN;
+
+  tcp_state.nfds = 3;
+  tcp_state.timeout = 3000;
+
+  /* Event Loop. */
+  while (true) {
+
+    rc = poll(tcp_state.fds, tcp_state.nfds, tcp_state.timeout);
+
+
+    /* Poll reached timeout. */
+    if (rc == 0) {
+      goto end_loop;
+    }
+
+    /* Accept new client. */
+    if (tcp_state.fds[0].revents == POLLIN) {
+      // teavpn_server_tcp_accept(&tcp_state);
+    }
+
+    /* Handle server's tunnel interface data. */
+    if (tcp_state.fds[1].revents == POLLIN) {
+      // teavpn_server_tcp_handle_iface_data(&tcp_state);
+    }
+
+    /* Handle pipe. */
+    if (tcp_state.fds[2].revents == POLLIN) {
+      goto end_loop;
+    }
+
+
+
+end_loop:
+    if (tcp_state.stop_all) {
+      debug_log(0, "Got stop_all signal");
+      goto close_conn;
+    }
+  }
+
 close_conn:
+  if (tcp_state.pipe_fd[0] != -1) {
+    debug_log(2, "Closing pipe_fd[0]...");
+    close(tcp_state.pipe_fd[0]);
+  }
+
+  if (tcp_state.pipe_fd[1] != -1) {
+    debug_log(2, "Closing pipe_fd[1]...");
+    close(tcp_state.pipe_fd[1]);
+  }
+
+  /* Release heap. */
+  free(tcp_state.fds);
 
   return ret;
 }

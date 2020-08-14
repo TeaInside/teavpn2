@@ -1,6 +1,7 @@
 
 #include <stdio.h>
 #include <assert.h>
+#include <unistd.h>
 #include <arpa/inet.h>
 #include <teavpn/server/common.h>
 
@@ -16,6 +17,7 @@ inline static bool teavpn_validate_config(server_config *config);
  */
 int teavpn_server_run(server_config *config)
 {
+  int ret;
   server_state state;
 
   state.config = config;
@@ -77,15 +79,22 @@ int teavpn_server_run(server_config *config)
 
   switch (config->sock_type) {
     case TEAVPN_SOCK_TCP:
-      return teavpn_server_tcp_run(&state);
+      ret = teavpn_server_tcp_run(&state);
+      break;
 
     case TEAVPN_SOCK_UDP:
-      return teavpn_server_udp_run(&state);
+      ret = teavpn_server_udp_run(&state);
+      break;
 
     default:
       error_log("Invalid sock_type: %d", config->sock_type);
-      return 1;
+      ret = 1;
+      break;
   }
+
+  debug_log(2, "Closing iface_fd...");
+  close(state.iface_fd);
+  return ret;
 }
 
 /**
