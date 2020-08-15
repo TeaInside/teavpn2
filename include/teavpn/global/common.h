@@ -14,6 +14,12 @@ enum socket_type {
 };
 
 
+/* Authentication. */
+typedef struct _teavpn_auth {
+  char        *username;
+  char        *password;
+} teavpn_auth;
+
 
 
 /* Virtual network interface configuration. */
