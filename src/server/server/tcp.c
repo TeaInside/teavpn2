@@ -354,5 +354,38 @@ inline static void teavpn_serve_client(server_tcp_state *tcp_state, tcp_channel 
 
   chan->recvi += (uint16_t)recv_ret;
 
+  if (chan->recvi >= MIN_CLIENT_PACKET_LENGTH) {
+    /* Packet type and packet length have been identified. */
+
+    uint16_t      data_len; /* Received data len. */
+    client_packet *pkt = (client_packet *)recv_buf;
+
+    data_len = chan->recvi - MIN_CLIENT_PACKET_LENGTH;
+
+    if (data_len < pkt->len) {
+      /* Data is still pending. */
+      goto ret;
+    }
+
+    switch (pkt->type) {
+      case CLIENT_PKT_AUTH:
+        break;
+
+      case CLIENT_PKT_DATA:
+        break;
+
+      case CLIENT_PKT_CLOSE:
+        break;
+    }
+
+    /* Reset recv bytes counter, we are ready to receive another packet. */
+    chan->recvi = 0;
+
+  } else {
+    /* Packet type and packet legnth are still pending. */
+  }
+
+
+ret:
   debug_log(5, "Receiving %d bytes", recv_ret);
 }
