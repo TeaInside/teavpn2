@@ -2,44 +2,42 @@
 #ifndef TEAVPN__SERVER__TCP_H
 #define TEAVPN__SERVER__TCP_H
 
+#include <pthread.h>
 #include <teavpn/server/common.h>
 
-#define RECV_BUF_SIZE  4096
-#define IFACE_BUF_SIZE 4096
+#define RECV_BUF_SIZE 
+#define READ_BUF_SIZE
 
-typedef struct _tcp_channel {
-  struct pollfd         *fds;
-  uint32_t              seq;
-  bool                  used;
-  teavpn_auth           auth;
+/*
+ * Struct for every single connection.
+ */
+typedef struct _tcp_conn {
 
-  /* Allocated private IP for virtual network interface. */
-  __be32                inet4;
-  __be32                inet4_bcmask;
+  int                 cli_fd;   /* fd to read/write from/to client. */
+  int                 tun_fd;   /* tun_fd queue used by this client. */
 
-  uint16_t              recvi;
-  char                  recv_buf[RECV_BUF_SIZE];
-  uint16_t              ifacei;
-  char                  iface_buf[IFACE_BUF_SIZE];
-} tcp_channel;
+  /* recv from cli_fd. */
+  uint16_t            recvi;         
+  char                recv_buf[RECV_BUF_SIZE]; 
 
-typedef struct _server_tcp_state {
+  /* read from tun_fd. */
+  uint16_t            readi;
+  char                read_buf[READ_BUF_SIZE];
+} tcp_conn;
 
-  int                   sock_fd;
-  int                   pipe_fd[2];
-  struct pollfd         *fds;
-  nfds_t                nfds;
-  int                   timeout;
-  bool                  stop_all;
 
-  tcp_channel           *channels;
-  uint16_t              conn_num;        /* Number of connected clients. */
-  uint16_t              online_chan;     /* Number of connected and authenticated clients. */
-  int32_t               free_chan_index; /* Must be -1 if the channel array is full. */
+typedef struct _tcp_server_state {
 
-  server_state          *server_state;
-  struct sockaddr_in    server_addr;
+  int                   net_fd;        /* Main socket file descriptor. */
+  int                   pipe_fd[2];    /* Pipe fd to interrupt main event loop. */
 
-} server_tcp_state;
+  struct pollfd         *fds;          /* Poll fds. */
+  nfds_t                nfds;          /* Number of fds. */
 
-#endif
+  tcp_conn              *conn;         /* Connection entries. */
+  uint16_t              conn_num;      /* Number of active connections. */
+  uint16_t              online_num;    /* Number of authenticated connections. */
+  int32_t               fci;           /* Current usable array index. */
+
+  server_state          *srv_state;    /* Server state. */
+} tcp_server_state;

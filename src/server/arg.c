@@ -42,11 +42,11 @@ inline static void set_default_config(server_config *config)
   /*
    * Socket communication configuration.
    */
-  config->bind_addr         = (char *)"0.0.0.0";
-  config->bind_port         = 55555;
-  config->backlog           = 10; 
-  config->sock_type         = TEAVPN_SOCK_TCP;
-  config->max_connections   = 10;
+  config->socket.bind_addr         = (char *)"0.0.0.0";
+  config->socket.bind_port         = 55555;
+  config->socket.backlog           = 10; 
+  config->socket.sock_type         = TEAVPN_SOCK_TCP;
+  config->socket.max_connections   = 10;
 
   /*
    * Virtual network interface configuration.

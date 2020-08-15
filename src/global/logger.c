@@ -4,6 +4,7 @@
 #include <time.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdarg.h>
 #include <teavpn/global/common.h>
 
 uint8_t __debug_log_level = 5;

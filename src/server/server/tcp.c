@@ -21,6 +21,12 @@ inline static bool teavpn_server_tcp_accept(server_tcp_state *tcp_state);
 inline static int32_t teavpn_server_tcp_chan_observe(server_tcp_state *tcp_state);
 inline static void teavpn_traverse_channels(server_tcp_state *tcp_state);
 inline static void teavpn_serve_client(server_tcp_state *tcp_state, tcp_channel *chan);
+inline static void teavpn_handle_pkt_data(
+  server_tcp_state *tcp_state,
+  tcp_channel *chan,
+  client_packet *pkt,
+  uint16_t data_len
+);
 
 /**
  * @param server_state *state
@@ -358,20 +364,16 @@ inline static void teavpn_serve_client(server_tcp_state *tcp_state, tcp_channel 
     /* Packet type and packet length have been identified. */
 
     uint16_t      data_len; /* Received data len. */
-    client_packet *pkt = (client_packet *)recv_buf;
+    client_packet *pkt = (client_packet *)(chan->recv_buf);
 
     data_len = chan->recvi - MIN_CLIENT_PACKET_LENGTH;
-
-    if (data_len < pkt->len) {
-      /* Data is still pending. */
-      goto ret;
-    }
 
     switch (pkt->type) {
       case CLIENT_PKT_AUTH:
         break;
 
       case CLIENT_PKT_DATA:
+        teavpn_handle_pkt_data(tcp_state, chan, pkt, data_len);
         break;
 
       case CLIENT_PKT_CLOSE:
@@ -388,4 +390,26 @@ inline static void teavpn_serve_client(server_tcp_state *tcp_state, tcp_channel 
 
 ret:
   debug_log(5, "Receiving %d bytes", recv_ret);
+}
+
+
+/**
+ * @param server_tcp_state  *tcp_state
+ * @param tcp_channel       *chan
+ * @param client_pakcet     *pkt
+ * @param uint16_t          data_len
+ * @return void
+ */
+inline static void teavpn_handle_pkt_data(
+  server_tcp_state *tcp_state,
+  tcp_channel *chan,
+  client_packet *pkt,
+  uint16_t data_len
+)
+{
+  register server_state  *state    = tcp_state->server_state;
+  register server_config *config   = state->config;
+
+
+  write(state->iface_fd, )
 }
