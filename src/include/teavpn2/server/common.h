@@ -10,7 +10,7 @@ typedef struct _server_iface_cfg {
   char                  *dev;           /* Interface name. */
 
   char                  *ipv4;          /* IPv4. */
-  char                  *inet4_bcmask;  /* IPv4 broadcast mask. */
+  char                  *ipv4_bcmask;   /* IPv4 broadcast mask. */
   uint16_t              mtu;            /* MTU. */
 
 #if 0
