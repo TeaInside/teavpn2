@@ -25,7 +25,7 @@ LIB_LINK_FLAGS    = -lpthread
 ifeq ($(RELEASE_MODE),1)
 
 	# Compile flags that apply to CC and CXX.
-	CCCXX_COMPILE_FLAGS = -s -fno-stack-protector -Ofast -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -D_GNU_SOURCE -D_REENTRANT
+	CCCXX_COMPILE_FLAGS = -s -fno-stack-protector -Ofast -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -DNDEBUG -D_GNU_SOURCE -D_REENTRANT
 
 	# Link flags
 	LINK_FLAGS = -s -Ofast -fPIC
