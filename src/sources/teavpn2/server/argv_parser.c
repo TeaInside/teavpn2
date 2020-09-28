@@ -7,7 +7,7 @@
 
 #ifndef PARAM_DEBUG
 #define PARAM_DEBUG 1
-#else
+#endif
 
 #if PARAM_DEBUG
   #define PRINT_PARAM(CONFIG_NAME, VAL_LT, VAL) \
@@ -18,7 +18,7 @@
 
 
 const static struct option long_options[] = {
-  /* Interface options. */  
+  /* Interface options. */
   {"config",       required_argument, 0, 'c'},
   {"dev",          required_argument, 0, 'd'},
   {"mtu",          required_argument, 0, 'm'},
@@ -37,17 +37,17 @@ const static struct option long_options[] = {
 };
 
 
-inline static void set_default_config(tvpn_server_config *config);
-
+inline static void set_default_config(server_config *config);
+inline static bool getopt_handler(int argc, char **argv, server_config *config);
 
 /**
  * Return false if parse fails.
  */
 bool tvpn_server_argv_parse(
   int argc,
-  char **argv,
-  char **envp,
-  tvpn_server_config *config
+  char *argv[],
+  char *envp[],
+  server_config *config
 )
 {
 
@@ -56,15 +56,38 @@ bool tvpn_server_argv_parse(
     return false;
   }
 
-
+  set_default_config(config);
+  return getopt_handler(argc, argv, config);
 }
 
 
 /**
  * Initialize default config values.
  */
-inline static void set_default_config(tvpn_server_config *config)
+inline static void set_default_config(server_config *config)
 {
 
 }
 
+
+/**
+ * Parse the arguments and plug it to config.
+ */
+inline static bool getopt_handler(int argc, char **argv, server_config *config)
+{
+  int c;
+
+  while (1) {
+    int this_option_optind = optind ? optind : 1;
+    int option_index = 0;
+    c = getopt_long(argc, argv, "", long_options, &option_index);
+
+    if (c == -1)
+      break;
+
+    switch (c) {
+      /* Interface options. */
+
+    }
+  }
+}
