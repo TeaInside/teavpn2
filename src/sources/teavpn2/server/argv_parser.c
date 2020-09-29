@@ -73,8 +73,8 @@ inline static void set_default_config(server_config *config)
 
 static const struct option long_options[] = {
 
-  {"config",       required_argument, 0, 'c'},
   {"help",         no_argument      , 0, 'h'},
+  {"config",       required_argument, 0, 'c'},
 
   /* Interface options. */
   {"dev",          required_argument, 0, 'd'},
