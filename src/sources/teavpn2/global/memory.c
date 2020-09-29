@@ -68,3 +68,18 @@ char *t_ar_strndup(register const char *str, register size_t tlen)
 
   return ret;
 }
+
+
+char *t_ar_strndup2(register const char *str, register size_t tlen)
+{
+  register size_t len = strlen(str);
+  register char *ret  = &(((char *)__t_arena)[__t_arena_pos]);
+
+  tlen = len < tlen ? len : tlen;
+
+  __t_arena_pos += tlen + 1;
+  t_ar_memcpy(ret, str, tlen);
+  ret[tlen] = '\0';
+
+  return ret;
+}
