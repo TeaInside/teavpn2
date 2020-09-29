@@ -92,7 +92,7 @@ inline static int server_parser_handler(
 
   } else
   RMATCH_S("other") {
-
+    config->data_dir = t_ar_strndup2(value, 256);
   } else {
     printf("Invalid section \"%s\" on line %d\n", section, lineno);
     return 0;
