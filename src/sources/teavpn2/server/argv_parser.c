@@ -20,8 +20,8 @@
 #endif
 
 inline static void show_help(char *app);
-inline static void set_default_config(server_config *config);
-inline static bool getopt_handler(int argc, char **argv, server_config *config);
+inline static void set_default_config(server_cfg *config);
+inline static bool getopt_handler(int argc, char **argv, server_cfg *config);
 
 static const int default_back_log = 10;
 static const uint16_t default_mtu = 1500;
@@ -35,7 +35,7 @@ bool tvpn_server_argv_parse(
   int argc,
   char *argv[],
   char *envp[],
-  server_config *config
+  server_cfg *config
 )
 {
   (void)envp;
@@ -53,7 +53,7 @@ bool tvpn_server_argv_parse(
 /**
  * Initialize default config values.
  */
-inline static void set_default_config(server_config *config)
+inline static void set_default_config(server_cfg *config)
 {
   config->config_file = NULL;
   config->data_dir    = NULL;
@@ -96,7 +96,7 @@ static const struct option long_options[] = {
 /**
  * Parse the arguments and plug it to config.
  */
-inline static bool getopt_handler(int argc, char **argv, server_config *config)
+inline static bool getopt_handler(int argc, char **argv, server_cfg *config)
 {
   int c;
 
