@@ -28,7 +28,7 @@ ifeq ($(RELEASE_MODE),1)
 	CCXXFLAGS = -Wall -Wextra -s -fno-stack-protector -O2 -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -DNDEBUG -D_GNU_SOURCE -D_REENTRANT
 
 	# Link flags
-	LDFLAGS = -s -O2 -fPIC
+	LDFLAGS = -O2 -fPIC
 
 else
 

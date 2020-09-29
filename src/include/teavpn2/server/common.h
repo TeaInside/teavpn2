@@ -2,7 +2,6 @@
 #ifndef TEAVPN2__SERVER__COMMON_H
 #define TEAVPN2__SERVER__COMMON_H
 
-#include <stdbool.h>
 #include <teavpn2/global/common.h>
 
 typedef struct _server_iface_cfg {
@@ -52,7 +51,7 @@ bool tvpn_server_argv_parse(
 
 
 /* config */
-void tvpn_server_load_config_file(char *file, server_cfg *config);
+bool tvpn_server_load_config_file(char *file, server_cfg *config);
 /* End of config */
 
 #endif
