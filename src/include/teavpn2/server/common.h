@@ -30,14 +30,14 @@ typedef struct _socket_cfg {
 } socket_cfg;
 
 
-typedef struct server_config {
+typedef struct _server_cfg {
 
   char                  *config_file;   /* Config file. */
   char                  *data_dir;      /* Data directory. */
   server_iface_cfg      iface;          /* Virtual interface configuration. */
   socket_cfg            sock;           /* Socket configuration. */
 
-} server_config;
+} server_cfg;
 
 
 
@@ -46,8 +46,13 @@ bool tvpn_server_argv_parse(
   int argc,
   char *argv[],
   char *envp[],
-  server_config *config
+  server_cfg *config
 );
 /* End of argv_parser */
+
+
+/* config */
+void tvpn_server_load_config_file(char *file, server_cfg *config);
+/* End of config */
 
 #endif
