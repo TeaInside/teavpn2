@@ -4,7 +4,7 @@
 CC     = cc
 CXX    = c++
 NASM   = nasm
-LINKER = c++
+LINKER = $(CXX)
 
 # Source and include directories.
 SRC_DIR     = src
@@ -16,30 +16,32 @@ GLOBAL_SOURCE_DIR = $(SOURCES_DIR)/teavpn2/global
 CLIENT_SOURCE_DIR = $(SOURCES_DIR)/teavpn2/client
 SERVER_SOURCE_DIR = $(SOURCES_DIR)/teavpn2/server
 
-# C/C++ compile flag.
-CC_COMPILE_FLAGS  = -std=c99 $(INCLUDE_DIR) -c
-CXX_COMPILE_FLAGS = -std=c++17 $(INCLUDE_DIR) -D_GLIBCXX_ASSERTIONS -c
+# C/C++ compile flags.
+CFLAGS   = -std=c99 $(INCLUDE_DIR) -c
+CXXFLAGS = -std=c++17 $(INCLUDE_DIR) -D_GLIBCXX_ASSERTIONS -c
 
-LIB_LINK_FLAGS    = -lpthread
+LIB_LDFLAGS    = -lpthread
 
 ifeq ($(RELEASE_MODE),1)
 
 	# Compile flags that apply to CC and CXX.
-	CCCXX_COMPILE_FLAGS = -s -fno-stack-protector -Ofast -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -DNDEBUG -D_GNU_SOURCE -D_REENTRANT
+	CCXXFLAGS = -s -fno-stack-protector -O2 -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -DNDEBUG -D_GNU_SOURCE -D_REENTRANT
 
 	# Link flags
-	LINK_FLAGS = -s -Ofast -fPIC
+	LDFLAGS = -s -O2 -fPIC
 
 else
 
 	# Compile flags that apply to CC and CXX.
-	CCCXX_COMPILE_FLAGS = -fstack-protector-strong -ggdb3 -O0 -grecord-gcc-switches -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -D_GNU_SOURCE -D_REENTRANT -DTEAVPN_DEBUG
+	CCXXFLAGS = -fstack-protector-strong -ggdb3 -O0 -grecord-gcc-switches -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -D_GNU_SOURCE -D_REENTRANT -DTEAVPN_DEBUG
 
 	# Link flags
-	LINK_FLAGS = -ggdb3 -O0 -fPIC
+	LDFLAGS = -ggdb3 -O0 -fPIC
 
 endif
 
+CFLAGS   += $(CCXXFLAGS)
+CXXFLAGS += $(CCXXFLAGS)
 
 # Target compile.
 CLIENT_BIN = teavpn_client
@@ -136,10 +138,10 @@ $(GLOBAL_DEPDIR): | $(ROOT_DEPDIR)
 	mkdir -pv $@
 
 $(GLOBAL_CC_OBJECTS): | $(GLOBAL_DEPDIR)
-	$(CC) $(GLOBAL_DEPFLAGS) $(CC_COMPILE_FLAGS) $(CCCXX_COMPILE_FLAGS) $(@:%.o=%) -o $@
+	$(CC) $(GLOBAL_DEPFLAGS) $(CFLAGS) $(@:%.o=%) -o $@
 
 $(GLOBAL_CXX_OBJECTS): | $(GLOBAL_DEPDIR)
-	$(CXX) $(GLOBAL_DEPFLAGS) $(CXX_COMPILE_FLAGS) $(CCCXX_COMPILE_FLAGS) $(@:%.o=%) -o $@
+	$(CXX) $(GLOBAL_DEPFLAGS) $(CXXFLAGS) $(@:%.o=%) -o $@
 
 -include $(GLOBAL_DEPFILES)
 ###################### End of build global sources ######################
@@ -153,15 +155,15 @@ $(CLIENT_DEPDIR): | $(ROOT_DEPDIR)
 	mkdir -pv $@
 
 $(CLIENT_CC_OBJECTS): | $(CLIENT_DEPDIR)
-	$(CC) $(CLIENT_DEPFLAGS) $(CC_COMPILE_FLAGS) $(CCCXX_COMPILE_FLAGS) $(@:%.o=%) -o $@
+	$(CC) $(CLIENT_DEPFLAGS) $(CFLAGS) $(@:%.o=%) -o $@
 
 $(CLIENT_CXX_OBJECTS): | $(CLIENT_DEPDIR)
-	$(CXX) $(CLIENT_DEPFLAGS) $(CXX_COMPILE_FLAGS) $(CCCXX_COMPILE_FLAGS) $(@:%.o=%) -o $@
+	$(CXX) $(CLIENT_DEPFLAGS) $(CXXFLAGS) $(@:%.o=%) -o $@
 
 -include $(CLIENT_DEPFILES)
 
 $(CLIENT_BIN): $(GLOBAL_OBJECTS) $(CLIENT_OBJECTS)
-	$(LINKER) $(LINK_FLAGS) -o $@ $(CLIENT_OBJECTS) $(GLOBAL_OBJECTS) $(LIB_LINK_FLAGS)
+	$(LINKER) $(LDFLAGS) -o $@ $(CLIENT_OBJECTS) $(GLOBAL_OBJECTS) $(LIB_LDFLAGS)
 ###################### End of build client sources ######################
 
 
@@ -173,15 +175,15 @@ $(SERVER_DEPDIR): | $(ROOT_DEPDIR)
 	mkdir -pv $@
 
 $(SERVER_CC_OBJECTS): | $(SERVER_DEPDIR)
-	$(CC) $(SERVER_DEPFLAGS) $(CC_COMPILE_FLAGS) $(CCCXX_COMPILE_FLAGS) $(@:%.o=%) -o $@
+	$(CC) $(SERVER_DEPFLAGS) $(CFLAGS) $(@:%.o=%) -o $@
 
 $(SERVER_CXX_OBJECTS): | $(SERVER_DEPDIR)
-	$(CXX) $(SERVER_DEPFLAGS) $(CXX_COMPILE_FLAGS) $(CCCXX_COMPILE_FLAGS) $(@:%.o=%) -o $@
+	$(CXX) $(SERVER_DEPFLAGS) $(CXXFLAGS) $(@:%.o=%) -o $@
 
 -include $(SERVER_DEPFILES)
 
 $(SERVER_BIN): $(GLOBAL_OBJECTS) $(SERVER_OBJECTS)
-	$(LINKER) $(LINK_FLAGS) -o $@ $(SERVER_OBJECTS) $(GLOBAL_OBJECTS) $(LIB_LINK_FLAGS)
+	$(LINKER) $(LDFLAGS) -o $@ $(SERVER_OBJECTS) $(GLOBAL_OBJECTS) $(LIB_LDFLAGS)
 ###################### End of build server sources ######################
 
 
