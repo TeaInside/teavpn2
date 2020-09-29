@@ -1,4 +1,5 @@
 
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -37,6 +38,7 @@ bool tvpn_server_argv_parse(
   server_config *config
 )
 {
+  (void)envp;
 
   if (argc == 1) {
     printf("Usage: %s [options]\n", argv[0]);
@@ -69,7 +71,7 @@ inline static void set_default_config(server_config *config)
   config->sock.type       = sock_tcp;
 }
 
-const static struct option long_options[] = {
+static const struct option long_options[] = {
 
   {"config",       required_argument, 0, 'c'},
   {"help",         no_argument      , 0, 'h'},
@@ -103,8 +105,8 @@ inline static bool getopt_handler(int argc, char **argv, server_config *config)
   #endif
 
   while (1) {
-    int this_option_optind = optind ? optind : 1;
     int option_index = 0;
+    /*int this_option_optind = optind ? optind : 1;*/
     c = getopt_long(argc, argv, "c:hd:m:4:b:H:P:s:B:u:", long_options, &option_index);
 
     if (c == -1)
@@ -180,8 +182,19 @@ inline static bool getopt_handler(int argc, char **argv, server_config *config)
         config->sock.backlog = atoi(optarg);
         PRINT_CONFIG(config->sock.backlog, "%d", config->sock.backlog);
         break;
+
+      case 'u':
+        config->data_dir = optarg;
+        break;
+
+      case '?':
+      default:
+        return false;
+        break;
     }
   }
+
+  return true;
 }
 
 inline static void show_help(char *app)
