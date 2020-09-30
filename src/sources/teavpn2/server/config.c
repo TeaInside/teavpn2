@@ -41,16 +41,16 @@ inline static int server_parser_handler(
   RMATCH_S("iface") {
 
     RMATCH_N("dev") {
-      config->iface.dev  = t_ar_strndup2(value, 256);
+      config->iface.dev  = t_ar_strndup(value, 256);
     } else
     RMATCH_N("mtu") {
       config->iface.mtu = (uint16_t)atoi(value);
     } else
     RMATCH_N("ipv4") {
-      config->iface.ipv4 = t_ar_strndup2(value, sizeof("xxx.xxx.xxx.xxx") - 1);
+      config->iface.ipv4 = t_ar_strndup(value, sizeof("xxx.xxx.xxx.xxx") - 1);
     } else
     RMATCH_N("ipv4_bcmask") {
-      config->iface.ipv4_bcmask = t_ar_strndup2(value, sizeof("xxx.xxx.xxx.xxx") - 1);
+      config->iface.ipv4_bcmask = t_ar_strndup(value, sizeof("xxx.xxx.xxx.xxx") - 1);
     } else {
       goto invalid_name;
     }
@@ -59,7 +59,7 @@ inline static int server_parser_handler(
   RMATCH_S("socket") {
 
     RMATCH_N("bind_addr") {
-      config->sock.bind_addr = t_ar_strndup2(value, 256);
+      config->sock.bind_addr = t_ar_strndup(value, 256);
     } else
     RMATCH_N("bind_port") {
       config->sock.bind_port = (uint16_t)atoi(value);
@@ -92,7 +92,7 @@ inline static int server_parser_handler(
 
   } else
   RMATCH_S("other") {
-    config->data_dir = t_ar_strndup2(value, 256);
+    config->data_dir = t_ar_strndup(value, 256);
   } else {
     printf("Invalid section \"%s\" on line %d\n", section, lineno);
     return 0;
