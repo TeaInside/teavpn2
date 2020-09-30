@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include <criterion/criterion.h>
-#include <teavpn2/server/common.h>
+#include <teavpn2/global/memory.h>
 
 Test(memory, contiguous_block_allocation_test)
 {
@@ -38,7 +38,6 @@ Test(memory, strdup_test)
   /* Initialize arena with 'b'. */
   memset(arena, 'z', sizeof(arena));
 
-  /* Initialize the allocator. */
   t_ar_init(arena, sizeof(arena));
 
 
@@ -60,6 +59,42 @@ Test(memory, strdup_test)
 
     /* Copied string from strndup must be null terminated. */
     cr_assert(ptr[shorter_len] == '\0');
+
+    /* Check untouched memory after strdup and strndup. */
+    size_t untouched_len = sizeof(arena) - (&(ptr[shorter_len + 1]) - arena);
+
+    char *cmp_data = (char *)malloc(untouched_len);
+    memset(cmp_data, 'z', untouched_len);
+
+    cr_assert(!memcmp(&(ptr[shorter_len + 1]), cmp_data, untouched_len));
+
+    free(cmp_data);
   }
 }
 
+
+#ifdef NEED_MEMCPY_TEST
+#if NEED_MEMCPY_TEST
+
+Test(memory, tr_ar_memcpy_test)
+{
+  char dst[2048];
+  char src[2048];
+
+  #define TEST_MEMCPY(N) do {        \
+    memset(dst, '\0', sizeof(dst));  \
+    memset(src, 'a', N);             \
+    t_ar_memcpy(dst, src, N);        \
+    cr_assert(!memcmp(dst, src, N)); \
+  } while (0)
+
+  /* Must be able to do for aligned and unaligned data. */
+  TEST_MEMCPY(1);
+  printf("1\n");
+  TEST_MEMCPY(2);
+  TEST_MEMCPY(3);
+  TEST_MEMCPY(1025);
+}
+
+#endif
+#endif

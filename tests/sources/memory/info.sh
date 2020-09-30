@@ -1,5 +1,5 @@
 #!/bin/bash
 
-echo "";
+echo "-------------------";
 echo "--- Memory Test ---";
-echo "";
+echo "-------------------";

@@ -16,6 +16,8 @@ GLOBAL_SOURCE_DIR = $(SOURCES_DIR)/teavpn2/global
 CLIENT_SOURCE_DIR = $(SOURCES_DIR)/teavpn2/client
 SERVER_SOURCE_DIR = $(SOURCES_DIR)/teavpn2/server
 
+DEFAULT_OPTIMIZATION = -O1
+
 # C/C++ compile flags.
 CFLAGS   = -std=c99 $(INCLUDE_DIR) -c
 CXXFLAGS = -std=c++17 $(INCLUDE_DIR) -D_GLIBCXX_ASSERTIONS -c
@@ -33,10 +35,10 @@ ifeq ($(RELEASE_MODE),1)
 else
 
 	# Compile flags that apply to CC and CXX.
-	CCXXFLAGS = -Wall -Wextra -fstack-protector-strong -ggdb3 -O0 -grecord-gcc-switches -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -D_GNU_SOURCE -D_REENTRANT -DTEAVPN_DEBUG
+	CCXXFLAGS = -Wall -Wextra -fstack-protector-strong -ggdb3 $(DEFAULT_OPTIMIZATION) -grecord-gcc-switches -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -D_GNU_SOURCE -D_REENTRANT -DTEAVPN_DEBUG
 
 	# Link flags
-	LDFLAGS = -Wall -Wextra -ggdb3 -O0 -fPIC
+	LDFLAGS = -Wall -Wextra -ggdb3 $(DEFAULT_OPTIMIZATION) -fPIC
 
 endif
 
@@ -200,6 +202,8 @@ test: $(GLOBAL_OBJECTS) $(SERVER_OBJECTS) $(CLIENT_OBJECTS)
 	GLOBAL_OBJECTS="$(GLOBAL_OBJECTS)" \
 	SERVER_OBJECTS="$(SERVER_OBJECTS)" \
 	CLIENT_OBJECTS="$(CLIENT_OBJECTS)" \
+	ROOT_DEPDIR="$(ROOT_DEPDIR)" \
+	DEFAULT_OPTIMIZATION="$(DEFAULT_OPTIMIZATION)" \
 	$(MAKE) -j $(TEST_JOBS) -f test.mk
 
 test_clean:
@@ -213,11 +217,12 @@ test_clean:
 	SERVER_OBJECTS="$(SERVER_OBJECTS)" \
 	CLIENT_OBJECTS="$(CLIENT_OBJECTS)" \
 	CLEAN=1 \
+	ROOT_DEPDIR="$(ROOT_DEPDIR)" \
 	$(MAKE) --no-print-directory -j $(TEST_JOBS) -f test.mk
 
 
 ###################### Cleaning part ######################
-clean: clean_global clean_client clean_server
+clean: clean_global clean_client clean_server test_clean
 	rm -rfv $(ROOT_DEPDIR)
 
 clean_global:
