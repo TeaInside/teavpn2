@@ -26,6 +26,18 @@ make -j$(nproc) global
 env RELEASE_MODE=1 make -j$(nproc)
 ```
 
+
+# Unit Tests
+```sh
+# Install criterion unit test framework.
+sudo add-apt-repository ppa:snaipewastaken/ppa -y;
+sudo apt-get update -y;
+sudo apt-get install criterion-dev -y;
+
+make -j$(nproc) test;
+```
+
+
 # Directory Structure
 1. `src/include/teavpn2/server` is a directory for teavpn2 server **header files**.
 2. `src/include/teavpn2/client` is a directory for teavpn2 client **header files**.
