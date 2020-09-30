@@ -33,18 +33,33 @@ Test(memory, contiguous_block_allocation_test)
 
 Test(memory, strdup_test)
 {
-  char *ptr, arena[4096];
+  char arena[4096];
 
-  char str[] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-  size_t len = sizeof(str) - 1;
+  /* Initialize arena with 'b'. */
+  memset(arena, 'z', sizeof(arena));
 
-  memset(arena, 'b', sizeof(arena));
+  /* Initialize the allocator. */
   t_ar_init(arena, sizeof(arena));
 
-  /* Test strdup. */
-  ptr = t_ar_strdup(str);
-  cr_assert(!memcmp(ptr, str, sizeof(str)));
 
-  ptr = strndup(str, (len - 2));
+  /* Simple strdup test. */
+  {
+    char str[] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    char *ptr  = t_ar_strdup(str);
+
+    cr_assert(!memcmp(ptr, str, sizeof(str)));
+  }
+
+
+  /* strndup test. */
+  {
+    char str[] = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    size_t shorter_len = (sizeof(str) - 1) - 5;
+
+    char *ptr = t_ar_strndup(str, shorter_len);
+
+    /* Copied string from strndup must be null terminated. */
+    cr_assert(ptr[shorter_len] == '\0');
+  }
 }
 
