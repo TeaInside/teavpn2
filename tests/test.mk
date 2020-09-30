@@ -10,13 +10,15 @@ BIN_DIR			   = .bin
 UNIT_TESTS         = $(shell find ${SOURCES_DIR} -mindepth 1 -maxdepth 1 -type d)
 
 LD_LIBRARY_PATH    = $(CRITERION_DIR)/lib
-CFLAGS             = -O1 -ggdb3 -grecord-gcc-switches -fstack-protector-strong -fPIC -fasynchronous-unwind-tables $(INCLUDE_DIR)
+CFLAGS             = $(DEFAULT_OPTIMIZATION) -ggdb3 -grecord-gcc-switches -fstack-protector-strong -fPIC -fasynchronous-unwind-tables $(INCLUDE_DIR)
 LDFLAGS           := $(LDFLAGS)
 LIB_LDFLAGS       := -L$(LD_LIBRARY_PATH) -lcriterion
 
 GLOBAL_OBJECTS    := $(GLOBAL_OBJECTS:%=../%)
 SERVER_OBJECTS    := $(SERVER_OBJECTS:%=../%)
 CLIENT_OBJECTS    := $(CLIENT_OBJECTS:%=../%)
+
+ROOT_DEPDIR       := ../$(ROOT_DEPDIR)/test
 
 ifeq ($(CLEAN),1)
 	DSECTION = clean
@@ -38,7 +40,9 @@ $(BIN_DIR):
 .PHONY: $(UNIT_TESTS)
 
 $(UNIT_TESTS): $(CRITERION_DIR) $(BIN_DIR)
-	@(test -f ${@}/info.sh && exec sh ${@}/info.sh) || true;
+	@if $(DO_TEST); then \
+		(test -f ${@}/info.sh && exec sh ${@}/info.sh) || true; \
+	fi;
 
 	@env \
 	TARGET_TEST="$(@)" \
@@ -53,7 +57,8 @@ $(UNIT_TESTS): $(CRITERION_DIR) $(BIN_DIR)
 	SERVER_OBJECTS="$(SERVER_OBJECTS)" \
 	CLIENT_OBJECTS="$(CLIENT_OBJECTS)" \
 	BIN_DIR="$(BIN_DIR)" \
-	$(MAKE) -s --no-print-directory -j $(TEST_JOBS) $(DSECTION);
+	ROOT_DEPDIR="$(ROOT_DEPDIR)" \
+	$(MAKE) --no-print-directory -j $(TEST_JOBS) $(DSECTION);
 
 	@if $(DO_TEST); then \
 		env LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" \
@@ -63,4 +68,4 @@ $(UNIT_TESTS): $(CRITERION_DIR) $(BIN_DIR)
 		true; \
 	fi;
 
-# ###################### End of Unit Tests ######################
+####################### End of Unit Tests ######################

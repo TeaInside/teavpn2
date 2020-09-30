@@ -7,16 +7,27 @@ SOURCES   = $(shell find ${TARGET_TEST} -name '*.c')
 OBJECTS   = $(SOURCES:%=%.o)
 TEST_FILE = $(BIN_DIR)/$(TARGET_TEST:sources/%=%).test
 
+TEST_DEPDIR    = $(TARGET_TEST:%=${ROOT_DEPDIR}/%)
+TEST_DEPFLAGS  = -MT $@ -MMD -MP -MF ${ROOT_DEPDIR}/$*.d
+TEST_DEPFILES  = $(SOURCES:%=${ROOT_DEPDIR}/%.d)
 
 all: $(TEST_FILE)
 
-$(OBJECTS): $(SOURCES)
-	@echo "  CC @CFLAGS -c $(@:%.o=%) -o $(@)"
-	@$(CC) $(CFLAGS) -c $(@:%.o=%) -o $@
+$(ROOT_DEPDIR):
+	mkdir -pv ${@}
+
+$(TEST_DEPDIR): | $(ROOT_DEPDIR)
+	mkdir -pv ${@}
+
+$(OBJECTS): | $(TEST_DEPDIR)
+	echo "  CC @CFLAGS -c $(@:%.o=%) -o $(@)"
+	$(CC) $(TEST_DEPFLAGS) $(CFLAGS) -c $(@:%.o=%) -o $@
 
 $(TEST_FILE): $(OBJECTS) $(GLOBAL_OBJECTS)
-	@echo "  LD @LDFLAGS @OBJECTS @GLOBAL_OBJECTS -o $(@) @LIB_LDFLAGS"
+	echo "  LD @LDFLAGS @OBJECTS @GLOBAL_OBJECTS -o $(@) @LIB_LDFLAGS"
 	$(CC) $(LDFLAGS) $(OBJECTS) $(GLOBAL_OBJECTS) -o $(TEST_FILE) $(LIB_LDFLAGS)
 
+-include $(TEST_DEPFILES)
+
 clean:
-	rm -vf $(OBJECTS) $(TEST_FILE) || true
+	rm -vfr $(TEST_DEPDIR) $(OBJECTS) $(TEST_FILE) || true
