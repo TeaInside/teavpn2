@@ -28,7 +28,7 @@ ifeq ($(RELEASE_MODE),1)
 	CCXXFLAGS = -Wall -Wextra -s -fno-stack-protector -O2 -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -DNDEBUG -D_GNU_SOURCE -D_REENTRANT
 
 	# Link flags
-	LDFLAGS = -O2 -fPIC
+	LDFLAGS = -Wall -Wextra -O2 -fPIC
 
 else
 
@@ -36,12 +36,16 @@ else
 	CCXXFLAGS = -Wall -Wextra -fstack-protector-strong -ggdb3 -O0 -grecord-gcc-switches -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -D_GNU_SOURCE -D_REENTRANT -DTEAVPN_DEBUG
 
 	# Link flags
-	LDFLAGS = -ggdb3 -O0 -fPIC
+	LDFLAGS = -Wall -Wextra -ggdb3 -O0 -fPIC
 
 endif
 
-CFLAGS   += $(CCXXFLAGS)
-CXXFLAGS += $(CCXXFLAGS)
+ifndef TEST_JOBS
+	TEST_JOBS = 1
+endif
+
+CFLAGS   := $(CFLAGS) $(CCXXFLAGS)
+CXXFLAGS := $(CXXFLAGS) $(CCXXFLAGS)
 
 # Target compile.
 CLIENT_BIN = teavpn_client
@@ -186,6 +190,30 @@ $(SERVER_BIN): $(GLOBAL_OBJECTS) $(SERVER_OBJECTS)
 	$(LINKER) $(LDFLAGS) -o $@ $(SERVER_OBJECTS) $(GLOBAL_OBJECTS) $(LIB_LDFLAGS)
 ###################### End of build server sources ######################
 
+test: $(GLOBAL_OBJECTS) $(SERVER_OBJECTS) $(CLIENT_OBJECTS)
+	@cd tests && \
+	env INCLUDE_DIR="$(INCLUDE_DIR)" \
+	CC="$(CC)" \
+	CXX="$(CC)" \
+	LIB_LDFLAGS="$(LIB_LDFLAGS)" \
+	LDFLAGS="$(LDFLAGS)" \
+	GLOBAL_OBJECTS="$(GLOBAL_OBJECTS)" \
+	SERVER_OBJECTS="$(SERVER_OBJECTS)" \
+	CLIENT_OBJECTS="$(CLIENT_OBJECTS)" \
+	$(MAKE) -j $(TEST_JOBS) -f test.mk
+
+test_clean:
+	@cd tests && \
+	env INCLUDE_DIR="$(INCLUDE_DIR)" \
+	CC="$(CC)" \
+	CXX="$(CC)" \
+	LIB_LDFLAGS="$(LIB_LDFLAGS)" \
+	LDFLAGS="$(LDFLAGS)" \
+	GLOBAL_OBJECTS="$(GLOBAL_OBJECTS)" \
+	SERVER_OBJECTS="$(SERVER_OBJECTS)" \
+	CLIENT_OBJECTS="$(CLIENT_OBJECTS)" \
+	CLEAN=1 \
+	$(MAKE) --no-print-directory -j $(TEST_JOBS) -f test.mk
 
 
 ###################### Cleaning part ######################
