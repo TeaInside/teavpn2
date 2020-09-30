@@ -38,6 +38,8 @@ $(BIN_DIR):
 .PHONY: $(UNIT_TESTS)
 
 $(UNIT_TESTS): $(CRITERION_DIR) $(BIN_DIR)
+	@(test -f ${@}/info.sh && exec sh ${@}/info.sh) || true;
+
 	@env \
 	TARGET_TEST="$(@)" \
 	CFLAGS="$(CFLAGS)" \
@@ -55,6 +57,7 @@ $(UNIT_TESTS): $(CRITERION_DIR) $(BIN_DIR)
 
 	@if $(DO_TEST); then \
 		env LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" \
+		valgrind --show-leak-kinds=all \
 		$(BIN_DIR)/$(@:sources/%=%).test; \
 	else \
 		true; \

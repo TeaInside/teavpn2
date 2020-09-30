@@ -6,18 +6,7 @@
 #include <criterion/criterion.h>
 #include <teavpn2/server/common.h>
 
-void contiguous_block_allocation();
-
-Test(simple, test)
-{
-  printf(" -- Memory test --\n");
-
-  /* Contiguous block allocation test. */
-  contiguous_block_allocation();
-}
-
-
-void contiguous_block_allocation()
+Test(memory, contiguous_block_allocation_test)
 {
   char arena[4096];
   t_ar_init(arena, sizeof(arena));
@@ -35,4 +24,27 @@ void contiguous_block_allocation()
 
   memset(c, 'D', 2048);
   cr_assert(!memcmp(c, d, 1024));
+
+  cr_assert(a + 1024 == b);
+  cr_assert(b + 1024 == c);
+  cr_assert(c + 1024 == d);
 }
+
+
+Test(memory, strdup_test)
+{
+  char *ptr, arena[4096];
+
+  char str[] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  size_t len = sizeof(str) - 1;
+
+  memset(arena, 'b', sizeof(arena));
+  t_ar_init(arena, sizeof(arena));
+
+  /* Test strdup. */
+  ptr = t_ar_strdup(str);
+  cr_assert(!memcmp(ptr, str, sizeof(str)));
+
+  ptr = strndup(str, (len - 2));
+}
+
