@@ -29,10 +29,10 @@ LIB_LDFLAGS    = -lpthread
 ifeq ($(RELEASE_MODE),1)
 
 	# Compile flags that apply to CC and CXX.
-	CCXXFLAGS = -Wall -Wextra -s -fno-stack-protector -O2 -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -DNDEBUG -D_GNU_SOURCE -D_REENTRANT
+	CCXXFLAGS = -Wall -Wextra -s -fno-stack-protector -O3 -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -DNDEBUG -D_GNU_SOURCE -D_REENTRANT
 
 	# Link flags
-	LDFLAGS = -Wall -Wextra -O2 -fPIC
+	LDFLAGS = -Wall -Wextra -O3 -fPIC
 
 else
 
