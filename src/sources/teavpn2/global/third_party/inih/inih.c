@@ -72,12 +72,19 @@ static char* find_chars_or_comment(const char* s, const char* chars)
 }
 
 /* Version of strncpy that ensures dest (size bytes) is null-terminated. */
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-truncation"
+#endif
 static char* strncpy0(char* dest, const char* src, size_t size)
 {
     strncpy(dest, src, size - 1);
     dest[size - 1] = '\0';
     return dest;
 }
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 
 /* See documentation in header file. */
 int ini_parse_stream(ini_reader reader, void* stream, ini_handler handler,
