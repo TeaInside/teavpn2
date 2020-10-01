@@ -1,4 +1,5 @@
 
+#include <ctype.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -71,6 +72,9 @@ inline static int server_parser_handler(
       targ[0] = (targ[0] >= 'A' && targ[0] <= 'Z') ? targ[0] + 32 : targ[0];
       targ[1] = (targ[1] >= 'A' && targ[1] <= 'Z') ? targ[1] + 32 : targ[1];
       targ[2] = (targ[2] >= 'A' && targ[2] <= 'Z') ? targ[2] + 32 : targ[2];
+      // targ[0] = tolower(targ[0]);
+      // targ[1] = tolower(targ[1]);
+      // targ[2] = tolower(targ[2]);
       targ[3] = '\0';
 
       if (!strcmp(targ, "tcp")) {
