@@ -5,7 +5,7 @@ CRITERION_TAR      = criterion-v2.3.3-linux-x86_64.tar.bz2
 
 INCLUDE_DIR       := $(INCLUDE_DIR:-I%=-I../%) -I$(CRITERION_DIR)/include
 SOURCES_DIR        = sources
-BIN_DIR			   = .bin
+BIN_DIR            = .bin
 
 UNIT_TESTS         = $(shell find ${SOURCES_DIR} -mindepth 1 -maxdepth 1 -type d)
 
