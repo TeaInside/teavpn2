@@ -6,23 +6,16 @@
 #if defined(__x86_64__)
 
 inline static void *__internal_t_ar_memcpy_x86_64(
-  register void *dest,
-  register const void *src,
-  register size_t n
+  void *__restrict__ dest,
+  const void *__restrict__ src,
+  size_t n
 ) {
-  // if (n == 1) {
-  //   *((char *)dest) = *((char *)src);
-  // } else {
-    __asm__ volatile(
-      "mov %0, %%rdi;"
-      "mov %1, %%rsi;"
-      "mov %2, %%rcx;"
-      "rep movsb;"
-      :
-      : "r"(dest), "r"(src), "r"(n)
-      : "rdi", "rsi", "rcx"
-    );
-  //}
+  __asm__ volatile(
+    "rep movsb;"
+    : "+D"(dest), "+S"(src), "+c"(n)
+    :
+    : "memory"
+  );
   return dest;
 }
 

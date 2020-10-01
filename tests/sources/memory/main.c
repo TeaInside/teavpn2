@@ -89,11 +89,9 @@ Test(memory, tr_ar_memcpy_test)
   } while (0)
 
   /* Must be able to do for aligned and unaligned data. */
-  TEST_MEMCPY(1);
-  printf("1\n");
-  TEST_MEMCPY(2);
-  TEST_MEMCPY(3);
-  TEST_MEMCPY(1025);
+  for (int i = 0; i < 2048; ++i) {
+    TEST_MEMCPY(i);
+  }
 }
 
 #endif
