@@ -33,6 +33,11 @@ jobs:
     - name: sudo apt-get install valgrind -y
       run: sudo apt-get install valgrind -y
 
+    - name: Codecov
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      run: (test $CODECOV_TOKEN && bash <(curl -s https://codecov.io/bash)) || true
+
     #################### Unit tests #################### 
     - name: env DEFAULT_OPTIMIZATION=-O1 make test -j$(nproc)
       run: env DEFAULT_OPTIMIZATION=-O1 make test -j$(nproc)
