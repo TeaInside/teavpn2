@@ -20,6 +20,8 @@ CLIENT_OBJECTS    := $(CLIENT_OBJECTS:%=../%)
 
 ROOT_DEPDIR       := ../$(ROOT_DEPDIR)/test
 
+MAKEFILE_DEPS      = test.mk Makefile ../Makefile
+
 ifeq ($(CLEAN),1)
 	DSECTION = clean
 	DO_TEST  = false
@@ -58,7 +60,8 @@ $(UNIT_TESTS): $(CRITERION_DIR) $(BIN_DIR)
 	CLIENT_OBJECTS="$(CLIENT_OBJECTS)" \
 	BIN_DIR="$(BIN_DIR)" \
 	ROOT_DEPDIR="$(ROOT_DEPDIR)" \
-	$(MAKE) --no-print-directory -j $(TEST_JOBS) $(DSECTION);
+	MAKEFILE_DEPS="$(MAKEFILE_DEPS)" \
+	$(MAKE) -s --no-print-directory -j $(TEST_JOBS) $(DSECTION);
 
 	@if $(DO_TEST); then \
 		env LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" \
