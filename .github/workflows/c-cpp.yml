@@ -11,55 +11,59 @@ on:
 
 jobs:
   main:
-    name: Run
+    name: Build and Test
     strategy:
       fail-fast: false
       matrix:
         os: [ ubuntu-16.04 ]
 
-        target: [
-          # We test clang all the way back to v3.9.0 (2016-09-02),
-          # as it's the first version to support ABI tags
-          clang-9.0.0, clang-8.0.0, clang-7.0.0,
-          clang-6.0.0,  clang-5.0.2, clang-4.0.0, clang-3.9.0,
-          # For g++, we test all major's latest minor releases since the
-          # introduction of ABI the dual ABI (v5.1, 2015-04-15)
-          g++-9, g++-8, g++-7, g++-6, g++-5
-        ]
+        target: [ clang-9.0.0, clang-8.0.0, g++-9, g++-8 ]
 
         include:
-          # Clang boilerplate
           - { target: clang-9.0.0, compiler: clang, cxx-version: 9.0.0 }
           - { target: clang-8.0.0, compiler: clang, cxx-version: 8.0.0 }
-          - { target: clang-7.0.0, compiler: clang, cxx-version: 7.0.0 }
-          - { target: clang-6.0.0, compiler: clang, cxx-version: 6.0.0 }
-          - { target: clang-5.0.2, compiler: clang, cxx-version: 5.0.2 }
-          # Note: 4.0.1 has no 16.04 package and the OSX archive extracts
-          #  to a different arch, so we don't use it
-          - { target: clang-4.0.0, compiler: clang, cxx-version: 4.0.0 }
-          - { target: clang-3.9.0, compiler: clang, cxx-version: 3.9.0 }
-          # g++ boilerplace
+
           - { target: g++-9, compiler: g++, cxx-version: 9.3.0 }
           - { target: g++-8, compiler: g++, cxx-version: 8.4.0 }
-          - { target: g++-7, compiler: g++, cxx-version: 7.5.0 }
-          - { target: g++-6, compiler: g++, cxx-version: 6.5.0 }
-          - { target: g++-5, compiler: g++, cxx-version: 5.5.0 }
 
     runs-on: ubuntu-16.04
     steps:
     - uses: actions/checkout@v2
+
     - name: sudo apt-get install valgrind -y
       run: sudo apt-get install valgrind -y
-    - name: make
-      run: make
-    - name: make test
-      run: make test
+
+
+    - name: env DEFAULT_OPTIMIZATION=-O1 make test -j$(nproc)
+      run: env DEFAULT_OPTIMIZATION=-O1 make test -j$(nproc)
+
+    - name: make clean
+      run: make clean
+
+    - name: env DEFAULT_OPTIMIZATION=-O2 make test -j$(nproc)
+      run: env DEFAULT_OPTIMIZATION=-O2 make test -j$(nproc)
+
+    - name: make clean
+      run: make clean
+
+    - name: env DEFAULT_OPTIMIZATION=-O3 make test -j$(nproc)
+      run: env DEFAULT_OPTIMIZATION=-O3 make test -j$(nproc)
+
+    - name: env DEFAULT_OPTIMIZATION=-O3 make -j$(nproc)
+      run: env DEFAULT_OPTIMIZATION=-O3 make -j$(nproc)
 
     ########################################
     #      Store generated artifacts       #
     ########################################
-    - name: Store artifacts
+    - name: Store teavpn_server artifact
       uses: actions/upload-artifact@v2
       with:
         name: teavpn_server
         path: teavpn_server
+
+    - name: Store teavpn_client artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: teavpn_client
+        path: teavpn_client
+
