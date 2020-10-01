@@ -16,7 +16,9 @@ GLOBAL_SOURCE_DIR = $(SOURCES_DIR)/teavpn2/global
 CLIENT_SOURCE_DIR = $(SOURCES_DIR)/teavpn2/client
 SERVER_SOURCE_DIR = $(SOURCES_DIR)/teavpn2/server
 
-DEFAULT_OPTIMIZATION = -O3
+ifndef DEFAULT_OPTIMIZATION
+	DEFAULT_OPTIMIZATION = -O0
+endif
 
 # C/C++ compile flags.
 CFLAGS   = -std=c99 $(INCLUDE_DIR) -c
