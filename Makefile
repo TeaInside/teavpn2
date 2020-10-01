@@ -143,10 +143,10 @@ global: $(GLOBAL_OBJECTS)
 $(GLOBAL_DEPDIR): | $(ROOT_DEPDIR)
 	mkdir -pv $@
 
-$(GLOBAL_CC_OBJECTS): | $(GLOBAL_DEPDIR)
+$(GLOBAL_CC_OBJECTS): Makefile | $(GLOBAL_DEPDIR)
 	$(CC) $(GLOBAL_DEPFLAGS) $(CFLAGS) $(@:%.o=%) -o $@
 
-$(GLOBAL_CXX_OBJECTS): | $(GLOBAL_DEPDIR)
+$(GLOBAL_CXX_OBJECTS): Makefile | $(GLOBAL_DEPDIR)
 	$(CXX) $(GLOBAL_DEPFLAGS) $(CXXFLAGS) $(@:%.o=%) -o $@
 
 -include $(GLOBAL_DEPFILES)
@@ -160,15 +160,15 @@ client: $(CLIENT_BIN)
 $(CLIENT_DEPDIR): | $(ROOT_DEPDIR)
 	mkdir -pv $@
 
-$(CLIENT_CC_OBJECTS): | $(CLIENT_DEPDIR)
+$(CLIENT_CC_OBJECTS): Makefile | $(CLIENT_DEPDIR)
 	$(CC) $(CLIENT_DEPFLAGS) $(CFLAGS) $(@:%.o=%) -o $@
 
-$(CLIENT_CXX_OBJECTS): | $(CLIENT_DEPDIR)
+$(CLIENT_CXX_OBJECTS): Makefile | $(CLIENT_DEPDIR)
 	$(CXX) $(CLIENT_DEPFLAGS) $(CXXFLAGS) $(@:%.o=%) -o $@
 
 -include $(CLIENT_DEPFILES)
 
-$(CLIENT_BIN): $(GLOBAL_OBJECTS) $(CLIENT_OBJECTS)
+$(CLIENT_BIN): Makefile $(GLOBAL_OBJECTS) $(CLIENT_OBJECTS)
 	$(LINKER) $(LDFLAGS) -o $@ $(CLIENT_OBJECTS) $(GLOBAL_OBJECTS) $(LIB_LDFLAGS)
 ###################### End of build client sources ######################
 
@@ -180,15 +180,15 @@ server: $(SERVER_BIN)
 $(SERVER_DEPDIR): | $(ROOT_DEPDIR)
 	mkdir -pv $@
 
-$(SERVER_CC_OBJECTS): | $(SERVER_DEPDIR)
+$(SERVER_CC_OBJECTS): Makefile | $(SERVER_DEPDIR)
 	$(CC) $(SERVER_DEPFLAGS) $(CFLAGS) $(@:%.o=%) -o $@
 
-$(SERVER_CXX_OBJECTS): | $(SERVER_DEPDIR)
+$(SERVER_CXX_OBJECTS): Makefile | $(SERVER_DEPDIR)
 	$(CXX) $(SERVER_DEPFLAGS) $(CXXFLAGS) $(@:%.o=%) -o $@
 
 -include $(SERVER_DEPFILES)
 
-$(SERVER_BIN): $(GLOBAL_OBJECTS) $(SERVER_OBJECTS)
+$(SERVER_BIN): Makefile $(GLOBAL_OBJECTS) $(SERVER_OBJECTS)
 	$(LINKER) $(LDFLAGS) -o $@ $(SERVER_OBJECTS) $(GLOBAL_OBJECTS) $(LIB_LDFLAGS)
 ###################### End of build server sources ######################
 
