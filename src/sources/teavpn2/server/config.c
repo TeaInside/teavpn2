@@ -18,11 +18,7 @@ inline static int server_parser_handler(
 
 bool tvpn_server_load_config_file(char *file, server_cfg *config)
 {
-  if (ini_parse(file, server_parser_handler, config) < 0) {
-    return false;
-  }
-
-  return true;
+  return ini_parse(file, server_parser_handler, config) >= 0;
 }
 
 
