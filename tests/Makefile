@@ -30,4 +30,4 @@ $(TEST_FILE): $(MAKEFILE_DEPS) $(OBJECTS) $(GLOBAL_OBJECTS)
 -include $(TEST_DEPFILES)
 
 clean:
-	rm -vfr $(TEST_DEPDIR) $(OBJECTS) $(TEST_FILE) || true
+	@rm -vfr $(TEST_DEPDIR) $(OBJECTS) $(TEST_FILE) || true
