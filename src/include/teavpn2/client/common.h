@@ -23,7 +23,7 @@ typedef struct _client_cfg {
   char                  *config_file;   /* Config file. */
   char                  *data_dir;      /* Data directory. */
   client_iface_cfg      iface;          /* Virtual interface configuration. */
-  client_socket_cfg      sock;           /* Socket configuration. */
+  client_socket_cfg      sock;          /* Socket configuration. */
 
 } client_cfg;
 

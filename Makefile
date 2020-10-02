@@ -233,7 +233,7 @@ test_clean:
 gcov: test $(SERVER_BIN) $(CLIENT_BIN)
 	$(SERVER_BIN) -c config/server.ini
 	$(CLIENT_BIN) -c config/client.ini
-	find -O2 . \( -name '*.gcno' -o -name '*.gcda' \) | xargs gcov
+	find -O2 . \( -name '*.gcno' -o -name '*.gcda' \) | xargs gcov -xl
 
 
 
