@@ -7,10 +7,11 @@ NASM   = nasm
 LINKER = $(CXX)
 
 # Source and include directories.
-SRC_DIR     = src
+CUR_DIR     = $(abspath .)
+SRC_DIR     = $(CUR_DIR)/src
 INCLUDE_DIR = -I$(SRC_DIR)/include -I$(SRC_DIR)/include/third_party
 SOURCES_DIR = $(SRC_DIR)/sources
-ROOT_DEPDIR = .deps
+ROOT_DEPDIR = $(CUR_DIR)/.deps
 
 GLOBAL_SOURCE_DIR = $(SOURCES_DIR)/teavpn2/global
 CLIENT_SOURCE_DIR = $(SOURCES_DIR)/teavpn2/client
@@ -18,6 +19,12 @@ SERVER_SOURCE_DIR = $(SOURCES_DIR)/teavpn2/server
 
 ifndef DEFAULT_OPTIMIZATION
 	DEFAULT_OPTIMIZATION = -O0
+endif
+
+ifeq ($(COVERAGE),1)
+	COVERAGE_FLAG = -fprofile-arcs -ftest-coverage --coverage
+else
+	COVERAGE_FLAG = 
 endif
 
 # C/C++ compile flags.
@@ -29,18 +36,18 @@ LIB_LDFLAGS    = -lpthread
 ifeq ($(RELEASE_MODE),1)
 
 	# Compile flags that apply to CC and CXX.
-	CCXXFLAGS = -Wall -Wextra -s -fno-stack-protector -O3 -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -DNDEBUG -D_GNU_SOURCE -D_REENTRANT
+	CCXXFLAGS = -Wall -Wextra $(COVERAGE_FLAG) -s -fno-stack-protector -O3 -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -DNDEBUG -D_GNU_SOURCE -D_REENTRANT $(COVERAGE_FLAG)
 
 	# Link flags
-	LDFLAGS = -Wall -Wextra -O3 -fPIC
+	LDFLAGS = -Wall -Wextra -O3 -fPIC $(COVERAGE_FLAG)
 
 else
 
 	# Compile flags that apply to CC and CXX.
-	CCXXFLAGS = -Wall -Wextra -fstack-protector-strong -ggdb3 $(DEFAULT_OPTIMIZATION) -grecord-gcc-switches -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -D_GNU_SOURCE -D_REENTRANT -DTEAVPN_DEBUG
+	CCXXFLAGS = -Wall -Wextra $(COVERAGE_FLAG) -fstack-protector-strong -ggdb3 $(DEFAULT_OPTIMIZATION) -grecord-gcc-switches -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -D_GNU_SOURCE -D_REENTRANT -DTEAVPN_DEBUG -DDEBUG
 
 	# Link flags
-	LDFLAGS = -Wall -Wextra -ggdb3 $(DEFAULT_OPTIMIZATION) -fPIC
+	LDFLAGS = -Wall -Wextra -ggdb3 $(DEFAULT_OPTIMIZATION) -fPIC $(COVERAGE_FLAG) 
 
 endif
 
@@ -52,8 +59,8 @@ CFLAGS   := $(CFLAGS) $(CCXXFLAGS)
 CXXFLAGS := $(CXXFLAGS) $(CCXXFLAGS)
 
 # Target compile.
-CLIENT_BIN = teavpn_client
-SERVER_BIN = teavpn_server
+CLIENT_BIN = $(CUR_DIR)/teavpn_client
+SERVER_BIN = $(CUR_DIR)/teavpn_server
 
 
 ###################### Global Part ######################
@@ -206,6 +213,7 @@ test: $(GLOBAL_OBJECTS) $(SERVER_OBJECTS) $(CLIENT_OBJECTS)
 	CLIENT_OBJECTS="$(CLIENT_OBJECTS)" \
 	ROOT_DEPDIR="$(ROOT_DEPDIR)" \
 	DEFAULT_OPTIMIZATION="$(DEFAULT_OPTIMIZATION)" \
+	COVERAGE_FLAG="$(COVERAGE_FLAG)" \
 	$(MAKE) -j $(TEST_JOBS) -f test.mk
 
 test_clean:
@@ -220,24 +228,34 @@ test_clean:
 	CLIENT_OBJECTS="$(CLIENT_OBJECTS)" \
 	CLEAN=1 \
 	ROOT_DEPDIR="$(ROOT_DEPDIR)" \
-	$(MAKE) --no-print-directory -j $(TEST_JOBS) -f test.mk
+	$(MAKE) -s --no-print-directory -j $(TEST_JOBS) -f test.mk
+
+gcov: test $(SERVER_BIN) $(CLIENT_BIN)
+	$(SERVER_BIN) -c config/server.ini
+	$(CLIENT_BIN) -c config/client.ini
+	find -O2 . \( -name '*.gcno' -o -name '*.gcda' \) | xargs gcov
+
+
 
 
 ###################### Cleaning part ######################
 clean: clean_global clean_client clean_server test_clean
-	rm -rfv $(ROOT_DEPDIR)
+	@rm -rfv $(ROOT_DEPDIR)
+
+clean_gcov:
+	@find -O2 . \( -name '*.gcno' -o -name '*.gcda' -o -name '*.gcov' \) | xargs rm -vf
 
 clean_global:
-	rm -rfv $(GLOBAL_OBJECTS)
-	rm -rfv $(GLOBAL_DEPDIR)
+	@rm -rfv $(GLOBAL_OBJECTS)
+	@rm -rfv $(GLOBAL_DEPDIR)
 
 clean_server:
-	rm -rfv $(SERVER_OBJECTS)
-	rm -rfv $(SERVER_BIN)
-	rm -rfv $(SERVER_DEPDIR)
+	@rm -rfv $(SERVER_OBJECTS)
+	@rm -rfv $(SERVER_BIN)
+	@rm -rfv $(SERVER_DEPDIR)
 
 clean_client:
-	rm -rfv $(CLIENT_OBJECTS)
-	rm -rfv $(CLIENT_BIN)
-	rm -rfv $(CLIENT_DEPDIR)
+	@rm -rfv $(CLIENT_OBJECTS)
+	@rm -rfv $(CLIENT_BIN)
+	@rm -rfv $(CLIENT_DEPDIR)
 ###################### End of cleaning part ######################
