@@ -6,6 +6,7 @@
 #include <inih/ini.h>
 #include <teavpn2/client/common.h>
 
+static bool failed = false;
 
 inline static int client_parser_handler(
   void *user,
@@ -18,7 +19,19 @@ inline static int client_parser_handler(
 
 bool tvpn_client_load_config_file(char *file, client_cfg *config)
 {
-  return ini_parse(file, client_parser_handler, config) >= 0;
+  int ret = ini_parse(file, client_parser_handler, config);
+
+  if (ret < 0) {
+    printf("File \"%s\" does not exist\n", file);
+    return false;
+  }
+
+  if (failed) {
+    printf("Error loading config file!\n");
+    return false;
+  }
+
+  return true;
 }
 
 
@@ -71,6 +84,7 @@ inline static int client_parser_handler(
         config->sock.type = sock_udp;
       } else {
         printf("Invalid socket type: \"%s\"\n", value);
+        failed = true;
         return 0;
       }
 
@@ -83,11 +97,13 @@ inline static int client_parser_handler(
     config->data_dir = t_ar_strndup(value, 256);
   } else {
     printf("Invalid section \"%s\" on line %d\n", section, lineno);
+    failed = true;
     return 0;
   }
 
   return 1;
 invalid_name:
   printf("Invalid name: \"%s\" in section \"%s\" on line %d\n", name, section, lineno);
+  failed = true;
   return 0;
 }
