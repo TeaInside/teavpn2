@@ -33,32 +33,17 @@ jobs:
     - name: sudo apt-get install valgrind -y
       run: sudo apt-get install valgrind -y
 
-    - name: Codecov
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-      run: (test $CODECOV_TOKEN && bash <(curl -s https://codecov.io/bash)) || true
+    #################### Unit tests and codecov #################### 
+    - name: Run unit tests and gcov
+      run: env DEFAULT_OPTIMIZATION=-O1 make gcov COVERAGE=1 -j$(nproc)
+    - name: Codecov report
+      run: bash <(curl -s https://codecov.io/bash)
+    #################### End of unit tests and codecov ####################
 
-    #################### Unit tests #################### 
-    - name: env DEFAULT_OPTIMIZATION=-O1 make test -j$(nproc)
-      run: env DEFAULT_OPTIMIZATION=-O1 make test -j$(nproc)
+    - name: Cleaning unit tests and codecov
+      run: make clean; make clean_gcov
 
-    - name: make clean -j$(nproc)
-      run: make clean -j$(nproc)
-
-    - name: env DEFAULT_OPTIMIZATION=-O2 make test -j$(nproc)
-      run: env DEFAULT_OPTIMIZATION=-O2 make test -j$(nproc)
-
-    - name: make clean -j$(nproc)
-      run: make clean -j$(nproc)
-
-    - name: env DEFAULT_OPTIMIZATION=-O3 make test -j$(nproc)
-      run: env DEFAULT_OPTIMIZATION=-O3 make test -j$(nproc)
-
-    - name: make clean -j$(nproc)
-      run: make clean -j$(nproc)
-    #################### End of unit tests ####################
-
-    - name: env RELEASE_MODE=1 DEFAULT_OPTIMIZATION=-O3 make -j$(nproc)
+    - name: Build release binary
       run: env RELEASE_MODE=1 DEFAULT_OPTIMIZATION=-O3 make -j$(nproc)
 
     - name: Strip the release binaries
@@ -66,9 +51,7 @@ jobs:
         strip -s teavpn_server
         strip -s teavpn_client
 
-    ########################################
-    #      Store generated artifacts       #
-    ########################################
+    ## Store generated artifacts
     - name: Store teavpn_server artifact
       uses: actions/upload-artifact@v2
       with:
