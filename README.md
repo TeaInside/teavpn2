@@ -5,26 +5,52 @@ TeaVPN2 is an open source VPN software written in C/C++.
 
 
 # Installation
+
+## Simple
+
+### Clone the repository
 ```sh
-# Clone the repository.
 git clone https://github.com/TeaInside/teavpn2;
 cd teavpn2;
+```
 
-# Build server and client binaries
+### Build server and client binaries
+```sh
 make -j$(nproc)
+```
 
-# Build server binary only.
+## Custom and test
+
+### Build server binary only
+```sh
 make -j$(nproc) server
+```
 
-# Build client binary only.
+### Build client binary only
+```sh
 make -j$(nproc) client
+```
 
-# Build global objects only.
+### Build global objects only
+```sh
 make -j$(nproc) global
+```
 
-# Build in release mode, add env var RELEASE_MODE=1.
+### Build in release mode, add env var RELEASE_MODE=1
+```sh
 env RELEASE_MODE=1 make -j$(nproc)
 ```
+
+### Build and run unit tests
+```sh
+make test
+```
+
+### Build and run gcov and run unit tests (must be clean before run this)
+```sh
+make gcov COVERAGE=1
+```
+
 
 # Directory Structure
 1. `src/include/teavpn2/server` is a directory for teavpn2 server **header files**.

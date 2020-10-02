@@ -1,18 +1,25 @@
 
 
-CRITERION_DIR      = $(abspath criterion-v2.3.3)
+CRITERION_DIR      = criterion-v2.3.3
 CRITERION_TAR      = criterion-v2.3.3-linux-x86_64.tar.bz2
 
-INCLUDE_DIR       := $(INCLUDE_DIR) -I$(CRITERION_DIR)/include
+INCLUDE_DIR       := $(INCLUDE_DIR:-I%=-I../%) -I$(CRITERION_DIR)/include
 SOURCES_DIR        = sources
 BIN_DIR            = .bin
 
 UNIT_TESTS         = $(shell find ${SOURCES_DIR} -mindepth 1 -maxdepth 1 -type d)
 
+COVERAGE_FLAG      = -fprofile-arcs -ftest-coverage --coverage
 LD_LIBRARY_PATH    = $(CRITERION_DIR)/lib
-CFLAGS             = $(DEFAULT_OPTIMIZATION) -ggdb3 -grecord-gcc-switches -fstack-protector-strong -fPIC -fasynchronous-unwind-tables $(INCLUDE_DIR)
-LDFLAGS           := $(LDFLAGS)
+CFLAGS             = $(COVERAGE_FLAG) $(DEFAULT_OPTIMIZATION) -ggdb3 -grecord-gcc-switches -fstack-protector-strong -fPIC -fasynchronous-unwind-tables $(INCLUDE_DIR)
+LDFLAGS           := $(COVERAGE_FLAG) $(LDFLAGS)
 LIB_LDFLAGS       := -L$(LD_LIBRARY_PATH) -lcriterion
+
+GLOBAL_OBJECTS    := $(GLOBAL_OBJECTS:%=../%)
+SERVER_OBJECTS    := $(SERVER_OBJECTS:%=../%)
+CLIENT_OBJECTS    := $(CLIENT_OBJECTS:%=../%)
+
+ROOT_DEPDIR       := ../$(ROOT_DEPDIR)/tests
 
 MAKEFILE_DEPS      = test.mk Makefile ../Makefile
 
@@ -56,14 +63,21 @@ $(UNIT_TESTS): $(CRITERION_DIR) $(BIN_DIR)
 	ROOT_DEPDIR="$(ROOT_DEPDIR)" \
 	MAKEFILE_DEPS="$(MAKEFILE_DEPS)" \
 	COVERAGE_FLAG="$(COVERAGE_FLAG)" \
-	$(MAKE) --no-print-directory -j $(TEST_JOBS) $(DSECTION);
+	$(MAKE) -s --no-print-directory -j $(TEST_JOBS) $(DSECTION);
 
 	@if $(DO_TEST); then \
 		env LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" \
 		valgrind --show-leak-kinds=all \
 		$(BIN_DIR)/$(@:sources/%=%).test; \
+		find -O2 $(@) \( -name '*.gcda' -o -name '*.gcno' \) | \
+		xargs gcov \
+		--all-blocks \
+		--hash-filenames \
+		--function-summaries; \
 	else \
 		true; \
 	fi;
+
+
 
 ####################### End of Unit Tests ######################
