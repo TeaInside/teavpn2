@@ -1,6 +1,5 @@
 
 #include <stdio.h>
-#include <stdlib.h>
 
 #include <teavpn2/server/common.h>
 
