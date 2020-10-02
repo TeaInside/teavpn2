@@ -21,12 +21,12 @@ typedef struct _server_iface_cfg {
 
 
 
-typedef struct _socket_cfg {
+typedef struct _server_socket_cfg {
   char                  *bind_addr;     /* Socket server bind address. */
   int                   backlog;        /* Socket listen backlog. */
   uint16_t              bind_port;      /* Socket server bind port. */
   socket_type           type;           /* Socket type, TCP/UDP. */
-} socket_cfg;
+} server_socket_cfg;
 
 
 typedef struct _server_cfg {
@@ -34,7 +34,7 @@ typedef struct _server_cfg {
   char                  *config_file;   /* Config file. */
   char                  *data_dir;      /* Data directory. */
   server_iface_cfg      iface;          /* Virtual interface configuration. */
-  socket_cfg            sock;           /* Socket configuration. */
+  server_socket_cfg     sock;           /* Socket configuration. */
 
 } server_cfg;
 
