@@ -1,4 +1,7 @@
 
+#include <linux/if.h>
+#include <linux/if_tun.h>
+
 #include <teavpn2/server/common.h>
 
 
@@ -7,18 +10,27 @@ inline static bool tvpn_server_config_validate(server_cfg *config);
 
 int tvpn_server_run(server_cfg *config)
 {
-  int ret;
+  int ret = 1;
   server_state *state = (server_state *)t_ar_alloc(sizeof(server_state));
 
   if (!tvpn_server_config_validate(config)) {
-    ret = 1;
     goto ret;
   }
 
 
   {
+    state->tun_fds = (int *)t_ar_alloc(sizeof(int) * 10);
+
+
     /* Initialize TUN/TAP interface. */
-    tvpn_tun_alloc();
+    if (tun_alloc_mq(config->iface.dev, 10, state->tun_fds) < 0) {
+      goto ret;
+    }
+
+    /* Detach all queue. */
+    for (int i = 0; i < 10; i++) {
+      tun_set_queue(state->tun_fds[i], 0);
+    }
   }
 
   switch (config->sock.type) {
@@ -28,12 +40,10 @@ int tvpn_server_run(server_cfg *config)
 
     case sock_udp:
       printf("UDP socket is not supported yet!\n");
-      ret = 1;
       goto ret;
 
     default:
       printf("Invalid socket type %d\n", config->sock.type);
-      ret = 1;
       goto ret;
   }
 
