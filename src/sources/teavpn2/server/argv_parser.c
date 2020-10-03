@@ -26,6 +26,7 @@ inline static bool getopt_handler(int argc, char **argv, server_cfg *config);
 static const int default_back_log = 10;
 static const uint16_t default_mtu = 1500;
 static const uint16_t default_bind_port = 55555;
+static const uint16_t default_max_conn  = 10;
 static char default_dev_name[] = "tun0";
 
 /**
@@ -69,6 +70,7 @@ inline static void set_default_config(server_cfg *config)
   config->sock.backlog    = default_back_log;
   config->sock.bind_port  = default_bind_port;
   config->sock.type       = sock_tcp;
+  config->sock.max_conn   = default_max_conn;
 }
 
 static const struct option long_options[] = {
@@ -87,6 +89,7 @@ static const struct option long_options[] = {
   {"bind-port",    required_argument, 0, 'P'},
   {"sock-type",    required_argument, 0, 's'},
   {"backlog",      required_argument, 0, 'B'},
+  {"max-conn",     required_argument, 0, 'M'},
 
   {"data-dir",     required_argument, 0, 'u'},
 
@@ -107,7 +110,7 @@ inline static bool getopt_handler(int argc, char **argv, server_cfg *config)
   while (1) {
     int option_index = 0;
     /*int this_option_optind = optind ? optind : 1;*/
-    c = getopt_long(argc, argv, "c:hd:m:4:b:H:P:s:B:u:", long_options, &option_index);
+    c = getopt_long(argc, argv, "c:hd:m:4:b:H:P:s:B:u:M:", long_options, &option_index);
 
     if (c == -1)
       break;
@@ -182,6 +185,11 @@ inline static bool getopt_handler(int argc, char **argv, server_cfg *config)
         config->sock.backlog = atoi(optarg);
         PRINT_CONFIG(config->sock.backlog, "%d", config->sock.backlog);
         break;
+      case 'M':
+        config->sock.max_conn = (uint16_t)atoi(optarg);
+        PRINT_CONFIG(config->sock.max_conn, "%d", config->sock.max_conn);
+        break;
+
 
       case 'u':
         config->data_dir = optarg;
@@ -223,6 +231,7 @@ inline static void show_help(char *app)
   printf("  -P, --bind-port=PORT\t\tSet bind port (default: %d).\n", default_bind_port);
   printf("  -s, --sock-type=TYPE\t\tSet socket type (must be tcp or udp) (default: tcp).\n");
   printf("  -B, --backlog=TYPE\t\tSet socket listen backlog (default: %d).\n", default_back_log);
+  printf("  -M, --max-conn=N\t\tSet max connections (default: %d).\n", default_max_conn);
 
   printf("\n");
   printf("Other:\n");
