@@ -21,4 +21,7 @@ char *escapeshellarg(char *alloc, char *str);
 #define OFFSETOF(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT)) 
 #endif
 
+int tun_alloc(char *dev, int flags);
+int tun_set_queue(int fd, int enable);
+
 #endif
