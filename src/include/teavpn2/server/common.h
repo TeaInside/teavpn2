@@ -2,6 +2,7 @@
 #ifndef TEAVPN2__SERVER__COMMON_H
 #define TEAVPN2__SERVER__COMMON_H
 
+#include <pthread.h>
 #include <linux/types.h>
 #include <teavpn2/global/common.h>
 
@@ -48,7 +49,8 @@ typedef struct _tcp_channel {
   int                   cli_fd;
   uint64_t              recv_count;
   uint64_t              send_count;
-
+  pthread_t             thread;
+  pthread_mutex_t       ht_mutex;
   __be32                ipv4;
   char                  *username;
 } tcp_channel;
