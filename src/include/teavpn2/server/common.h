@@ -38,7 +38,11 @@ typedef struct _server_cfg {
 
 } server_cfg;
 
-
+typedef struct _server_state {
+  server_cfg            *config;        /* Server config. */
+  int                   tun_fd;         /* TUN/TAP fd. */
+  int                   sock_fd;        /* Master socket fd. */
+} server_state;
 
 /* argv_parser */
 bool tvpn_server_argv_parse(
@@ -53,5 +57,9 @@ bool tvpn_server_argv_parse(
 /* config */
 bool tvpn_server_load_config_file(char *file, server_cfg *config);
 /* End of config */
+
+int tvpn_server_run(server_cfg *config);
+
+int tvpn_server_tcp_run(server_state *state);
 
 #endif
