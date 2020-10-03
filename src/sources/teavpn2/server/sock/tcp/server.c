@@ -22,7 +22,6 @@
 inline static void tvpn_server_tcp_signal_handler(int signal);
 inline static bool tvpn_server_tcp_iface_init(server_tcp_state * __restrict__ state);
 inline static bool tvpn_server_tcp_sock_init(server_tcp_state * __restrict__ state);
-inline static bool tvpn_server_tcp_sock_init(server_tcp_state * __restrict__ state);
 inline static void tvpn_server_tcp_accept(server_tcp_state * __restrict__ state);
 inline static bool tvpn_server_tcp_socket_setup(int fd);
 
@@ -56,13 +55,11 @@ int tvpn_server_tcp_run(server_cfg *config)
   state.stop   = false;
   g_state      = &state;
 
-  {
-    state.config      = config;
-    state.channels    = (tcp_channel *)malloc(sizeof(tcp_channel) * max_conn);
+  state.config      = config;
+  state.channels    = (tcp_channel *)malloc(sizeof(tcp_channel) * max_conn);
 
-    debug_log(2, "Initializing client channels (max_conn: %d)...", max_conn);
-    tvpn_server_init_channels(state.channels, max_conn);
-  }
+  debug_log(2, "Initializing client channels (max_conn: %d)...", max_conn);
+  tvpn_server_init_channels(state.channels, max_conn);
 
   debug_log(2, "Allocating virtual network interface...");
   if (!tvpn_server_tcp_iface_init(&state)) {
