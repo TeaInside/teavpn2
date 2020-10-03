@@ -11,31 +11,15 @@ inline static bool tvpn_server_config_validate(server_cfg *config);
 int tvpn_server_run(server_cfg *config)
 {
   int ret = 1;
-  server_state *state = (server_state *)t_ar_alloc(sizeof(server_state));
 
+  debug_log(4, "Validating server config...");
   if (!tvpn_server_config_validate(config)) {
     goto ret;
   }
 
-
-  {
-    state->tun_fds = (int *)t_ar_alloc(sizeof(int) * 10);
-
-
-    /* Initialize TUN/TAP interface. */
-    if (tun_alloc_mq(config->iface.dev, 10, state->tun_fds) < 0) {
-      goto ret;
-    }
-
-    /* Detach all queue. */
-    for (int i = 0; i < 10; i++) {
-      tun_set_queue(state->tun_fds[i], 0);
-    }
-  }
-
   switch (config->sock.type) {
     case sock_tcp:
-      ret = tvpn_server_tcp_run(state);
+      ret = tvpn_server_tcp_run(config);
       goto ret;
 
     case sock_udp:

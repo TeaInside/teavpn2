@@ -13,9 +13,16 @@
 
 /* https://www.kernel.org/doc/Documentation/networking/tuntap.txt */
 
-int tun_alloc_mq(char *dev, int queues, int *fds)
+/* Flags: IFF_TUN   - TUN device (no Ethernet headers)
+ *        IFF_TAP   - TAP device
+ *
+ *        IFF_NO_PI - Do not provide packet information
+ *        IFF_MULTI_QUEUE - Create a queue of multiqueue device
+ */
+
+int tun_alloc(char *dev, int flags)
 {
-  int fd, ret, i;
+  int fd, ret;
   struct ifreq ifr;
 
   if (!dev) {
@@ -26,43 +33,22 @@ int tun_alloc_mq(char *dev, int queues, int *fds)
 
   /* Fill the interface name. */
   strncpy(ifr.ifr_name, dev, IFNAMSIZ);
+  ifr.ifr_flags = flags;
 
-  /* Flags: IFF_TUN   - TUN device (no Ethernet headers)
-   *        IFF_TAP   - TAP device
-   *
-   *        IFF_NO_PI - Do not provide packet information
-   *        IFF_MULTI_QUEUE - Create a queue of multiqueue device
-   */
-  ifr.ifr_flags = IFF_TAP | IFF_NO_PI | IFF_MULTI_QUEUE;
-
-  for (i = 0; i < queues; i++) {
-
-    if ((fd = open("/dev/net/tun", O_RDWR)) < 0) {
-      printf("Error open(/dev/net/tun): %s\n", strerror(errno));
-      goto err;
-    }
-
-    if ((ret = ioctl(fd, TUNSETIFF, (void *)&ifr)) < 0) {
-      printf("Error ioctl(%d, TUNSETIFF): %s\n", fd, strerror(errno));
-      close(fd);
-      goto err;
-    }
-
-    fds[i] = fd;
+  if ((fd = open("/dev/net/tun", O_RDWR)) < 0) {
+    printf("Error open(/dev/net/tun): %s\n", strerror(errno));
+    return fd;
   }
 
-
-  return 0;
-
-err:
-
-  /* Close opened fds. */
-  for (--i; i >= 0; i--) {
-    close(fds[i]);
+  if ((ret = ioctl(fd, TUNSETIFF, (void *)&ifr)) < 0) {
+    printf("Error ioctl(%d, TUNSETIFF): %s\n", fd, strerror(errno));
+    close(fd);
+    return ret;
   }
 
-  return ret;
+  return fd;
 }
+
 
 int tun_set_queue(int fd, int enable)
 {
