@@ -53,7 +53,7 @@ int tvpn_server_tcp_run(server_cfg *config)
     goto ret;
   }
 
-  
+
 
 
   ret:
@@ -220,7 +220,7 @@ inline static bool tvpn_server_tcp_socket_setup(int fd)
   int opt_1 = 1;
 
   #define SET_SOCK_OPT(LEVEL, OPTNAME, OPTVAL, OPTLEN)            \
-    if (setsockopt(fd, LEVEL, OPTNAME, OPTVAL, OPTLEN) < 0) { \
+    if (setsockopt(fd, LEVEL, OPTNAME, OPTVAL, OPTLEN) < 0) {     \
       debug_log(0, "Error setsockopt: %s", strerror(errno));      \
       return false;                                               \
     }
