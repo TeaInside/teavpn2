@@ -68,7 +68,7 @@ $(UNIT_TESTS): $(CRITERION_DIR) $(BIN_DIR)
 	@if $(DO_TEST); then \
 		env LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" \
 		valgrind --show-leak-kinds=all \
-		$(BIN_DIR)/$(@:sources/%=%).test; \
+		$(BIN_DIR)/$(@:sources/%=%).test && \
 		find -O2 $(@) \( -name '*.gcda' -o -name '*.gcno' \) | \
 		xargs gcov \
 		--all-blocks \
