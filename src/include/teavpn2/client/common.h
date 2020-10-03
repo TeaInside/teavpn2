@@ -43,4 +43,6 @@ bool tvpn_client_argv_parse(
 bool tvpn_client_load_config_file(char *file, client_cfg *config);
 /* End of config */
 
+int tvpn_client_run(client_cfg *config);
+
 #endif
