@@ -129,9 +129,18 @@ int tvpn_server_tcp_run(server_cfg *config)
     tcp_channel *channels = state.channels;
     for (uint16_t i = 0; i < max_conn; ++i) {
       int the_fd = channels[i].tun_fd;
+
+      if (channels[i].is_used) {
+        pthread_mutex_lock(&(channels[i].ht_mutex));
+      }
+
       if (the_fd != -1) {
         debug_log(0, "Closing tun_fd -> (%d)", the_fd);
         close(the_fd);
+      }
+
+      if (channels[i].is_used) {
+        pthread_mutex_unlock(&(channels[i].ht_mutex));
       }
     }
 
@@ -472,6 +481,7 @@ inline static void *tvpn_server_tcp_worker_thread(void *_chan)
   }
 
   close(chan->cli_fd);
+  chan->is_used = false;
   pthread_mutex_unlock(&(chan->ht_mutex));
 
   return NULL;
