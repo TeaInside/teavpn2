@@ -13,4 +13,6 @@ typedef enum {
   sock_udp
 } socket_type;
 
+char *escapeshellarg(char *alloc, char *str);
+
 #endif

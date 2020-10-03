@@ -86,11 +86,18 @@ int tun_set_queue(int fd, int enable)
 
 int iface_up(server_iface_cfg *iface)
 {
-  char cmd[256];
+  char
+    cmd[256],
+    dev[16],
+    ipv4[sizeof("xxx.xxx.xxx.xxx/xx")],
+    ipv4_bcmask[sizeof("xxx.xxx.xxx.xxx")];
 
+  escapeshellarg(dev, iface->dev);
+  escapeshellarg(ipv4, iface->ipv4);
+  escapeshellarg(ipv4_bcmask, iface->ipv4_bcmask);
 
-  IFACE_CMD("/sbin/ip link set dev %s up mtu %d", iface->dev, iface->mtu);
-  IFACE_CMD("/sbin/ip addr add dev %s %s broadcast %s", iface->dev, iface->ipv4, iface->ipv4_bcmask);
+  IFACE_CMD("/sbin/ip link set dev %s up mtu %d", dev, iface->mtu);
+  IFACE_CMD("/sbin/ip addr add dev %s %s broadcast %s", dev, ipv4, ipv4_bcmask);
 
   return 0;
 }
