@@ -77,3 +77,20 @@ int tun_set_queue(int fd, int enable)
 
   return ioctl(fd, TUNSETQUEUE, (void *)&ifr);
 }
+
+#define IFACE_CMD(CMD, ...)       \
+  sprintf(cmd, CMD, __VA_ARGS__); \
+  if (system(cmd)) {              \
+    return -1;                    \
+  }
+
+int iface_up(server_iface_cfg *iface)
+{
+  char cmd[256];
+
+
+  IFACE_CMD("/sbin/ip link set dev %s up mtu %d", iface->dev, iface->mtu);
+  IFACE_CMD("/sbin/ip addr add dev %s %s broadcast %s", iface->dev, iface->ipv4, iface->ipv4_bcmask);
+
+  return 0;
+}
