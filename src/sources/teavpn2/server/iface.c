@@ -64,13 +64,14 @@ int tun_set_queue(int fd, int enable)
   return ioctl(fd, TUNSETQUEUE, (void *)&ifr);
 }
 
-#define IFACE_CMD(CMD, ...)       \
-  sprintf(cmd, CMD, __VA_ARGS__); \
-  if (system(cmd)) {              \
-    return -1;                    \
+#define IFACE_CMD(CMD, ...)            \
+  sprintf(cmd, CMD, __VA_ARGS__);      \
+  debug_log(2, "Executing: %s", cmd);  \
+  if (system(cmd)) {                   \
+    return -1;                         \
   }
 
-int iface_up(server_iface_cfg *iface)
+int tun_iface_up(server_iface_cfg *iface)
 {
   char
     cmd[256],

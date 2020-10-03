@@ -61,7 +61,6 @@ int tvpn_server_tcp_run(server_cfg *config)
   ret:
   {
     /* Close tun fd(s). */
-
     tcp_channel *channels = state.channels;
     for (uint16_t i = 0; i < max_conn; ++i) {
       int the_fd = channels[i].tun_fd;
@@ -112,6 +111,8 @@ inline static bool tvpn_server_iface_init(tcp_state * __restrict__ state)
 
     channels[i].tun_fd = fd;
   }
+
+  tun_iface_up(iface);
 
   return true;
 
