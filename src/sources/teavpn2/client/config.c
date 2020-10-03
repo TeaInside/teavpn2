@@ -4,11 +4,11 @@
 #include <stdlib.h>
 
 #include <inih/ini.h>
-#include <teavpn2/server/common.h>
+#include <teavpn2/client/common.h>
 
 static bool failed = false;
 
-inline static int server_parser_handler(
+inline static int client_parser_handler(
   void *user,
   const char *section,
   const char *name,
@@ -17,9 +17,9 @@ inline static int server_parser_handler(
 );
 
 
-bool tvpn_server_load_config_file(char *file, server_cfg *config)
+bool tvpn_client_load_config_file(char *file, client_cfg *config)
 {
-  int ret = ini_parse(file, server_parser_handler, config);
+  int ret = ini_parse(file, client_parser_handler, config);
 
   if (ret < 0) {
     printf("File \"%s\" does not exist\n", file);
@@ -35,7 +35,7 @@ bool tvpn_server_load_config_file(char *file, server_cfg *config)
 }
 
 
-inline static int server_parser_handler(
+inline static int client_parser_handler(
   void *user,
   const char *section,
   const char *name,
@@ -43,7 +43,7 @@ inline static int server_parser_handler(
   int lineno
 )
 {
-  server_cfg *config = (server_cfg *)user;
+  client_cfg *config = (client_cfg *)user;
 
   #define RMATCH_S(STR) if (!strcmp(section, STR))
   #define RMATCH_N(STR) if (!strcmp(name, STR))
@@ -55,12 +55,6 @@ inline static int server_parser_handler(
     } else
     RMATCH_N("mtu") {
       config->iface.mtu = (uint16_t)atoi(value);
-    } else
-    RMATCH_N("ipv4") {
-      config->iface.ipv4 = t_ar_strndup(value, sizeof("xxx.xxx.xxx.xxx") - 1);
-    } else
-    RMATCH_N("ipv4_bcmask") {
-      config->iface.ipv4_bcmask = t_ar_strndup(value, sizeof("xxx.xxx.xxx.xxx") - 1);
     } else {
       goto invalid_name;
     }
@@ -68,11 +62,11 @@ inline static int server_parser_handler(
   } else
   RMATCH_S("socket") {
 
-    RMATCH_N("bind_addr") {
-      config->sock.bind_addr = t_ar_strndup(value, 256);
+    RMATCH_N("server_addr") {
+      config->sock.server_addr = t_ar_strndup(value, 256);
     } else
-    RMATCH_N("bind_port") {
-      config->sock.bind_port = (uint16_t)atoi(value);
+    RMATCH_N("server_port") {
+      config->sock.server_port = (uint16_t)atoi(value);
     } else
     RMATCH_N("sock_type") {
       char targ[4];
@@ -94,9 +88,6 @@ inline static int server_parser_handler(
         return 0;
       }
 
-    } else
-    RMATCH_N("backlog") {
-      config->sock.backlog = atoi(value);
     } else {
       goto invalid_name;
     }

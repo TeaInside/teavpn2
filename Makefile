@@ -224,20 +224,23 @@ test_clean:
 
 
 ###################### Cleaning part ######################
-clean: clean_global clean_client clean_server test_clean
-	rm -rfv $(ROOT_DEPDIR)
+clean: clean_global clean_client clean_server test_clean clean_gcov
+	@rm -rfv $(ROOT_DEPDIR)
+
+clean_gcov:
+	@find -O2 tests \( -name '*.gcda' -o -name '*.gcno' -o -name '*.gcov' \) | xargs rm -vf
 
 clean_global:
-	rm -rfv $(GLOBAL_OBJECTS)
-	rm -rfv $(GLOBAL_DEPDIR)
+	@rm -rfv $(GLOBAL_OBJECTS)
+	@rm -rfv $(GLOBAL_DEPDIR)
 
 clean_server:
-	rm -rfv $(SERVER_OBJECTS)
-	rm -rfv $(SERVER_BIN)
-	rm -rfv $(SERVER_DEPDIR)
+	@rm -rfv $(SERVER_OBJECTS)
+	@rm -rfv $(SERVER_BIN)
+	@rm -rfv $(SERVER_DEPDIR)
 
 clean_client:
-	rm -rfv $(CLIENT_OBJECTS)
-	rm -rfv $(CLIENT_BIN)
-	rm -rfv $(CLIENT_DEPDIR)
+	@rm -rfv $(CLIENT_OBJECTS)
+	@rm -rfv $(CLIENT_BIN)
+	@rm -rfv $(CLIENT_DEPDIR)
 ###################### End of cleaning part ######################

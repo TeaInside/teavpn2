@@ -6,6 +6,9 @@
 *.tmp
 *.lock
 *.dump
+*.gcno
+*.gcda
+*.gcov
 /.deps/
 /teavpn_server
 /teavpn_client
