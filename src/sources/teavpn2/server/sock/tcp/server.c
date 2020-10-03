@@ -406,6 +406,8 @@ inline static void tvpn_server_tcp_accept(tcp_state * __restrict__ state)
     chan->ipv4       = 0x00000000;
     chan->username   = NULL;
 
+    tun_set_queue(chan->tun_fd, 1);
+
     if (pthread_mutex_init(&(chan->ht_mutex), NULL) < 0) {
       debug_log(0, "phtread_mutex_init error: %s", strerror(errno));
       return;
@@ -482,6 +484,7 @@ inline static void *tvpn_server_tcp_worker_thread(void *_chan)
 
   close(chan->cli_fd);
   chan->is_used = false;
+  tun_set_queue(chan->tun_fd, 0);
   pthread_mutex_unlock(&(chan->ht_mutex));
 
   return NULL;
