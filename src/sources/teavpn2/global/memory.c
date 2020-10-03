@@ -21,7 +21,7 @@ void *t_ar_alloc(register size_t len)
   register char *ret  = &(((char *)__t_arena)[__t_arena_pos]);
   __t_arena_pos      += len;
 
-  assert(__t_arena_pos < __t_arena_len);
+  assert(__t_arena_pos <= __t_arena_len);
 
   return (void *)ret;
 }
