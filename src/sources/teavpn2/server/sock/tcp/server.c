@@ -17,12 +17,17 @@
 
 #include <teavpn2/server/common.h>
 
-inline static bool tvpn_server_iface_init(tcp_state * __restrict__ state);
+inline static void tvpn_server_tcp_signal_handler(int signal);
+inline static bool tvpn_server_tcp_iface_init(tcp_state * __restrict__ state);
 inline static bool tvpn_server_tcp_sock_init(tcp_state * __restrict__ state);
+inline static bool tvpn_server_tcp_sock_init(tcp_state * __restrict__ state);
+inline static void tvpn_server_tcp_accept(tcp_state * __restrict__ state);
 inline static bool tvpn_server_tcp_socket_setup(int fd);
 
 inline static void tvpn_server_init_channel(tcp_channel *chan);
 inline static void tvpn_server_init_channels(tcp_channel *channels, uint16_t max_conn);
+
+static tcp_state *g_state = NULL;
 
 /**
  * @param server_cfg *config
@@ -31,11 +36,17 @@ inline static void tvpn_server_init_channels(tcp_channel *channels, uint16_t max
 __attribute__((force_align_arg_pointer))
 int tvpn_server_tcp_run(server_cfg *config)
 {
-  const uint16_t max_conn  = config->sock.max_conn;
-  int            ret       = 1;
-  tcp_state state;
+  const uint16_t max_conn   = config->sock.max_conn;
+  int            ret        = 1;
+  int            pipe_fd[2] = {-1, -1};
+  tcp_state      state;
+  struct pollfd  fds[2];
+  nfds_t         nfds;
+  int            ptimeout;
 
   state.net_fd = -1;
+  state.stop   = false;
+  g_state      = &state;
 
   {
     state.config      = config;
@@ -46,7 +57,12 @@ int tvpn_server_tcp_run(server_cfg *config)
   }
 
   debug_log(2, "Allocating virtual network interface...");
-  if (!tvpn_server_iface_init(&state)) {
+  if (!tvpn_server_tcp_iface_init(&state)) {
+    goto ret;
+  }
+
+  debug_log(2, "Initializing pipe...");
+  if (pipe(pipe_fd) < -1) {
     goto ret;
   }
 
@@ -56,7 +72,40 @@ int tvpn_server_tcp_run(server_cfg *config)
   }
 
 
+  /* Add TCP socket fd to fds. */
+  fds[0].fd     = state.net_fd;
+  fds[0].events = POLLIN;
 
+  /* Add pipe fd to fds. */
+  fds[1].fd     = pipe_fd[0];
+  fds[1].events = POLLIN;
+
+  nfds          = 2;
+  ptimeout      = 3000;
+
+
+  while (true) {
+    int rv;
+
+    rv = poll(fds, nfds, ptimeout);
+
+
+    /* Poll reached timeout. */
+    if (rv == 0) {
+      goto end_loop;
+    }
+
+    /* Accept new client. */
+    if (fds[0].revents == POLLIN) {
+      tvpn_server_tcp_accept(&state);
+    }
+
+    end_loop:
+    if (state.stop) {
+      ret = 0;
+      break;
+    }
+  }
 
   ret:
   {
@@ -79,6 +128,16 @@ int tvpn_server_tcp_run(server_cfg *config)
     close(state.net_fd);
   }
 
+  /* Close pipe */
+  if (pipe_fd[0] != -1) {
+    debug_log(0, "Closing pipe_fd[0] -> (%d)...", pipe_fd[0]);
+    close(pipe_fd[0]);
+  }
+  if (pipe_fd[1] != -1) {
+    debug_log(0, "Closing pipe_fd[1] -> (%d)...", pipe_fd[1]);
+    close(pipe_fd[1]);
+  }
+
   return ret;
 }
 
@@ -87,7 +146,7 @@ int tvpn_server_tcp_run(server_cfg *config)
  * @param  tcp_state * __restrict__ state
  * @return bool
  */
-inline static bool tvpn_server_iface_init(tcp_state * __restrict__ state)
+inline static bool tvpn_server_tcp_iface_init(tcp_state * __restrict__ state)
 {
   server_cfg       *config   = state->config;
   tcp_channel      *channels = state->channels;
@@ -227,6 +286,10 @@ inline static bool tvpn_server_tcp_sock_init(tcp_state * __restrict__ state)
    */
   signal(SIGPIPE, SIG_IGN);
 
+  signal(SIGINT, tvpn_server_tcp_signal_handler);
+  signal(SIGHUP, tvpn_server_tcp_signal_handler);
+  signal(SIGTERM, tvpn_server_tcp_signal_handler);  
+
   state->net_fd = fd;
   return true;
 
@@ -261,3 +324,21 @@ inline static bool tvpn_server_tcp_socket_setup(int fd)
   #undef SET_SOCK_OPT
 }
 
+/**
+ * @param tcp_state * __restrict__ state 
+ * @return void
+ */
+inline static void tvpn_server_tcp_accept(tcp_state * __restrict__ state)
+{
+
+}
+
+/**
+ * @param int signal
+ * @return void
+ */
+inline static void tvpn_server_tcp_signal_handler(int signal)
+{
+  (void)signal;
+  g_state->stop = true;
+}

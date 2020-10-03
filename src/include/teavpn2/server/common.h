@@ -55,7 +55,7 @@ typedef struct _tcp_channel {
 
 typedef struct _tcp_state {
   int                   net_fd;         /* Master socket fd. */
-
+  bool                  stop;           /* Stop signal. */
   server_cfg            *config;        /* Server config. */
   tcp_channel           *channels;      /* Client channels. */
 } tcp_state;
