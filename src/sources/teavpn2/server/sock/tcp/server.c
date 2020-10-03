@@ -31,11 +31,13 @@ inline static void tvpn_server_init_channels(tcp_channel *channels, uint16_t max
 __attribute__((force_align_arg_pointer))
 int tvpn_server_tcp_run(server_cfg *config)
 {
-  int ret = 1;
+  const uint16_t max_conn  = config->sock.max_conn;
+  int            ret       = 1;
   tcp_state state;
 
+  state.net_fd = -1;
+
   {
-    uint16_t max_conn = config->sock.max_conn;
     state.config      = config;
     state.channels    = (tcp_channel *)malloc(sizeof(tcp_channel) * max_conn);
 
@@ -57,6 +59,27 @@ int tvpn_server_tcp_run(server_cfg *config)
 
 
   ret:
+  {
+    /* Close tun fd(s). */
+
+    tcp_channel *channels = state.channels;
+    for (uint16_t i = 0; i < max_conn; ++i) {
+      int the_fd = channels[i].tun_fd;
+      if (the_fd != -1) {
+        debug_log(0, "Closing tun_fd -> (%d)", the_fd);
+        close(the_fd);
+      }
+    }
+
+    free(channels);
+  }
+
+  /* Close TCP socket. */
+  if (state.net_fd != -1) {
+    debug_log(0, "Closing net_fd -> (%d)...", state.net_fd);
+    close(state.net_fd);
+  }
+
   return ret;
 }
 
@@ -73,11 +96,14 @@ inline static bool tvpn_server_iface_init(tcp_state * __restrict__ state)
   uint16_t          max_conn = config->sock.max_conn;
   uint16_t          i        = 0;
 
+  for (i = 0; i < max_conn; i++) {
+    channels[i].tun_fd = -1;
+  }
 
-  for (; i < max_conn; i++) {
+  for (i = 0; i < max_conn; i++) {
     int fd;
 
-    debug_log(5, "Allocating tun_fd %d...", i);
+    debug_log(5, "Allocating tun_fd, (seq:%d)...", i);
     fd = tun_alloc(iface->dev, IFF_TAP | IFF_NO_PI | IFF_MULTI_QUEUE);
     if (fd < 0) {
       printf("Cannot allocate virtual network interface: i = %d\n", i);
@@ -97,6 +123,7 @@ inline static bool tvpn_server_iface_init(tcp_state * __restrict__ state)
     while (i--) {
       debug_log(5, "Closing tun_fd %d...", i);
       close(channels[i].tun_fd);
+      channels[i].tun_fd = -1;
     }
   }
 
@@ -162,7 +189,7 @@ inline static bool tvpn_server_tcp_sock_init(tcp_state * __restrict__ state)
   if (!tvpn_server_tcp_socket_setup(fd)) {
     return false;
   }
-  debug_log(5, "Socket file descriptor set up successfully");
+  debug_log(5, "Socket file descriptor set up successfully!");
 
 
   /*
