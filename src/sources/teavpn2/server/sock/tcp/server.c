@@ -17,7 +17,7 @@
 
 #include <teavpn2/server/common.h>
 
-inline static bool iface_init();
+inline static bool iface_init(tcp_state * __restrict__ state);
 
 /**
  * @param server_cfg *config
@@ -32,6 +32,7 @@ int tvpn_server_tcp_run(server_cfg *config)
   state.config    = config;
   state.channels  = (tcp_channel *)malloc(sizeof(tcp_channel) * 10);
 
+  debug_log(4, "Allocating virtual network interface...");
   if (!iface_init(&state)) {
     goto ret;
   }
