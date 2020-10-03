@@ -72,6 +72,11 @@ inline static bool tvpn_server_config_validate(server_cfg *config)
       printf("config->sock.type must be \"tcp\" or \"udp\"\n");
       return false;
     }
+
+    if (!sock->max_conn) {
+      printf("config->sock.max_conn must be at least 1\n");
+      return false;
+    }
   }
 
 

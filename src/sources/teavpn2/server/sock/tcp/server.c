@@ -30,7 +30,8 @@ int tvpn_server_tcp_run(server_cfg *config)
   tcp_state state;
 
   state.config    = config;
-  state.channels  = (tcp_channel *)malloc(sizeof(tcp_channel) * 10);
+  state.channels  =
+    (tcp_channel *)malloc(sizeof(tcp_channel) * config->sock.max_conn);
 
   debug_log(4, "Allocating virtual network interface...");
   if (!iface_init(&state)) {

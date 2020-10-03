@@ -27,6 +27,7 @@ typedef struct _server_socket_cfg {
   int                   backlog;        /* Socket listen backlog. */
   uint16_t              bind_port;      /* Socket server bind port. */
   socket_type           type;           /* Socket type, TCP/UDP. */
+  uint16_t              max_conn;       /* Max connections. */
 } server_socket_cfg;
 
 
