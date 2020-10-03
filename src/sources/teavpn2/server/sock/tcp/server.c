@@ -20,10 +20,10 @@
 #define PIPE_BUF (16)
 
 inline static void tvpn_server_tcp_signal_handler(int signal);
-inline static bool tvpn_server_tcp_iface_init(tcp_state * __restrict__ state);
-inline static bool tvpn_server_tcp_sock_init(tcp_state * __restrict__ state);
-inline static bool tvpn_server_tcp_sock_init(tcp_state * __restrict__ state);
-inline static void tvpn_server_tcp_accept(tcp_state * __restrict__ state);
+inline static bool tvpn_server_tcp_iface_init(server_tcp_state * __restrict__ state);
+inline static bool tvpn_server_tcp_sock_init(server_tcp_state * __restrict__ state);
+inline static bool tvpn_server_tcp_sock_init(server_tcp_state * __restrict__ state);
+inline static void tvpn_server_tcp_accept(server_tcp_state * __restrict__ state);
 inline static bool tvpn_server_tcp_socket_setup(int fd);
 
 inline static void tvpn_server_init_channel(tcp_channel *chan);
@@ -35,7 +35,7 @@ inline static void tvpn_server_tcp_accept_and_drop(int net_fd);
 
 inline static void *tvpn_server_tcp_worker_thread(void *_chan);
 
-static tcp_state *g_state = NULL;
+static server_tcp_state *g_state = NULL;
 
 /**
  * @param server_cfg *config
@@ -44,13 +44,13 @@ static tcp_state *g_state = NULL;
 __attribute__((force_align_arg_pointer))
 int tvpn_server_tcp_run(server_cfg *config)
 {
-  const uint16_t max_conn   = config->sock.max_conn;
-  int            ret        = 1;
-  int            pipe_fd[2] = {-1, -1};
-  tcp_state      state;
-  struct pollfd  fds[2];
-  nfds_t         nfds;
-  int            ptimeout;
+  const uint16_t        max_conn   = config->sock.max_conn;
+  int                   ret        = 1;
+  int                   pipe_fd[2] = {-1, -1};
+  server_tcp_state      state;
+  struct pollfd         fds[2];
+  nfds_t                nfds;
+  int                   ptimeout;
 
   state.net_fd = -1;
   state.stop   = false;
@@ -168,10 +168,10 @@ int tvpn_server_tcp_run(server_cfg *config)
 
 
 /**
- * @param  tcp_state * __restrict__ state
+ * @param  server_tcp_state * __restrict__ state
  * @return bool
  */
-inline static bool tvpn_server_tcp_iface_init(tcp_state * __restrict__ state)
+inline static bool tvpn_server_tcp_iface_init(server_tcp_state * __restrict__ state)
 {
   server_cfg       *config   = state->config;
   tcp_channel      *channels = state->channels;
@@ -246,10 +246,10 @@ inline static void tvpn_server_init_channel(tcp_channel *chan)
 
 
 /**
- * @param  tcp_state * __restrict__ state
+ * @param  server_tcp_state * __restrict__ state
  * @return bool
  */
-inline static bool tvpn_server_tcp_sock_init(tcp_state * __restrict__ state)
+inline static bool tvpn_server_tcp_sock_init(server_tcp_state * __restrict__ state)
 {
   int                  rv, fd = -1;
   server_socket_cfg   *sock         = &(state->config->sock);
@@ -368,10 +368,10 @@ inline static int32_t tvpn_server_tcp_chan_get(tcp_channel *channels, uint16_t m
 
 
 /**
- * @param  tcp_state * __restrict__ state 
+ * @param  server_tcp_state * __restrict__ state 
  * @return void
  */
-inline static void tvpn_server_tcp_accept(tcp_state * __restrict__ state)
+inline static void tvpn_server_tcp_accept(server_tcp_state * __restrict__ state)
 {
   tcp_channel     *chan;
   tcp_channel     *channels   = state->channels;
@@ -449,11 +449,11 @@ inline static void tvpn_server_tcp_accept_and_drop(int net_fd)
  */
 inline static void *tvpn_server_tcp_worker_thread(void *_chan)
 {
-  struct pollfd         fds[2];
-  register tcp_state   *state    = g_state;
-  register tcp_channel *chan     = (tcp_channel *)_chan;
-  register nfds_t       nfds     = 2;
-  const int             ptimeout = 3000;
+  struct pollfd               fds[2];
+  register server_tcp_state   *state    = g_state;
+  register tcp_channel        *chan     = (tcp_channel *)_chan;
+  register nfds_t             nfds     = 2;
+  const int                   ptimeout = 3000;
 
   /* TUN/TAP fd. */
   fds[0].fd     = chan->tun_fd;

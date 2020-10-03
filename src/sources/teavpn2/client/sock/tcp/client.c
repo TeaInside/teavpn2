@@ -17,8 +17,17 @@
 
 #include <teavpn2/client/common.h>
 
+#define PIPE_BUF (16)
+
+inline static void tvpn_client_tcp_signal_handler(int signal);
+inline static bool tvpn_client_tcp_iface_init(client_tcp_state * __restrict__ state);
+inline static bool tvpn_client_tcp_sock_init(client_tcp_state * __restrict__ state);
+inline static bool tvpn_client_tcp_sock_init(client_tcp_state * __restrict__ state);
+inline static void tvpn_client_tcp_accept(client_tcp_state * __restrict__ state);
+inline static bool tvpn_client_tcp_socket_setup(int fd);
+
 /**
- * @param server_cfg *config
+ * @param client_cfg *config
  * @return int
  */
 __attribute__((force_align_arg_pointer))
