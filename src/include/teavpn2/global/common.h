@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
+#include <teavpn2/global/debug.h>
 #include <teavpn2/global/memory.h>
 
 typedef enum {
@@ -13,6 +14,11 @@ typedef enum {
   sock_udp
 } socket_type;
 
+
 char *escapeshellarg(char *alloc, char *str);
+
+#ifndef OFFSETOF
+#define OFFSETOF(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT)) 
+#endif
 
 #endif

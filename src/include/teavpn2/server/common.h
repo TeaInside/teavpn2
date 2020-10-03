@@ -2,6 +2,7 @@
 #ifndef TEAVPN2__SERVER__COMMON_H
 #define TEAVPN2__SERVER__COMMON_H
 
+#include <linux/types.h>
 #include <teavpn2/global/common.h>
 
 typedef struct _server_iface_cfg {
@@ -38,11 +39,26 @@ typedef struct _server_cfg {
 
 } server_cfg;
 
-typedef struct _server_state {
-  server_cfg            *config;        /* Server config. */
+
+typedef struct _tcp_channel {
+  bool                  is_used;
+  bool                  authorized;
+  int                   tun_fd;
+  int                   cli_fd;
+  uint64_t              recv_count;
+  uint64_t              send_count;
+
+  __be32                ipv4;
+  char                  *username;
+} tcp_channel;
+
+typedef struct _tcp_state {
   int                   *tun_fds;       /* TUN/TAP fd. */
   int                   sock_fd;        /* Master socket fd. */
-} server_state;
+
+  server_cfg            *config;        /* Server config. */
+  tcp_channel           *channels;
+} tcp_state;
 
 /* argv_parser */
 bool tvpn_server_argv_parse(
@@ -60,10 +76,10 @@ bool tvpn_server_load_config_file(char *file, server_cfg *config);
 
 int tvpn_server_run(server_cfg *config);
 
-int tvpn_server_tcp_run(server_state *state);
+int tvpn_server_tcp_run(server_cfg *state);
 
 /* iface */
-int tun_alloc_mq(char *dev, int queues, int *fds);
+int tun_alloc(char *dev, int flags);
 int tun_set_queue(int fd, int enable);
 /* End of iface */
 
