@@ -29,6 +29,7 @@ typedef struct _client_cfg {
 
 typedef struct _client_tcp_state {
   int                   net_fd;         /* Master socket fd. */
+  int                   tun_fd;         /* TUN/TAP fd. */
   bool                  stop;           /* Stop signal. */
   client_cfg            *config;        /* Server config. */
 } client_tcp_state;
