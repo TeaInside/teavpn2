@@ -33,6 +33,8 @@ inline static int32_t tvpn_server_tcp_chan_get(tcp_channel *channels, uint16_t m
 
 inline static void tvpn_server_tcp_accept_and_drop(int net_fd);
 
+inline static void *tvpn_server_tcp_worker_thread(void *_chan);
+
 static tcp_state *g_state = NULL;
 
 /**
@@ -109,7 +111,9 @@ int tvpn_server_tcp_run(server_cfg *config)
     /* Accept new client. */
     if (fds[1].revents == POLLIN) {
       char buf[PIPE_BUF];
-      (void)read(pipe_fd[0], buf, PIPE_BUF);
+      if (read(pipe_fd[0], buf, PIPE_BUF) < 0) {
+        debug_log(0, "Error reading from pipe_fd[0]: %s", strerror(errno));
+      }
     }
 
     end_loop:
@@ -360,17 +364,52 @@ inline static int32_t tvpn_server_tcp_chan_get(tcp_channel *channels, uint16_t m
  */
 inline static void tvpn_server_tcp_accept(tcp_state * __restrict__ state)
 {
+  tcp_channel     *chan;
   tcp_channel     *channels   = state->channels;
   const uint16_t   max_conn   = state->config->sock.max_conn;
+  int              net_fd     = state->net_fd;
   int32_t          free_index;
 
   free_index = tvpn_server_tcp_chan_get(channels, max_conn);
   if (free_index == -1) {
     debug_log(2, "Channel is full, cannot handle more client");
-    tvpn_server_tcp_accept_and_drop(state->net_fd);
+    tvpn_server_tcp_accept_and_drop(net_fd);
     return;
   }
 
+  {
+    int                cli_fd;
+    struct sockaddr_in addr;
+    socklen_t          rlen = sizeof(struct sockaddr_in);
+
+    cli_fd = accept(net_fd, (struct sockaddr *)&addr, &rlen);
+    if (cli_fd < 0) {
+      debug_log(0, "Error accept(): %s", strerror(errno));
+      return;
+    }
+
+    chan = &(channels[free_index]);
+    chan->is_used    = true;
+    chan->authorized = false;
+    chan->cli_fd     = cli_fd;
+    chan->recv_count = 0;
+    chan->send_count = 0;
+    chan->ipv4       = 0x00000000;
+    chan->username   = NULL;
+
+    if (pthread_mutex_init(&(chan->ht_mutex), NULL) < 0) {
+      debug_log(0, "phtread_mutex_init error: %s", strerror(errno));
+      return;
+    }
+
+    pthread_create(
+      &(chan->thread),
+      NULL,
+      tvpn_server_tcp_worker_thread,
+      (void *)chan
+    );
+    pthread_detach(chan->thread);
+  }
 }
 
 
@@ -380,7 +419,62 @@ inline static void tvpn_server_tcp_accept(tcp_state * __restrict__ state)
  */
 inline static void tvpn_server_tcp_accept_and_drop(int net_fd)
 {
-  socklen_t rlen = sizeof(struct sockaddr_in);
+  int                cli_fd;
+  struct sockaddr_in addr;
+  socklen_t          rlen = sizeof(struct sockaddr_in);
+
+  cli_fd = accept(net_fd, (struct sockaddr *)&addr, &rlen);
+  if (cli_fd < 0) {
+    debug_log(0, "Error accept(): %s", strerror(errno));
+    return;
+  }
+  close(cli_fd);
+}
+
+
+/**
+ * @param  void *_chan
+ * @return void *
+ */
+inline static void *tvpn_server_tcp_worker_thread(void *_chan)
+{
+  struct pollfd         fds[2];
+  register tcp_state   *state    = g_state;
+  register tcp_channel *chan     = (tcp_channel *)_chan;
+  register nfds_t       nfds     = 2;
+  const int             ptimeout = 3000;
+
+  /* TUN/TAP fd. */
+  fds[0].fd     = chan->tun_fd;
+  fds[0].events = POLLIN;
+
+  /* Client socket fd. */
+  fds[1].fd     = chan->cli_fd;
+  fds[1].events = POLLIN;
+
+  pthread_mutex_lock(&(chan->ht_mutex));
+
+  while (true) {
+    int rv;
+
+    rv = poll(fds, nfds, ptimeout);
+
+    /* Poll reached timeout. */
+    if (rv == 0) {
+      goto end_loop;
+    }
+
+
+    end_loop:
+    if (state->stop) {
+      break;
+    }
+  }
+
+  close(chan->cli_fd);
+  pthread_mutex_unlock(&(chan->ht_mutex));
+
+  return NULL;
 }
 
 
