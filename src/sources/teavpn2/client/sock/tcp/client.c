@@ -15,4 +15,22 @@
 #include <netinet/tcp.h>
 #include <linux/if_tun.h>
 
-#include <teavpn2/server/common.h>
+#include <teavpn2/client/common.h>
+
+/**
+ * @param server_cfg *config
+ * @return int
+ */
+__attribute__((force_align_arg_pointer))
+int tvpn_client_tcp_run(client_cfg *config)
+{
+  int ret = 1;
+
+
+
+
+
+  ret:
+
+  return ret;
+}
