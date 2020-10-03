@@ -54,11 +54,10 @@ typedef struct _tcp_channel {
 } tcp_channel;
 
 typedef struct _tcp_state {
-  int                   *tun_fds;       /* TUN/TAP fd. */
-  int                   sock_fd;        /* Master socket fd. */
+  int                   net_fd;         /* Master socket fd. */
 
   server_cfg            *config;        /* Server config. */
-  tcp_channel           *channels;
+  tcp_channel           *channels;      /* Client channels. */
 } tcp_state;
 
 /* argv_parser */
