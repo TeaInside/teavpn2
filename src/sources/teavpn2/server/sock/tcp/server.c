@@ -17,6 +17,8 @@
 
 #include <teavpn2/server/common.h>
 
+#define PIPE_BUF (16)
+
 inline static void tvpn_server_tcp_signal_handler(int signal);
 inline static bool tvpn_server_tcp_iface_init(tcp_state * __restrict__ state);
 inline static bool tvpn_server_tcp_sock_init(tcp_state * __restrict__ state);
@@ -26,6 +28,10 @@ inline static bool tvpn_server_tcp_socket_setup(int fd);
 
 inline static void tvpn_server_init_channel(tcp_channel *chan);
 inline static void tvpn_server_init_channels(tcp_channel *channels, uint16_t max_conn);
+
+inline static int32_t tvpn_server_tcp_chan_get(tcp_channel *channels, uint16_t max_conn);
+
+inline static void tvpn_server_tcp_accept_and_drop(int net_fd);
 
 static tcp_state *g_state = NULL;
 
@@ -98,6 +104,12 @@ int tvpn_server_tcp_run(server_cfg *config)
     /* Accept new client. */
     if (fds[0].revents == POLLIN) {
       tvpn_server_tcp_accept(&state);
+    }
+
+    /* Accept new client. */
+    if (fds[1].revents == POLLIN) {
+      char buf[PIPE_BUF];
+      (void)read(pipe_fd[0], buf, PIPE_BUF);
     }
 
     end_loop:
@@ -324,17 +336,56 @@ inline static bool tvpn_server_tcp_socket_setup(int fd)
   #undef SET_SOCK_OPT
 }
 
+
 /**
- * @param tcp_state * __restrict__ state 
+ * @param  tcp_channels *channels
+ * @param  uint16_t      max_conn
+ * @return int32_t
+ */
+inline static int32_t tvpn_server_tcp_chan_get(tcp_channel *channels, uint16_t max_conn)
+{
+  for (register uint16_t i = 0; i < max_conn; i++) {
+    if (!channels[i].is_used) {
+      return (uint32_t)i;
+    }
+  }
+
+  return -1;
+}
+
+
+/**
+ * @param  tcp_state * __restrict__ state 
  * @return void
  */
 inline static void tvpn_server_tcp_accept(tcp_state * __restrict__ state)
 {
+  tcp_channel     *channels   = state->channels;
+  const uint16_t   max_conn   = state->config->sock.max_conn;
+  int32_t          free_index;
+
+  free_index = tvpn_server_tcp_chan_get(channels, max_conn);
+  if (free_index == -1) {
+    debug_log(2, "Channel is full, cannot handle more client");
+    tvpn_server_tcp_accept_and_drop(state->net_fd);
+    return;
+  }
 
 }
 
+
 /**
- * @param int signal
+ * @param  int net_fd
+ * @return void
+ */
+inline static void tvpn_server_tcp_accept_and_drop(int net_fd)
+{
+  socklen_t rlen = sizeof(struct sockaddr_in);
+}
+
+
+/**
+ * @param  int signal
  * @return void
  */
 inline static void tvpn_server_tcp_signal_handler(int signal)
