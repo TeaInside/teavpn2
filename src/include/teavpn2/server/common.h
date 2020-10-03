@@ -81,8 +81,6 @@ int tvpn_server_run(server_cfg *config);
 int tvpn_server_tcp_run(server_cfg *state);
 
 /* iface */
-int tun_alloc(char *dev, int flags);
-int tun_set_queue(int fd, int enable);
 int tun_iface_up(server_iface_cfg *iface);
 /* End of iface */
 
