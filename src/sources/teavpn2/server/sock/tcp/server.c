@@ -184,7 +184,7 @@ inline static bool tvpn_server_tcp_iface_init(server_tcp_state * __restrict__ st
     int fd;
 
     debug_log(5, "Allocating tun_fd, (seq:%d)...", i);
-    fd = tun_alloc(iface->dev, IFF_TAP | IFF_NO_PI | IFF_MULTI_QUEUE);
+    fd = tun_alloc(iface->dev, IFF_TAP | IFF_MULTI_QUEUE);
     if (fd < 0) {
       printf("Cannot allocate virtual network interface: i = %d\n", i);
       goto err;
@@ -248,7 +248,7 @@ inline static void tvpn_server_init_channel(tcp_channel *chan)
  */
 inline static bool tvpn_server_tcp_sock_init(server_tcp_state * __restrict__ state)
 {
-  int                  rv, fd = -1;
+  int                  rv, fd       = -1;
   server_socket_cfg   *sock         = &(state->config->sock);
   struct sockaddr_in   server_addr;
 
