@@ -40,7 +40,7 @@ typedef struct _server_cfg {
 
 typedef struct _server_state {
   server_cfg            *config;        /* Server config. */
-  int                   tun_fd;         /* TUN/TAP fd. */
+  int                   *tun_fds;       /* TUN/TAP fd. */
   int                   sock_fd;        /* Master socket fd. */
 } server_state;
 
@@ -61,5 +61,10 @@ bool tvpn_server_load_config_file(char *file, server_cfg *config);
 int tvpn_server_run(server_cfg *config);
 
 int tvpn_server_tcp_run(server_state *state);
+
+/* iface */
+int tun_alloc_mq(char *dev, int queues, int *fds);
+int tun_set_queue(int fd, int enable);
+/* End of iface */
 
 #endif

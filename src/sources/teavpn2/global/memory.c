@@ -1,11 +1,12 @@
 
 #include <string.h>
+#include <assert.h>
 
 #include <teavpn2/global/common.h>
 
-static void   *__t_arena     = NULL;
-static size_t  __t_arena_len = 0;
-static size_t  __t_arena_pos = 0;
+static void   *__t_arena       = NULL;
+static size_t  __t_arena_len   = 0;
+static size_t  __t_arena_pos   = 0;
 
 
 void t_ar_init(register void *ptr, register size_t len)
@@ -19,6 +20,8 @@ void *t_ar_alloc(register size_t len)
 {
   register char *ret  = &(((char *)__t_arena)[__t_arena_pos]);
   __t_arena_pos      += len;
+
+  assert(__t_arena_pos < __t_arena_len);
 
   return (void *)ret;
 }
