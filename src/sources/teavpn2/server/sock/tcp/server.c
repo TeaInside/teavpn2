@@ -43,6 +43,11 @@ inline static void tvpn_server_tcp_tun_handler(
   server_tcp_state * __restrict__ state
 );
 
+inline static void tvpn_client_tcp_handle_data(
+  tcp_channel *__restrict__ chan,
+  size_t data_size
+);
+
 inline static bool tvpn_server_tcp_auth_hander(
   tcp_channel *chan,
   server_tcp_state *state,
@@ -202,7 +207,7 @@ inline static bool tvpn_server_tcp_iface_init(server_tcp_state * __restrict__ st
     int fd;
 
     debug_log(5, "Allocating tun_fd, (seq:%d)...", i);
-    fd = tun_alloc(iface->dev, IFF_TAP | IFF_MULTI_QUEUE);
+    fd = tun_alloc(iface->dev, IFF_TUN | IFF_MULTI_QUEUE);
     if (fd < 0) {
       printf("Cannot allocate virtual network interface: i = %d\n", i);
       goto err;
@@ -601,6 +606,7 @@ inline static void tvpn_server_tcp_recv_handler(
         break;
 
       case CLI_PKT_DATA:
+        tvpn_client_tcp_handle_data(chan, data_size);
         break;
 
       case CLI_PKT_DISCONNECT:
@@ -612,6 +618,36 @@ inline static void tvpn_server_tcp_recv_handler(
     }
   }
 
+}
+
+
+/**
+ * @param tcp_channel       *__restrict__  chan
+ * @param size_t                           data_size
+ * @return bool
+ */
+inline static void tvpn_client_tcp_handle_data(
+  tcp_channel *__restrict__ chan,
+  size_t data_size
+)
+{
+  client_pkt *cli_pkt = (client_pkt *)chan->recv_buff;
+
+  if (data_size < cli_pkt->size) {
+    /* Data has not been received completely. */
+    return;
+  }
+
+  {
+    ssize_t rv;
+
+    rv = write(chan->tun_fd, cli_pkt->data, cli_pkt->size);
+    if (rv < 0) {
+      debug_log(0, "Error write to tun: %s", strerror(errno));
+      return;
+    }
+    debug_log(5, "Write to tun_fd %ld bytes", rv);
+  }
 }
 
 
