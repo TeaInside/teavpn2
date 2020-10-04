@@ -134,7 +134,6 @@ int tvpn_server_tcp_run(server_cfg *config)
     }
 
     end_loop:
-    debug_log(5, "rv = %d", rv);
     if (state.stop) {
       ret = 0;
       break;
@@ -519,7 +518,7 @@ inline static void *tvpn_server_tcp_worker_thread(void *_chan)
 
     /* Poll reached timeout. */
     if (unlikely(rv == 0)) {
-      debug_log(5, "poll() timeout, no action required.");
+      // debug_log(5, "poll() timeout, no action required.");
       goto end_loop;
     }
 
@@ -532,7 +531,6 @@ inline static void *tvpn_server_tcp_worker_thread(void *_chan)
     }
 
     end_loop:
-    debug_log(5, "cli rv = %d", rv);
     if ((state->stop) || (!chan->is_connected)) {
       debug_log(5, "Event loop ended!");
       break;
