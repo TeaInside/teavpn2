@@ -35,12 +35,10 @@ inline static void tvpn_server_tcp_accept_and_drop(int net_fd);
 
 inline static void *tvpn_server_tcp_worker_thread(void *_chan);
 inline static void tvpn_server_tcp_recv_handler(
-  tcp_channel * __restrict__ chan,
-  server_tcp_state * __restrict__ state
+  tcp_channel * __restrict__ chan
 );
 inline static void tvpn_server_tcp_tun_handler(
-  tcp_channel * __restrict__ chan,
-  server_tcp_state * __restrict__ state
+  tcp_channel * __restrict__ chan
 );
 
 inline static void tvpn_client_tcp_handle_data(
@@ -50,9 +48,7 @@ inline static void tvpn_client_tcp_handle_data(
 
 inline static bool tvpn_server_tcp_auth_hander(
   tcp_channel *chan,
-  server_tcp_state *state,
-  size_t data_size,
-  size_t lrecv_size
+  size_t data_size
 );
 
 server_tcp_state *g_state = NULL;
@@ -204,13 +200,21 @@ inline static bool tvpn_server_tcp_iface_init(server_tcp_state * __restrict__ st
 
   for (i = 0; i < max_conn; i++) {
     int fd;
+    int flags;
 
     debug_log(5, "Allocating tun_fd, (seq:%d)...", i);
     fd = tun_alloc(iface->dev, IFF_TUN | IFF_MULTI_QUEUE);
     if (fd < 0) {
-      printf("Cannot allocate virtual network interface: i = %d\n", i);
+      debug_log(0, "Cannot allocate virtual network interface: i = %d\n", i);
       goto err;
     }
+
+    if (fd_set_nonblock(fd) < 0) {
+      debug_log(0, "Error fd_set_nonblock(): %s", strerror(errno));
+      close(fd);
+      goto err;
+    }
+
     tun_set_queue(fd, 0);
 
     channels[i].tun_fd = fd;
@@ -527,11 +531,11 @@ inline static void *tvpn_server_tcp_worker_thread(void *_chan)
     }
 
     if (likely(fds[0].revents == POLLIN)) {
-      tvpn_server_tcp_tun_handler(chan, state);
+      tvpn_server_tcp_tun_handler(chan);
     }
 
     if (likely(fds[1].revents == POLLIN)) {
-      tvpn_server_tcp_recv_handler(chan, state);
+      tvpn_server_tcp_recv_handler(chan);
     }
 
     end_loop:
@@ -557,29 +561,33 @@ inline static void *tvpn_server_tcp_worker_thread(void *_chan)
 
 /**
  * @param  tcp_channel       * __restrict__ chan
- * @param  server_tcp_state  * __restrict__ state
  * @return void
  */
 inline static void tvpn_server_tcp_recv_handler(
-  tcp_channel * __restrict__ chan,
-  server_tcp_state * __restrict__ state
+  tcp_channel * __restrict__ chan
 )
 {
-  char x;
   register ssize_t  ret;
+  register size_t   data_size;
   register size_t   lrecv_size = chan->recv_size;
-  register char     *buf       = &(chan->recv_buff[lrecv_size]);
+  register char     *rbuf      = &(chan->recv_buff[0]);
+  client_pkt        *cli_pkt   = (client_pkt *)rbuf;
+  register size_t   cur_read_size;
 
-  if (*buf) {
-    x = *buf;
+
+  if (unlikely(lrecv_size >= CLI_IDENT_PKT_SIZE)) {
+    data_size     = chan->recv_size - CLI_IDENT_PKT_SIZE;
+    cur_read_size = cli_pkt->size - data_size;
+  } else {
+    cur_read_size = TCP_RECV_BUFFER;
   }
 
-  ret = recv(chan->cli_fd, buf, TCP_RECV_BUFFER, 0);
+  ret = recv(chan->cli_fd, &(rbuf[lrecv_size]), cur_read_size, 0);
 
   if (likely(ret < 0)) {
     if (errno != EWOULDBLOCK) {
       /* An error occured that causes disconnection. */
-      debug_log(0, "[%s:%d] Error recv(): %s %c", HP_CC(chan), strerror(errno), x);
+      debug_log(0, "[%s:%d] Error recv(): %s", HP_CC(chan), strerror(errno));
       chan->is_connected = false;
     }
     return;
@@ -591,13 +599,12 @@ inline static void tvpn_server_tcp_recv_handler(
   }
 
   debug_log(5, "recv %ld bytes from cli_fd", ret);
-
-  client_pkt *cli_pkt  = (client_pkt *)&(chan->recv_buff[0]);
   chan->recv_size     += (size_t)ret;
+
 
   if (likely(chan->recv_size >= CLI_IDENT_PKT_SIZE)) {
 
-    size_t data_size = chan->recv_size - CLI_IDENT_PKT_SIZE;
+    data_size = chan->recv_size - CLI_IDENT_PKT_SIZE;
 
     switch (cli_pkt->type) {
 
@@ -617,7 +624,7 @@ inline static void tvpn_server_tcp_recv_handler(
         break;
 
       case CLI_PKT_AUTH:
-        if (!tvpn_server_tcp_auth_hander(chan, state, data_size, lrecv_size)) {
+        if (!tvpn_server_tcp_auth_hander(chan, data_size)) {
           close(chan->cli_fd);
           chan->cli_fd       = -1;
           chan->is_connected = false;
@@ -681,19 +688,15 @@ inline static void tvpn_client_tcp_handle_data(
 
 /**
  * @param tcp_channel       *__restrict__  chan
- * @param server_tcp_state                 *state
  * @param size_t                           data_size
- * @param size_t                           lrecv_size
  * @return bool
  */
 inline static bool tvpn_server_tcp_auth_hander(
   tcp_channel *__restrict__ chan,
-  server_tcp_state *state,
-  size_t data_size,
-  size_t lrecv_size
+  size_t data_size
 )
 {
-  bool ret;
+  bool       ret      = true;
   client_pkt *cli_pkt = (client_pkt *)chan->recv_buff;
 
   if (data_size < cli_pkt->size) {
@@ -763,12 +766,10 @@ inline static bool tvpn_server_tcp_auth_hander(
 
 /**
  * @param  tcp_channel       * __restrict__ chan
- * @param  server_tcp_state  * __restrict__ state
  * @return void
  */
 inline static void tvpn_server_tcp_tun_handler(
-  tcp_channel * __restrict__ chan,
-  server_tcp_state * __restrict__ state
+  tcp_channel * __restrict__ chan
 )
 {
   ssize_t     rv;
@@ -802,5 +803,3 @@ inline static void tvpn_server_tcp_signal_handler(int signal)
   (void)signal;
   g_state->stop = true;
 }
-
-

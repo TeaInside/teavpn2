@@ -1,6 +1,5 @@
 
 #include <poll.h>
-#include <fcntl.h>
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
@@ -24,7 +23,10 @@ inline static bool tvpn_client_tcp_iface_init(client_tcp_state * __restrict__ st
 inline static bool tvpn_client_tcp_sock_init(client_tcp_state * __restrict__ state);
 inline static bool tvpn_client_tcp_auth(client_tcp_state * __restrict__ state);
 inline static bool tvpn_client_tcp_socket_setup(int fd);
-inline static void tvpn_client_tcp_recv_handler(client_tcp_state *__restrict__ state);
+
+inline static void tvpn_client_tcp_recv_handler(
+  client_tcp_state *__restrict__ state
+);
 
 inline static bool tvpn_client_tcp_handle_auth_ok(
   client_tcp_state *__restrict__ state,
@@ -35,7 +37,6 @@ inline static void tvpn_client_tcp_handle_data(
   client_tcp_state *__restrict__ state,
   size_t data_size
 );
-
 
 inline static void tvpn_server_tcp_tun_handler(
   client_tcp_state *__restrict__ state
@@ -111,7 +112,7 @@ int tvpn_client_tcp_run(client_cfg *config)
 
     /* Poll reached timeout. */
     if (unlikely(rv == 0)) {
-      debug_log(5, "poll() timeout, no action required.");
+      /*debug_log(5, "poll() timeout, no action required.");*/
       goto end_loop;
     }
 
@@ -184,6 +185,12 @@ inline static bool tvpn_client_tcp_iface_init(client_tcp_state * __restrict__ st
   if (fd < 0) {
     debug_log(0, "Cannot allocate virtual network interface");
     return false;
+  }
+
+  if (fd_set_nonblock(fd) < 0) {
+    debug_log(0, "Error fd_set_nonblock(): %s", strerror(errno));
+    close(fd);
+    return false; 
   }
 
   state->tun_fd = fd;
@@ -330,12 +337,25 @@ inline static bool tvpn_client_tcp_auth(client_tcp_state * __restrict__ state)
  * @param client_tcp_state *__restrict__ state
  * @return void
  */
-inline static void tvpn_client_tcp_recv_handler(client_tcp_state *__restrict__ state)
+inline static void tvpn_client_tcp_recv_handler(
+  client_tcp_state *__restrict__ state
+)
 {
   register ssize_t  ret;
-  register size_t   lrecv_size = state->recv_size;
+  register size_t   data_size;
+  register size_t   lrecv_size     = state->recv_size;
+  register char     *rbuf          = &(state->recv_buff[0]);
+  server_pkt        *srv_pkt       = (server_pkt *)rbuf;
+  register size_t   cur_read_size;
 
-  ret = recv(state->net_fd, &(state->recv_buff[lrecv_size]), TCP_RECV_BUFFER, 0);
+  if (unlikely(lrecv_size >= SRV_IDENT_PKT_SIZE)) {
+    data_size     = state->recv_size - SRV_IDENT_PKT_SIZE;
+    cur_read_size = srv_pkt->size - data_size;
+  } else {
+    cur_read_size = TCP_RECV_BUFFER;
+  }
+
+  ret = recv(state->net_fd, &(rbuf[lrecv_size]), cur_read_size, 0);
 
   if (likely(ret < 0)) {
     if (errno != EWOULDBLOCK) {
@@ -353,11 +373,11 @@ inline static void tvpn_client_tcp_recv_handler(client_tcp_state *__restrict__ s
 
   debug_log(5, "recv(): %ld bytes from net_fd.", ret);
 
-  server_pkt *srv_pkt  = (server_pkt *)&(state->recv_buff[0]);
   state->recv_size    += (size_t)ret;
 
   if (likely(state->recv_size >= SRV_IDENT_PKT_SIZE)) {
-    size_t data_size = state->recv_size - CLI_IDENT_PKT_SIZE;
+
+    data_size = state->recv_size - SRV_IDENT_PKT_SIZE;
 
     switch (srv_pkt->type) {
 
@@ -372,6 +392,8 @@ inline static void tvpn_client_tcp_recv_handler(client_tcp_state *__restrict__ s
        */
 
       case SRV_PKT_PING:
+        srv_pkt->size    = 0;
+        state->recv_size = 0;
         break;
 
       case SRV_PKT_AUTH_OK:
@@ -428,7 +450,7 @@ inline static bool tvpn_client_tcp_handle_auth_ok(
   size_t data_size
 )
 {
-  bool             ret;
+  bool             ret       = true;
   client_cfg       *config   = state->config;
   client_iface_cfg *iface    = &(config->iface);
   server_pkt       *srv_pkt  = (server_pkt *)state->recv_buff;
@@ -454,7 +476,8 @@ inline static bool tvpn_client_tcp_handle_auth_ok(
 
     if (!client_tun_iface_up(iface)) {
       debug_log(0, "client_tun_iface_up failed!");
-      return false;
+      ret = false;
+      goto ret;
     }
   }
 

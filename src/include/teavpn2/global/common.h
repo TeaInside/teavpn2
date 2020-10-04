@@ -72,6 +72,7 @@ char *escapeshellarg(char *alloc, char *str);
 int tun_alloc(char *dev, int flags);
 int tun_set_queue(int fd, int enable);
 uint8_t cidr_jump_table(__be32 netmask);
+int fd_set_nonblock(int fd);
 
 #define TCP_RECV_BUFFER DATA_SIZE
 #define TCP_SEND_BUFFER DATA_SIZE

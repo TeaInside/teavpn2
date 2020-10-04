@@ -1,6 +1,6 @@
 
 #include <stdio.h>
-
+#include <string.h>
 #include <teavpn2/server/common.h>
 
 #ifndef ARENA_SIZE
@@ -24,6 +24,17 @@ int main(int argc, char *argv[], char *envp[])
       return 1;
     }
   }
+
+  server_pkt pkt;
+  char x[] = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+  memset(&pkt, 0, sizeof(pkt));
+  memcpy(&pkt, x, SRV_IDENT_PKT_SIZE);
+
+  printf("Type: %x\n", pkt.type);
+  printf("Size: %x\n", pkt.size);
+  printf("Data: %s\n", pkt.data);
+
+  return 0;
 
   return tvpn_server_run(&config);
 }
