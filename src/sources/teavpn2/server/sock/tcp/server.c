@@ -33,6 +33,7 @@ inline static int32_t tvpn_server_tcp_chan_get(tcp_channel *channels, uint16_t m
 inline static void tvpn_server_tcp_accept_and_drop(int net_fd);
 
 inline static void *tvpn_server_tcp_worker_thread(void *_chan);
+inline static void tvpn_server_tcp_recv_handler(tcp_channel *chan, server_tcp_state *state);
 
 static server_tcp_state *g_state = NULL;
 
@@ -51,10 +52,9 @@ int tvpn_server_tcp_run(server_cfg *config)
   nfds_t                nfds;
   int                   ptimeout;
 
-  state.net_fd = -1;
-  state.stop   = false;
-  g_state      = &state;
-
+  state.net_fd      = -1;
+  state.stop        = false;
+  g_state           = &state;
   state.config      = config;
   state.channels    = (tcp_channel *)malloc(sizeof(tcp_channel) * max_conn);
 
@@ -232,13 +232,16 @@ inline static void tvpn_server_init_channels(tcp_channel *channels, uint16_t max
  */
 inline static void tvpn_server_init_channel(tcp_channel *chan)
 {
-  chan->is_used     = false;
-  chan->authorized  = false;
-  chan->cli_fd      = -1;
-  chan->recv_count  = 0;
-  chan->send_count  = 0;
-  chan->ipv4        = 0x00000000;
-  chan->username    = NULL;
+  chan->is_used      = false;
+  chan->is_connected = false;
+  chan->authorized   = false;
+  chan->cli_fd       = -1;
+  chan->recv_count   = 0;
+  chan->send_count   = 0;
+  chan->ipv4         = 0x00000000;
+  chan->username     = NULL;
+  chan->recv_size    = 0;
+  chan->send_size    = 0;
 }
 
 
@@ -395,13 +398,9 @@ inline static void tvpn_server_tcp_accept(server_tcp_state * __restrict__ state)
     }
 
     chan = &(channels[free_index]);
+    tvpn_server_init_channel(chan);
     chan->is_used    = true;
-    chan->authorized = false;
     chan->cli_fd     = cli_fd;
-    chan->recv_count = 0;
-    chan->send_count = 0;
-    chan->ipv4       = 0x00000000;
-    chan->username   = NULL;
 
     tun_set_queue(chan->tun_fd, 1);
 
@@ -472,9 +471,16 @@ inline static void *tvpn_server_tcp_worker_thread(void *_chan)
       goto end_loop;
     }
 
+    if (fds[0].revents == POLLIN) {
+
+    }
+
+    if (fds[1].revents == POLLIN) {
+      tvpn_server_tcp_recv_handler(chan, state);
+    }
 
     end_loop:
-    if (state->stop) {
+    if ((state->stop) || (!chan->is_connected)) {
       break;
     }
   }
@@ -485,6 +491,60 @@ inline static void *tvpn_server_tcp_worker_thread(void *_chan)
   pthread_mutex_unlock(&(chan->ht_mutex));
 
   return NULL;
+}
+
+
+/**
+ * @param  tcp_channel       *chan
+ * @param  server_tcp_state  *state
+ * @return void
+ */
+inline static void tvpn_server_tcp_recv_handler(tcp_channel *chan, server_tcp_state *state)
+{
+  register ssize_t  ret;
+  register size_t   lrecv_size = chan->recv_size;
+
+  ret = recv(chan->cli_fd, &(chan->recv_buff[lrecv_size]), TCP_RECV_BUFFER, 0);
+
+  if (likely(ret < 0)) {
+    if (errno != EWOULDBLOCK) {
+      /* An error occured that causes disconnection. */
+      chan->is_connected = false;
+    }
+    return;
+  } else if (unlikely(ret == 0)) {
+    /* Client disconnected. */
+    chan->is_connected = false;
+    return;
+  }
+
+  client_pkt *cli_pkt  = (client_pkt *)&(chan->recv_buff[0]);
+  chan->recv_size     += (size_t)ret;
+
+  if (likely(chan->recv_size >= IDENTIFIER_PKT_SIZE)) {
+
+    size_t data_size = chan->recv_size - IDENTIFIER_PKT_SIZE;
+
+    switch (cli_pkt->type) {
+      case TCP_PKT_PING:
+        break;
+
+      case TCP_PKT_AUTH:
+        break;
+
+      case TCP_PKT_DATA:
+        break;
+
+      case TCP_PKT_DISCONNECT:
+        break;
+
+      default:
+        break;
+    }
+
+  } else {
+
+  }
 }
 
 
