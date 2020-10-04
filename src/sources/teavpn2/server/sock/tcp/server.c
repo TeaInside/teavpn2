@@ -36,7 +36,7 @@ inline static void tvpn_server_tcp_accept_and_drop(int net_fd);
 inline static void *tvpn_server_tcp_worker_thread(void *_chan);
 inline static void tvpn_server_tcp_recv_handler(tcp_channel *chan, server_tcp_state *state);
 
-inline static void tvpn_server_tcp_auth_hander(
+inline static bool tvpn_server_tcp_auth_hander(
   tcp_channel *chan,
   server_tcp_state *state,
   size_t data_size,
@@ -104,17 +104,17 @@ int tvpn_server_tcp_run(server_cfg *config)
 
 
     /* Poll reached timeout. */
-    if (rv == 0) {
+    if (likely(rv == 0)) {
       goto end_loop;
     }
 
     /* Accept new client. */
-    if (fds[0].revents == POLLIN) {
+    if (unlikely(fds[0].revents == POLLIN)) {
       tvpn_server_tcp_accept(&state);
     }
 
-    /* Accept new client. */
-    if (fds[1].revents == POLLIN) {
+    /* Pipe interrupt. */
+    if (unlikely(fds[1].revents == POLLIN)) {
       char buf[PIPE_BUF];
       if (read(pipe_fd[0], buf, PIPE_BUF) < 0) {
         debug_log(0, "Error reading from pipe_fd[0]: %s", strerror(errno));
@@ -204,7 +204,7 @@ inline static bool tvpn_server_tcp_iface_init(server_tcp_state * __restrict__ st
     channels[i].tun_fd = fd;
   }
 
-  tun_iface_up(iface);
+  server_tun_iface_up(iface);
 
   return true;
 
@@ -417,21 +417,30 @@ inline static void tvpn_server_tcp_accept(server_tcp_state * __restrict__ state)
     chan->cli_fd       = cli_fd;
     chan->addr         = addr;
 
-
-    sprintf(
+    inet_ntop(
+      AF_INET,
+      &(addr.sin_addr.s_addr),
       chan->r_ip_src,
-      "%d.%d.%d.%d",
-      (addr.sin_addr.s_addr >> 0 ) & 0xff,
-      (addr.sin_addr.s_addr >> 8 ) & 0xff,
-      (addr.sin_addr.s_addr >> 16) & 0xff,
-      (addr.sin_addr.s_addr >> 24) & 0xff
+      sizeof(chan->r_ip_src)
     );
+
+    // sprintf(
+    //   chan->r_ip_src,
+    //   "%d.%d.%d.%d",
+    //   (addr.sin_addr.s_addr >> 0 ) & 0xff,
+    //   (addr.sin_addr.s_addr >> 8 ) & 0xff,
+    //   (addr.sin_addr.s_addr >> 16) & 0xff,
+    //   (addr.sin_addr.s_addr >> 24) & 0xff
+    // );
+
     chan->r_port_src   = ntohs(addr.sin_port);
 
     debug_log(1, "Accepting connection from %s:%d...", HP_CC(chan));
 
     if (pthread_mutex_init(&(chan->ht_mutex), NULL) < 0) {
+      close(cli_fd);
       debug_log(0, "phtread_mutex_init error: %s", strerror(errno));
+      debug_log(1, "Closing connection from %s:%d...", HP_CC(chan));
       return;
     }
 
@@ -497,10 +506,14 @@ inline static void *tvpn_server_tcp_worker_thread(void *_chan)
     if (unlikely(rv == 0)) {
       debug_log(5, "poll() timeout, no action required.");
       goto end_loop;
-    } else if (likely(fds[0].revents == POLLIN)) {
+    }
+
+    if (likely(fds[0].revents == POLLIN)) {
       char buff[4096];
       debug_log(5, "Reading from tun... %d", read(fds[0].fd, buff, 4096));
-    } else if (likely(fds[1].revents == POLLIN)) {
+    }
+
+    if (likely(fds[1].revents == POLLIN)) {
       tvpn_server_tcp_recv_handler(chan, state);
     }
 
@@ -514,7 +527,9 @@ inline static void *tvpn_server_tcp_worker_thread(void *_chan)
 
   debug_log(1, "Closing connection from %s:%d...", HP_CC(chan));
 
-  close(chan->cli_fd);
+  if (chan->cli_fd != -1) {
+    close(chan->cli_fd);
+  }
   chan->is_used = false;
   tun_set_queue(chan->tun_fd, 0);
   pthread_mutex_unlock(&(chan->ht_mutex));
@@ -538,13 +553,13 @@ inline static void tvpn_server_tcp_recv_handler(tcp_channel *chan, server_tcp_st
   if (likely(ret < 0)) {
     if (errno != EWOULDBLOCK) {
       /* An error occured that causes disconnection. */
-      debug_log(0, "Error occured: %s", strerror(errno));
+      debug_log(0, "[%s:%d] Error recv(): %s", HP_CC(chan), strerror(errno));
       chan->is_connected = false;
     }
     return;
   } else if (unlikely(ret == 0)) {
     /* Client disconnected. */
-    debug_log(0, "Client disconnected");
+    debug_log(0, "[%s:%d] Client disconnected", HP_CC(chan));
     chan->is_connected = false;
     return;
   }
@@ -552,22 +567,32 @@ inline static void tvpn_server_tcp_recv_handler(tcp_channel *chan, server_tcp_st
   client_pkt *cli_pkt  = (client_pkt *)&(chan->recv_buff[0]);
   chan->recv_size     += (size_t)ret;
 
-  if (likely(chan->recv_size >= IDENTIFIER_PKT_SIZE)) {
+  if (likely(chan->recv_size >= CLI_IDENT_PKT_SIZE)) {
 
-    size_t data_size = chan->recv_size - IDENTIFIER_PKT_SIZE;
+    size_t data_size = chan->recv_size - CLI_IDENT_PKT_SIZE;
 
     switch (cli_pkt->type) {
-      case TCP_PKT_PING:
+
+      /*
+       * In this branch table, the callee is responsible to
+       * zero the recv_size if it has finished its job.
+       */
+
+      case CLI_PKT_PING:
         break;
 
-      case TCP_PKT_AUTH:
-        tvpn_server_tcp_auth_hander(chan, state, data_size, lrecv_size);
+      case CLI_PKT_AUTH:
+        if (!tvpn_server_tcp_auth_hander(chan, state, data_size, lrecv_size)) {
+          close(chan->cli_fd);
+          chan->cli_fd       = -1;
+          chan->is_connected = false;
+        }
         break;
 
-      case TCP_PKT_DATA:
+      case CLI_PKT_DATA:
         break;
 
-      case TCP_PKT_DISCONNECT:
+      case CLI_PKT_DISCONNECT:
         break;
 
       default:
@@ -579,12 +604,14 @@ inline static void tvpn_server_tcp_recv_handler(tcp_channel *chan, server_tcp_st
 
 
 /**
- * @param  tcp_channel       *chan
- * @param  server_tcp_state  *state
- * @return void
+ * @param tcp_channel       *__restrict__  chan
+ * @param server_tcp_state                 *state
+ * @param size_t                           data_size
+ * @param size_t                           lrecv_size
+ * @return bool
  */
-inline static void tvpn_server_tcp_auth_hander(
-  tcp_channel *chan,
+inline static bool tvpn_server_tcp_auth_hander(
+  tcp_channel *__restrict__ chan,
   server_tcp_state *state,
   size_t data_size,
   size_t lrecv_size
@@ -594,20 +621,44 @@ inline static void tvpn_server_tcp_auth_hander(
 
   if (data_size < cli_pkt->size) {
     /* Data has not been received completely. */
-    return;
+    return true;
   }
 
 
   {
-    auth_pkt *auth_p = (auth_pkt   *)cli_pkt->data;
+    int               rv;
+    bool              ret;
+    server_pkt        srv_pkt;
+    client_auth_tmp   auth_tmp;
+    uint8_t           data_size = 0;
+    srv_auth_res      *auth_res = (srv_auth_res *)srv_pkt.data;
+    auth_pkt          *auth_p   = (auth_pkt   *)cli_pkt->data;
 
-    debug_log(2, "Receiving auth data from %s:%d...", HP_CC(chan));
+    debug_log(2, "[%s:%d] Receiving auth data...", HP_CC(chan));
     debug_log(2, "[%s:%d] Username: \"%s\"", HP_CC(chan), auth_p->username);
     debug_log(2, "[%s:%d] Password: \"%s\"", HP_CC(chan), auth_p->password);
 
-    if (tvpn_auth_tcp(auth_p->username, auth_p->password, chan)) {
+    if (tvpn_auth_tcp(auth_p, chan, &auth_tmp)) {
+      chan->authorized = true;
+      chan->recv_size  = 0;
+      srv_pkt.type     = SRV_PKT_AUTH_OK;
+      srv_pkt.size     = 0;
+      ret              = true;
+      data_size        = sizeof(srv_auth_res);
 
+      inet_pton(AF_INET, auth_tmp.ipv4, &(auth_res->ipv4));
+      inet_pton(AF_INET, auth_tmp.ipv4_netmask, &(auth_res->ipv4_netmask));
+    } else {
+      ret              = false;
     }
+
+    rv = send(chan->cli_fd, &srv_pkt, SRV_IDENT_PKT_SIZE + data_size, MSG_DONTWAIT);
+    if (rv < 0) {
+      debug_log(0, "[%s:%d] Error send(): %s", HP_CC(chan), strerror(errno));
+      return false;
+    }
+
+    return ret;
   }
 }
 
@@ -615,9 +666,11 @@ inline static void tvpn_server_tcp_auth_hander(
 /**
  * @param  int signal
  * @return void
- */
+ */ 
 inline static void tvpn_server_tcp_signal_handler(int signal)
 {
   (void)signal;
   g_state->stop = true;
 }
+
+

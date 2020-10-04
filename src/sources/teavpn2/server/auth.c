@@ -1,5 +1,6 @@
 
 #include <string.h>
+#include <arpa/inet.h>
 
 #include <inih/ini.h>
 #include <teavpn2/server/common.h>
@@ -7,9 +8,9 @@
 extern server_tcp_state *g_state;
 
 struct auth_parse {
-  bool        failed;
-  char        *filename;
-  tcp_channel *chan;
+  bool            failed;
+  char            *filename;
+  client_auth_tmp *auth_tmp;
 };
 
 inline static int auth_file_parser(
@@ -20,7 +21,11 @@ inline static int auth_file_parser(
   int lineno
 );
 
-bool tvpn_auth_tcp(char *username, char *password, tcp_channel *chan)
+bool tvpn_auth_tcp(
+  auth_pkt *auth_p,
+  tcp_channel *chan,
+  client_auth_tmp *auth_tmp
+)
 {
   server_tcp_state *state  = g_state;
   server_cfg       *config;
@@ -35,13 +40,16 @@ bool tvpn_auth_tcp(char *username, char *password, tcp_channel *chan)
   {
     int ret;
     struct auth_parse auth_dp;
-    char auth_file[strlen(config->data_dir) + strnlen(username, 255) + 16];
+    char auth_file[
+      strlen(config->data_dir) +
+      strlen(auth_p->username) + 16
+    ];
 
-    sprintf(auth_file, "%s/users/%s.ini", config->data_dir, username);
+    sprintf(auth_file, "%s/users/%s.ini", config->data_dir, auth_p->username);
 
     auth_dp.failed   = false;
     auth_dp.filename = auth_file;
-    auth_dp.chan     = chan;
+    auth_dp.auth_tmp = auth_tmp;
 
 
     ret = ini_parse(auth_file, auth_file_parser, (void *)&auth_dp);
@@ -56,6 +64,23 @@ bool tvpn_auth_tcp(char *username, char *password, tcp_channel *chan)
       debug_log(0, "[%s:%d] Error loading auth file!", HP_CC(chan));
       return false;
     }
+
+    if (strncmp(auth_p->password, auth_dp.auth_tmp->password, auth_p->password_len)) {
+      debug_log(1, "[%s:%d] Wrong password!", HP_CC(chan));
+      return false;
+    }
+
+    debug_log(
+      1,
+      "[%s:%d] Authenticated: "
+      "{\"username\":\"%s\",\"ipv4\":\"%s\",\"ipv4_netmask\":\"%s\"}",
+      HP_CC(chan),
+      auth_p->username,
+      auth_tmp->ipv4,
+      auth_tmp->ipv4_netmask
+    );
+
+    return true;
   }
 }
 
@@ -67,8 +92,8 @@ inline static int auth_file_parser(
   int lineno
 )
 {
-  struct auth_parse *auth_dp = (struct auth_parse *)user;
-  tcp_channel       *chan    = auth_dp->chan;
+  struct auth_parse *auth_dp  = (struct auth_parse *)user;
+  client_auth_tmp   *auth_tmp = auth_dp->auth_tmp;
 
   #define RMATCH_S(STR) if (!strcmp(section, STR))
   #define RMATCH_N(STR) if (!strcmp(name, STR))
@@ -76,13 +101,13 @@ inline static int auth_file_parser(
   RMATCH_S("auth") {
 
     RMATCH_N("username") {
-
+      strncpy(auth_tmp->username, value, sizeof(auth_tmp->username));
     } else
     RMATCH_N("password") {
-
+      strncpy(auth_tmp->password, value, sizeof(auth_tmp->password));
     } else
     RMATCH_N("secret_key") {
-
+      strncpy(auth_tmp->secret_key, value, sizeof(auth_tmp->secret_key));
     } else {
       goto invalid_name;
     }
@@ -91,10 +116,10 @@ inline static int auth_file_parser(
   RMATCH_S("ip_assign") {
 
     RMATCH_N("ipv4") {
-
+      strncpy(auth_tmp->ipv4, value, sizeof(auth_tmp->ipv4));
     } else
-    RMATCH_N("ipv4_bcmask") {
-
+    RMATCH_N("ipv4_netmask") {
+      strncpy(auth_tmp->ipv4_netmask, value, sizeof(auth_tmp->ipv4_netmask));
     } else {
       goto invalid_name;
     }

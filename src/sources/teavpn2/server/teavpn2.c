@@ -53,8 +53,8 @@ inline static bool tvpn_server_config_validate(server_cfg *config)
       return false; 
     }
 
-    if (!iface->ipv4_bcmask) {
-      printf("config->iface.ipv4_bcmask cannot be empty\n");
+    if (!iface->ipv4_netmask) {
+      printf("config->iface.ipv4_netmask cannot be empty\n");
       return false; 
     }
   }

@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <linux/types.h>
 
 #include <teavpn2/global/debug.h>
 #include <teavpn2/global/memory.h>
@@ -25,11 +26,19 @@ typedef enum {
 } socket_type;
 
 typedef enum {
-  TCP_PKT_PING        = (1 << 0),
-  TCP_PKT_AUTH        = (1 << 1),
-  TCP_PKT_DATA        = (1 << 2),
-  TCP_PKT_DISCONNECT  = (1 << 3),
-} packet_type;
+  CLI_PKT_PING        = (1 << 0),
+  CLI_PKT_AUTH        = (1 << 1),
+  CLI_PKT_DATA        = (1 << 2),
+  CLI_PKT_DISCONNECT  = (1 << 3),
+} cli_packet_type;
+
+typedef enum {
+  SRV_PKT_PING        = (1 << 0),
+  SRV_PKT_AUTH_OK     = (1 << 1),
+  SRV_PKT_AUTH_REJECT = (1 << 2),
+  SRV_PKT_DATA        = (1 << 3),
+  SRV_PKT_DISCONNECT  = (1 << 4),
+} srv_packet_type;
 
 typedef struct __attribute__((__packed__)) _auth_pkt {
   uint8_t           username_len;
@@ -38,18 +47,31 @@ typedef struct __attribute__((__packed__)) _auth_pkt {
   char              password[255];
 } auth_pkt;
 
+typedef struct __attribute__((__packed__)) _srv_auth_res {
+  __be32            ipv4;
+  __be32            ipv4_netmask;
+} srv_auth_res;
+
 typedef struct __attribute__((__packed__)) _client_pkt {
-  packet_type       type;
+  cli_packet_type   type;
   uint16_t          size;                     /* The size of data to be sent. */
   char              data[CLIENT_DATA_SIZE];
 } client_pkt;
 
-#define IDENTIFIER_PKT_SIZE (OFFSETOF(client_pkt, data))
+typedef struct __attribute__((__packed__)) _server_pkt {
+  srv_packet_type   type;
+  uint16_t          size;                     /* The size of data to be sent. */
+  char              data[CLIENT_DATA_SIZE];
+} server_pkt;
+
+#define CLI_IDENT_PKT_SIZE (OFFSETOF(client_pkt, data))
+#define SRV_IDENT_PKT_SIZE (OFFSETOF(client_pkt, data))
 
 char *escapeshellarg(char *alloc, char *str);
 
 int tun_alloc(char *dev, int flags);
 int tun_set_queue(int fd, int enable);
+uint8_t cidr_jump_table(__be32 netmask);
 
 #define TCP_BUFFER (CLIENT_DATA_SIZE)
 #define TCP_RECV_BUFFER (TCP_BUFFER)

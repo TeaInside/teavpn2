@@ -57,10 +57,11 @@ inline static int server_parser_handler(
       config->iface.mtu = (uint16_t)atoi(value);
     } else
     RMATCH_N("ipv4") {
-      config->iface.ipv4 = t_ar_strndup(value, sizeof("xxx.xxx.xxx.xxx") - 1);
+      config->iface.ipv4 = t_ar_alloc(sizeof("xxx.xxx.xxx.xxx/xx"));
+      strncpy(config->iface.ipv4, value, sizeof("xxx.xxx.xxx.xxx") - 1);
     } else
-    RMATCH_N("ipv4_bcmask") {
-      config->iface.ipv4_bcmask = t_ar_strndup(value, sizeof("xxx.xxx.xxx.xxx") - 1);
+    RMATCH_N("ipv4_netmask") {
+      config->iface.ipv4_netmask = t_ar_strndup(value, sizeof("xxx.xxx.xxx.xxx") - 1);
     } else {
       goto invalid_name;
     }

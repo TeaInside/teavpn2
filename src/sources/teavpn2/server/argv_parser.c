@@ -62,7 +62,7 @@ inline static void set_default_config(server_cfg *config)
   /* Virtual network interface. */
   config->iface.dev          = default_dev_name;
   config->iface.ipv4         = NULL;
-  config->iface.ipv4_bcmask  = NULL;
+  config->iface.ipv4_netmask  = NULL;
   config->iface.mtu          = default_mtu;
 
   /* Socket. */
@@ -82,7 +82,7 @@ static const struct option long_options[] = {
   {"dev",          required_argument, 0, 'd'},
   {"mtu",          required_argument, 0, 'm'},
   {"ipv4",         required_argument, 0, '4'},
-  {"ipv4-bcmask",  required_argument, 0, 'b'},
+  {"ipv4-netmask",  required_argument, 0, 'b'},
 
   /* Socket options. */
   {"bind-addr",    required_argument, 0, 'H'},
@@ -141,8 +141,8 @@ inline static bool getopt_handler(int argc, char **argv, server_cfg *config)
         PRINT_CONFIG(config->iface.ipv4, "\"%s\"", optarg);
         break;
       case 'b':
-        config->iface.ipv4_bcmask = optarg;
-        PRINT_CONFIG(config->iface.ipv4_bcmask, "\"%s\"", optarg);
+        config->iface.ipv4_netmask = optarg;
+        PRINT_CONFIG(config->iface.ipv4_netmask, "\"%s\"", optarg);
         break;
 
       /* Socket. */
@@ -223,7 +223,7 @@ inline static void show_help(char *app)
   printf("  -d, --dev=DEV\t\t\tSet virtual network interface name (default: %s).\n", default_dev_name);
   printf("  -m, --mtu=MTU\t\t\tSet mtu value (default: %d).\n", default_mtu);
   printf("  -4, --ipv4=IP\t\t\tSet IPv4.\n");
-  printf("  -b, --ipv4-bcmask=MASK\tSet IPv4 broadcast mask.\n");
+  printf("  -b, --ipv4-netmask=MASK\tSet IPv4 netmask.\n");
 
   printf("\n");
   printf("Socket:\n");

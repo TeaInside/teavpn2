@@ -24,6 +24,13 @@ inline static bool tvpn_client_tcp_iface_init(client_tcp_state * __restrict__ st
 inline static bool tvpn_client_tcp_sock_init(client_tcp_state * __restrict__ state);
 inline static bool tvpn_client_tcp_auth(client_tcp_state * __restrict__ state);
 inline static bool tvpn_client_tcp_socket_setup(int fd);
+inline static void tvpn_client_tcp_recv_handler(client_tcp_state *__restrict__ state);
+
+inline static bool tvpn_client_tcp_handle_auth_ok(
+  client_tcp_state *__restrict__ state,
+  size_t data_size,
+  size_t lrecv_size
+);
 
 static client_tcp_state *g_state = NULL;
 
@@ -37,16 +44,18 @@ int tvpn_client_tcp_run(client_cfg *config)
   int                   ret = 1;
   int                   pipe_fd[2] = {-1, -1};
   client_tcp_state      state;
-  struct pollfd         fds[2];
+  struct pollfd         fds[3];
   nfds_t                nfds;
   int                   ptimeout;
 
 
-  state.net_fd = -1;
-  state.tun_fd = -1;
-  state.stop   = false;
-  g_state      = &state;
-  state.config = config;
+  state.net_fd    = -1;
+  state.tun_fd    = -1;
+  state.stop      = false;
+  g_state         = &state;
+  state.config    = config;
+  state.recv_size = 0;
+  state.send_size = 0;
 
   debug_log(2, "Allocating virtual network interface...");
   if (!tvpn_client_tcp_iface_init(&state)) {
@@ -72,11 +81,52 @@ int tvpn_client_tcp_run(client_cfg *config)
   fds[0].fd     = state.net_fd;
   fds[0].events = POLLIN;
 
+  /* Add TUN/TAP fd to fds. */
+  fds[1].fd     = state.tun_fd;
+  fds[1].events = POLLIN;
+
   /* Add pipe fd to fds. */
   fds[1].fd     = pipe_fd[0];
   fds[1].events = POLLIN;
 
-  sleep(100);
+  nfds     = 3;
+  ptimeout = 3000;
+
+  while (true) {
+    int rv;
+
+    rv = poll(fds, nfds, ptimeout);
+
+    /* Poll reached timeout. */
+    if (unlikely(rv == 0)) {
+      debug_log(5, "poll() timeout, no action required.");
+      goto end_loop;
+    }
+
+    /* Reading from net. */
+    if (likely(fds[0].revents == POLLIN)) {
+      tvpn_client_tcp_recv_handler(&state);
+    }
+
+    /* Reading from TUN/TAP. */
+    if (likely(fds[1].revents == POLLIN)) {
+      char buff[4096];
+      debug_log(5, "Reading from TUN/TAP: %ld bytes", read(fds[0].fd, buff, 4096));
+    }
+
+    /* Pipe interrupt. */
+    if (unlikely(fds[1].revents == POLLIN)) {
+      char buf[PIPE_BUF];
+      if (read(pipe_fd[0], buf, PIPE_BUF) < 0) {
+        debug_log(0, "Error reading from pipe_fd[0]: %s", strerror(errno));
+      }
+    }
+
+    end_loop:
+    if (state.stop) {
+      break;
+    }
+  }
 
   ret:
 
@@ -241,7 +291,7 @@ inline static bool tvpn_client_tcp_auth(client_tcp_state * __restrict__ state)
   client_pkt *cli_pkt    = (client_pkt *)state->send_buff;
   auth_pkt   *auth_p     = (auth_pkt   *)cli_pkt->data;
 
-  cli_pkt->type          = TCP_PKT_AUTH;
+  cli_pkt->type          = CLI_PKT_AUTH;
   cli_pkt->size          = sizeof(auth_pkt);
   auth_p->username_len   = strlen(auth->username);
   auth_p->password_len   = strlen(auth->password);
@@ -251,12 +301,109 @@ inline static bool tvpn_client_tcp_auth(client_tcp_state * __restrict__ state)
   rv = send(
     state->net_fd,
     cli_pkt,
-    IDENTIFIER_PKT_SIZE + sizeof(auth_pkt),
+    CLI_IDENT_PKT_SIZE + sizeof(auth_pkt),
     MSG_DONTWAIT
   );
 
   if (rv < 0) {
     debug_log(0, "Error send(): %s", strerror(errno));
+  }
+
+  return true;
+}
+
+
+/**
+ * @param client_tcp_state *__restrict__ state
+ * @return void
+ */
+inline static void tvpn_client_tcp_recv_handler(client_tcp_state *__restrict__ state)
+{
+  register ssize_t  ret;
+  register size_t   lrecv_size = state->recv_size;
+
+  ret = recv(state->net_fd, &(state->recv_buff[lrecv_size]), TCP_RECV_BUFFER, 0);
+
+  if (likely(ret < 0)) {
+    if (errno != EWOULDBLOCK) {
+      /* An error occured that causes disconnection. */
+      debug_log(0, "Error recv(): %s", strerror(errno));
+      state->stop = true;
+    }
+    return;
+  } else if (unlikely(ret == 0)) {
+    /* Server disconnected. */
+    debug_log(0, "Disconnected from the server.");
+    state->stop = true;
+    return;
+  }
+
+  debug_log(5, "recv(): %ld bytes from net_fd.", ret);
+
+  server_pkt *srv_pkt  = (server_pkt *)&(state->recv_buff[0]);
+  state->recv_size    += (size_t)ret;
+
+  if (likely(state->recv_size >= SRV_IDENT_PKT_SIZE)) {
+    size_t data_size = state->recv_size - CLI_IDENT_PKT_SIZE;
+
+    switch (srv_pkt->type) {
+
+      /*
+       * In this branch table, the callee is responsible to
+       * zero the recv_size if it has finished its job.
+       */
+
+      case SRV_PKT_AUTH_OK:
+        debug_log(3, "Got SRV_PKT_AUTH_OK!");
+        debug_log(0, "Authentication success!");
+        if (!tvpn_client_tcp_handle_auth_ok(state, data_size, lrecv_size)) {
+          state->stop = true;
+        }
+        break;
+    }
+  }
+
+}
+
+/**
+ * @param  client_tcp_state *__restrict__ state
+ * @param  size_t                         data_size
+ * @param  size_t                         lrecv_size
+ * @return bool
+ */
+inline static bool tvpn_client_tcp_handle_auth_ok(
+  client_tcp_state *__restrict__ state,
+  size_t data_size,
+  size_t lrecv_size
+)
+{
+  client_cfg       *config   = state->config;
+  client_iface_cfg *iface    = &(config->iface);
+  server_pkt       *srv_pkt  = (server_pkt *)state->recv_buff;
+
+  if (data_size < srv_pkt->size) {
+    /* Data has not been received completely. */
+    return true;
+  }
+
+  {
+    static char ipv4[sizeof("xxx.xxx.xxx.xxx/xx")];
+    static char ipv4_netmask[sizeof("xxx.xxx.xxx.xxx/xx")];
+
+    srv_auth_res *auth_res = (srv_auth_res *)srv_pkt->data;
+    __be32        netmask  = auth_res->ipv4_netmask;
+
+    inet_ntop(AF_INET, &(auth_res->ipv4), ipv4, sizeof(ipv4));
+    inet_ntop(AF_INET, &(auth_res->ipv4_netmask), ipv4_netmask, sizeof(ipv4_netmask));
+
+    sprintf(
+      &(ipv4[strlen(ipv4)]), "/%d",
+      ((~netmask) == 0) ? 32 : __builtin_ctz(~netmask)
+    );
+
+    iface->ipv4        = ipv4;
+    iface->ipv4_netmask = ipv4_netmask;
+    client_tun_iface_up(iface);
   }
 
   return true;
