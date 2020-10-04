@@ -401,6 +401,8 @@ inline static void tvpn_server_tcp_accept(server_tcp_state * __restrict__ state)
     struct sockaddr_in addr;
     socklen_t          rlen = sizeof(struct sockaddr_in);
 
+    memset(&addr, 0, sizeof(struct sockaddr_in));
+
     cli_fd = accept(net_fd, (struct sockaddr *)&addr, &rlen);
     if (cli_fd < 0) {
       debug_log(0, "Error accept(): %s", strerror(errno));
@@ -412,6 +414,24 @@ inline static void tvpn_server_tcp_accept(server_tcp_state * __restrict__ state)
     chan->is_used      = true;
     chan->is_connected = true;
     chan->cli_fd       = cli_fd;
+    chan->addr         = addr;
+
+
+    sprintf(
+      chan->r_ip_src,
+      "%d.%d.%d.%d",
+      (addr.sin_addr.s_addr >> 0 ) & 0xff,
+      (addr.sin_addr.s_addr >> 8 ) & 0xff,
+      (addr.sin_addr.s_addr >> 16) & 0xff,
+      (addr.sin_addr.s_addr >> 24) & 0xff
+    );
+    chan->r_port_src   = ntohs(addr.sin_port);
+
+    debug_log(
+      1,
+      "Accepting connection from %s:%d...",
+      chan->r_ip_src, chan->r_port_src
+    );
 
     if (pthread_mutex_init(&(chan->ht_mutex), NULL) < 0) {
       debug_log(0, "phtread_mutex_init error: %s", strerror(errno));
