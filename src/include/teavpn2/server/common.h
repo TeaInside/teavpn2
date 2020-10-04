@@ -6,6 +6,8 @@
 #include <linux/types.h>
 #include <teavpn2/global/common.h>
 
+#define TCP_RECV_BUFFER (CLIENT_DATA_SIZE)
+
 typedef struct _server_iface_cfg {
 
   char                  *dev;           /* Interface name. */
@@ -44,6 +46,7 @@ typedef struct _server_cfg {
 
 typedef struct _tcp_channel {
   bool                  is_used;
+  bool                  is_connected;
   bool                  authorized;
   int                   tun_fd;
   int                   cli_fd;
@@ -53,6 +56,11 @@ typedef struct _tcp_channel {
   pthread_mutex_t       ht_mutex;
   __be32                ipv4;
   char                  *username;
+
+  char                  recv_buff[TCP_RECV_BUFFER];
+  size_t                recv_size;
+  char                  send_buff[TCP_RECV_BUFFER];
+  size_t                send_size;
 } tcp_channel;
 
 typedef struct _server_tcp_state {
