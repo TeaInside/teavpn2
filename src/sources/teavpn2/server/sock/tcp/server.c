@@ -35,6 +35,13 @@ inline static void tvpn_server_tcp_accept_and_drop(int net_fd);
 inline static void *tvpn_server_tcp_worker_thread(void *_chan);
 inline static void tvpn_server_tcp_recv_handler(tcp_channel *chan, server_tcp_state *state);
 
+inline static void tvpn_server_tcp_auth_hander(
+  tcp_channel *chan,
+  server_tcp_state *state,
+  size_t data_size,
+  size_t lrecv_size
+);
+
 static server_tcp_state *g_state = NULL;
 
 /**
@@ -114,6 +121,7 @@ int tvpn_server_tcp_run(server_cfg *config)
     }
 
     end_loop:
+    debug_log(5, "rv = %d", rv);
     if (state.stop) {
       ret = 0;
       break;
@@ -128,6 +136,8 @@ int tvpn_server_tcp_run(server_cfg *config)
       int the_fd = channels[i].tun_fd;
 
       if (channels[i].is_used) {
+        debug_log(0, "Closing connected client(s)...");
+        pthread_kill(channels[i].thread, SIGTERM);
         pthread_mutex_lock(&(channels[i].ht_mutex));
       }
 
@@ -399,10 +409,9 @@ inline static void tvpn_server_tcp_accept(server_tcp_state * __restrict__ state)
 
     chan = &(channels[free_index]);
     tvpn_server_init_channel(chan);
-    chan->is_used    = true;
-    chan->cli_fd     = cli_fd;
-
-    tun_set_queue(chan->tun_fd, 1);
+    chan->is_used      = true;
+    chan->is_connected = true;
+    chan->cli_fd       = cli_fd;
 
     if (pthread_mutex_init(&(chan->ht_mutex), NULL) < 0) {
       debug_log(0, "phtread_mutex_init error: %s", strerror(errno));
@@ -446,8 +455,8 @@ inline static void tvpn_server_tcp_accept_and_drop(int net_fd)
 inline static void *tvpn_server_tcp_worker_thread(void *_chan)
 {
   struct pollfd               fds[2];
-  register server_tcp_state   *state    = g_state;
-  register tcp_channel        *chan     = (tcp_channel *)_chan;
+  register server_tcp_state   *state   = g_state;
+  register tcp_channel        *chan    = (tcp_channel *)_chan;
   register nfds_t             nfds     = 2;
   const int                   ptimeout = 3000;
 
@@ -460,6 +469,7 @@ inline static void *tvpn_server_tcp_worker_thread(void *_chan)
   fds[1].events = POLLIN;
 
   pthread_mutex_lock(&(chan->ht_mutex));
+  tun_set_queue(chan->tun_fd, 1);
 
   while (true) {
     int rv;
@@ -467,20 +477,20 @@ inline static void *tvpn_server_tcp_worker_thread(void *_chan)
     rv = poll(fds, nfds, ptimeout);
 
     /* Poll reached timeout. */
-    if (rv == 0) {
+    if (unlikely(rv == 0)) {
+      debug_log(5, "poll() timeout, no action required.");
       goto end_loop;
-    }
-
-    if (fds[0].revents == POLLIN) {
-
-    }
-
-    if (fds[1].revents == POLLIN) {
+    } else if (likely(fds[0].revents == POLLIN)) {
+      char buff[4096];
+      debug_log(5, "Reading from tun... %d", read(fds[0].fd, buff, 4096));
+    } else if (likely(fds[1].revents == POLLIN)) {
       tvpn_server_tcp_recv_handler(chan, state);
     }
 
     end_loop:
+    debug_log(5, "cli rv = %d", rv);
     if ((state->stop) || (!chan->is_connected)) {
+      debug_log(5, "Event loop ended!");
       break;
     }
   }
@@ -509,11 +519,13 @@ inline static void tvpn_server_tcp_recv_handler(tcp_channel *chan, server_tcp_st
   if (likely(ret < 0)) {
     if (errno != EWOULDBLOCK) {
       /* An error occured that causes disconnection. */
+      debug_log(0, "Error occured: %s", strerror(errno));
       chan->is_connected = false;
     }
     return;
   } else if (unlikely(ret == 0)) {
     /* Client disconnected. */
+    debug_log(0, "Client disconnected");
     chan->is_connected = false;
     return;
   }
@@ -530,6 +542,7 @@ inline static void tvpn_server_tcp_recv_handler(tcp_channel *chan, server_tcp_st
         break;
 
       case TCP_PKT_AUTH:
+        tvpn_server_tcp_auth_hander(chan, state, data_size, lrecv_size);
         break;
 
       case TCP_PKT_DATA:
@@ -541,10 +554,24 @@ inline static void tvpn_server_tcp_recv_handler(tcp_channel *chan, server_tcp_st
       default:
         break;
     }
-
-  } else {
-
   }
+
+}
+
+
+/**
+ * @param  tcp_channel       *chan
+ * @param  server_tcp_state  *state
+ * @return void
+ */
+inline static void tvpn_server_tcp_auth_hander(
+  tcp_channel *chan,
+  server_tcp_state *state,
+  size_t data_size,
+  size_t lrecv_size
+)
+{
+
 }
 
 

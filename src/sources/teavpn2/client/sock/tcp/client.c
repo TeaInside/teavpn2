@@ -68,6 +68,16 @@ int tvpn_client_tcp_run(client_cfg *config)
     goto ret;
   }
 
+  /* Add TCP socket fd to fds. */
+  fds[0].fd     = state.net_fd;
+  fds[0].events = POLLIN;
+
+  /* Add pipe fd to fds. */
+  fds[1].fd     = pipe_fd[0];
+  fds[1].events = POLLIN;
+
+  sleep(100);
+
   ret:
 
   /* Close TUN/TAP fd. */
@@ -184,7 +194,7 @@ inline static bool tvpn_client_tcp_sock_init(client_tcp_state * __restrict__ sta
 
   signal(SIGINT, tvpn_client_tcp_signal_handler);
   signal(SIGHUP, tvpn_client_tcp_signal_handler);
-  signal(SIGTERM, tvpn_client_tcp_signal_handler);  
+  signal(SIGTERM, tvpn_client_tcp_signal_handler);
 
   state->net_fd = fd;
   return true;
@@ -225,7 +235,7 @@ inline static bool tvpn_client_tcp_socket_setup(int fd)
  */
 inline static bool tvpn_client_tcp_auth(client_tcp_state * __restrict__ state)
 {
-
+  return true;
 }
 
 
