@@ -10,8 +10,7 @@
 #include <teavpn2/global/debug.h>
 #include <teavpn2/global/memory.h>
 
-#define CLIENT_DATA_SIZE (6144)
-#define SERVER_DATA_SIZE (6144)
+#define DATA_SIZE (8096)
 
 
 #ifndef OFFSETOF
@@ -56,13 +55,13 @@ typedef struct __attribute__((__packed__)) _srv_auth_res {
 typedef struct __attribute__((__packed__)) _client_pkt {
   cli_packet_type   type;
   uint16_t          size;                     /* The size of data to be sent. */
-  char              data[CLIENT_DATA_SIZE];
+  char              data[DATA_SIZE];
 } client_pkt;
 
 typedef struct __attribute__((__packed__)) _server_pkt {
   srv_packet_type   type;
   uint16_t          size;                     /* The size of data to be sent. */
-  char              data[SERVER_DATA_SIZE];
+  char              data[DATA_SIZE];
 } server_pkt;
 
 #define CLI_IDENT_PKT_SIZE (OFFSETOF(client_pkt, data))
@@ -74,8 +73,7 @@ int tun_alloc(char *dev, int flags);
 int tun_set_queue(int fd, int enable);
 uint8_t cidr_jump_table(__be32 netmask);
 
-#define TCP_BUFFER (CLIENT_DATA_SIZE)
-#define TCP_RECV_BUFFER (TCP_BUFFER)
-#define TCP_SEND_BUFFER (TCP_BUFFER)
+#define TCP_RECV_BUFFER DATA_SIZE
+#define TCP_SEND_BUFFER DATA_SIZE
 
 #endif

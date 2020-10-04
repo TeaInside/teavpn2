@@ -739,7 +739,7 @@ inline static void tvpn_server_tcp_tun_handler(
   server_pkt  *srv_pkt = (server_pkt *)chan->send_buff;
   srv_pkt->type        = SRV_PKT_DATA;
 
-  rv = read(chan->tun_fd, srv_pkt->data, SERVER_DATA_SIZE);
+  rv = read(chan->tun_fd, srv_pkt->data, DATA_SIZE);
   if (rv < 0) {
     debug_log(0, "Error read from tun: %s", strerror(errno));
     return;
