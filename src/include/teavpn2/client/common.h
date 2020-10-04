@@ -8,6 +8,7 @@ typedef struct _client_iface_cfg {
   char                  *dev;           /* Interface name. */
   char                  *ipv4;          /* IPv4. */
   char                  *ipv4_netmask;  /* IPv4 netmask. */
+  char                  *ipv4_gateway;  /* IPv4 gateway. */
   uint16_t              mtu;            /* MTU. */
 } client_iface_cfg;
 
@@ -67,6 +68,6 @@ int tvpn_client_run(client_cfg *config);
 
 int tvpn_client_tcp_run(client_cfg *config);
 
-int client_tun_iface_up(client_iface_cfg *iface);
+bool client_tun_iface_up(client_iface_cfg *iface);
 
 #endif

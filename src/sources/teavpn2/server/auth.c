@@ -30,6 +30,10 @@ bool tvpn_auth_tcp(
   server_tcp_state *state  = g_state;
   server_cfg       *config;
 
+  /* For string safety. */
+  auth_p->username[254] = '\0';
+  auth_p->password[254] = '\0';
+
   if (!state) {
     debug_log(0, "tvpn_auth_tcp error, g_state is NULL");
     return false;
@@ -39,6 +43,7 @@ bool tvpn_auth_tcp(
 
   {
     int ret;
+    size_t cpwdl;
     struct auth_parse auth_dp;
     char auth_file[
       strlen(config->data_dir) +
@@ -65,14 +70,16 @@ bool tvpn_auth_tcp(
       return false;
     }
 
-    if (strncmp(auth_p->password, auth_dp.auth_tmp->password, auth_p->password_len)) {
+    cpwdl = strlen(auth_dp.auth_tmp->password);
+
+    if ((auth_p->password_len != cpwdl)
+        || strncmp(auth_p->password, auth_dp.auth_tmp->password, cpwdl)) {
       debug_log(1, "[%s:%d] Wrong password!", HP_CC(chan));
       return false;
     }
 
     debug_log(
-      1,
-      "[%s:%d] Authenticated: "
+      1, "[%s:%d] Authenticated: "
       "{\"username\":\"%s\",\"ipv4\":\"%s\",\"ipv4_netmask\":\"%s\"}",
       HP_CC(chan),
       auth_p->username,

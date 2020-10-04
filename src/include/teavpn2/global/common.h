@@ -11,6 +11,7 @@
 #include <teavpn2/global/memory.h>
 
 #define CLIENT_DATA_SIZE (6144)
+#define SERVER_DATA_SIZE (6144)
 
 
 #ifndef OFFSETOF
@@ -61,7 +62,7 @@ typedef struct __attribute__((__packed__)) _client_pkt {
 typedef struct __attribute__((__packed__)) _server_pkt {
   srv_packet_type   type;
   uint16_t          size;                     /* The size of data to be sent. */
-  char              data[CLIENT_DATA_SIZE];
+  char              data[SERVER_DATA_SIZE];
 } server_pkt;
 
 #define CLI_IDENT_PKT_SIZE (OFFSETOF(client_pkt, data))
