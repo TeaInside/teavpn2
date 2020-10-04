@@ -3,6 +3,7 @@
 #define TEAVPN2__SERVER__COMMON_H
 
 #include <pthread.h>
+#include <arpa/inet.h>
 #include <linux/types.h>
 #include <teavpn2/global/common.h>
 
@@ -56,6 +57,10 @@ typedef struct _tcp_channel {
   pthread_mutex_t       ht_mutex;
   __be32                ipv4;
   char                  *username;
+
+  char                  r_ip_src[sizeof("xxx.xxx.xxx.xxx")];
+  uint16_t              r_port_src;
+  struct sockaddr_in    addr;
 
   char                  recv_buff[TCP_RECV_BUFFER];
   size_t                recv_size;
