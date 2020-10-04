@@ -372,6 +372,8 @@ inline static void tvpn_client_tcp_recv_handler(client_tcp_state *__restrict__ s
        */
 
       case SRV_PKT_PING:
+        srv_pkt->size    = 0;
+        state->recv_size = 0;
         break;
 
       case SRV_PKT_AUTH_OK:
@@ -428,7 +430,7 @@ inline static bool tvpn_client_tcp_handle_auth_ok(
   size_t data_size
 )
 {
-  bool             ret;
+  bool             ret       = true;
   client_cfg       *config   = state->config;
   client_iface_cfg *iface    = &(config->iface);
   server_pkt       *srv_pkt  = (server_pkt *)state->recv_buff;
@@ -454,7 +456,8 @@ inline static bool tvpn_client_tcp_handle_auth_ok(
 
     if (!client_tun_iface_up(iface)) {
       debug_log(0, "client_tun_iface_up failed!");
-      return false;
+      ret = false;
+      goto ret;
     }
   }
 
