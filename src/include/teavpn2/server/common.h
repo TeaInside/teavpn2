@@ -7,7 +7,9 @@
 #include <linux/types.h>
 #include <teavpn2/global/common.h>
 
-#define TCP_RECV_BUFFER (CLIENT_DATA_SIZE)
+
+#define HP_CC(CHAN) CHAN->r_ip_src, CHAN->r_port_src
+
 
 typedef struct _server_iface_cfg {
 
@@ -62,9 +64,9 @@ typedef struct _tcp_channel {
   uint16_t              r_port_src;
   struct sockaddr_in    addr;
 
-  char                  recv_buff[TCP_RECV_BUFFER];
+  char                  recv_buff[TCP_BUFFER];
   size_t                recv_size;
-  char                  send_buff[TCP_RECV_BUFFER];
+  char                  send_buff[TCP_BUFFER];
   size_t                send_size;
 } tcp_channel;
 
@@ -92,6 +94,8 @@ bool tvpn_server_load_config_file(char *file, server_cfg *config);
 int tvpn_server_run(server_cfg *config);
 
 int tvpn_server_tcp_run(server_cfg *state);
+
+bool tvpn_auth_tcp(char *username, char *password, tcp_channel *chan);
 
 /* iface */
 int tun_iface_up(server_iface_cfg *iface);

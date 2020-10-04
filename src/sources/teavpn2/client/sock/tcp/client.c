@@ -235,6 +235,30 @@ inline static bool tvpn_client_tcp_socket_setup(int fd)
  */
 inline static bool tvpn_client_tcp_auth(client_tcp_state * __restrict__ state)
 {
+  int rv;
+  client_cfg *config     = state->config;
+  client_auth_cfg *auth  = &(config->auth);
+  client_pkt *cli_pkt    = (client_pkt *)state->send_buff;
+  auth_pkt   *auth_p     = (auth_pkt   *)cli_pkt->data;
+
+  cli_pkt->type          = TCP_PKT_AUTH;
+  cli_pkt->size          = sizeof(auth_pkt);
+  auth_p->username_len   = strlen(auth->username);
+  auth_p->password_len   = strlen(auth->password);
+  strncpy(auth_p->username, auth->username, sizeof(auth_p->username) - 1);
+  strncpy(auth_p->password, auth->password, sizeof(auth_p->password) - 1);
+
+  rv = send(
+    state->net_fd,
+    cli_pkt,
+    IDENTIFIER_PKT_SIZE + sizeof(auth_pkt),
+    MSG_DONTWAIT
+  );
+
+  if (rv < 0) {
+    debug_log(0, "Error send(): %s", strerror(errno));
+  }
+
   return true;
 }
 

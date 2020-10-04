@@ -38,6 +38,11 @@ typedef struct _client_tcp_state {
   int                   tun_fd;         /* TUN/TAP fd. */
   bool                  stop;           /* Stop signal. */
   client_cfg            *config;        /* Server config. */
+
+  char                  recv_buff[TCP_BUFFER];
+  size_t                recv_size;
+  char                  send_buff[TCP_BUFFER];
+  size_t                send_size;
 } client_tcp_state;
 
 

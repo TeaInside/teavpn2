@@ -51,5 +51,8 @@ char *escapeshellarg(char *alloc, char *str);
 int tun_alloc(char *dev, int flags);
 int tun_set_queue(int fd, int enable);
 
+#define TCP_BUFFER (CLIENT_DATA_SIZE)
+#define TCP_RECV_BUFFER (TCP_BUFFER)
+#define TCP_SEND_BUFFER (TCP_BUFFER)
 
 #endif

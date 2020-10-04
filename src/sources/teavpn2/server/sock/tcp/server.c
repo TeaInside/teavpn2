@@ -19,6 +19,7 @@
 
 #define PIPE_BUF (16)
 
+
 inline static void tvpn_server_tcp_signal_handler(int signal);
 inline static bool tvpn_server_tcp_iface_init(server_tcp_state * __restrict__ state);
 inline static bool tvpn_server_tcp_sock_init(server_tcp_state * __restrict__ state);
@@ -42,7 +43,7 @@ inline static void tvpn_server_tcp_auth_hander(
   size_t lrecv_size
 );
 
-static server_tcp_state *g_state = NULL;
+server_tcp_state *g_state = NULL;
 
 /**
  * @param server_cfg *config
@@ -427,11 +428,7 @@ inline static void tvpn_server_tcp_accept(server_tcp_state * __restrict__ state)
     );
     chan->r_port_src   = ntohs(addr.sin_port);
 
-    debug_log(
-      1,
-      "Accepting connection from %s:%d...",
-      chan->r_ip_src, chan->r_port_src
-    );
+    debug_log(1, "Accepting connection from %s:%d...", HP_CC(chan));
 
     if (pthread_mutex_init(&(chan->ht_mutex), NULL) < 0) {
       debug_log(0, "phtread_mutex_init error: %s", strerror(errno));
@@ -515,6 +512,8 @@ inline static void *tvpn_server_tcp_worker_thread(void *_chan)
     }
   }
 
+  debug_log(1, "Closing connection from %s:%d...", HP_CC(chan));
+
   close(chan->cli_fd);
   chan->is_used = false;
   tun_set_queue(chan->tun_fd, 0);
@@ -591,7 +590,25 @@ inline static void tvpn_server_tcp_auth_hander(
   size_t lrecv_size
 )
 {
+  client_pkt *cli_pkt = (client_pkt *)chan->recv_buff;
 
+  if (data_size < cli_pkt->size) {
+    /* Data has not been received completely. */
+    return;
+  }
+
+
+  {
+    auth_pkt *auth_p = (auth_pkt   *)cli_pkt->data;
+
+    debug_log(2, "Receiving auth data from %s:%d...", HP_CC(chan));
+    debug_log(2, "[%s:%d] Username: \"%s\"", HP_CC(chan), auth_p->username);
+    debug_log(2, "[%s:%d] Password: \"%s\"", HP_CC(chan), auth_p->password);
+
+    if (tvpn_auth_tcp(auth_p->username, auth_p->password, chan)) {
+
+    }
+  }
 }
 
 
