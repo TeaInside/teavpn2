@@ -28,8 +28,7 @@ inline static void tvpn_client_tcp_recv_handler(client_tcp_state *__restrict__ s
 
 inline static bool tvpn_client_tcp_handle_auth_ok(
   client_tcp_state *__restrict__ state,
-  size_t data_size,
-  size_t lrecv_size
+  size_t data_size
 );
 
 static client_tcp_state *g_state = NULL;
@@ -186,7 +185,7 @@ inline static bool tvpn_client_tcp_iface_init(client_tcp_state * __restrict__ st
  */
 inline static bool tvpn_client_tcp_sock_init(client_tcp_state * __restrict__ state)
 {
-  int                  rv, fd       = -1;
+  int                  fd           = -1;
   client_socket_cfg   *sock         = &(state->config->sock);
   socklen_t            addrlen      = sizeof(struct sockaddr_in);
   struct sockaddr_in   server_addr;
@@ -231,7 +230,7 @@ inline static bool tvpn_client_tcp_sock_init(client_tcp_state * __restrict__ sta
     }
 
     debug_log(0, "Error connect(): %s", strerror(errno));
-    return false;
+    goto err;
   }
 
 
@@ -352,13 +351,34 @@ inline static void tvpn_client_tcp_recv_handler(client_tcp_state *__restrict__ s
        * In this branch table, the callee is responsible to
        * zero the recv_size if it has finished its job.
        */
+      case SRV_PKT_PING:
+        break;
 
       case SRV_PKT_AUTH_OK:
-        debug_log(3, "Got SRV_PKT_AUTH_OK!");
+        debug_log(2, "Got SRV_PKT_AUTH_OK!");
         debug_log(0, "Authentication success!");
-        if (!tvpn_client_tcp_handle_auth_ok(state, data_size, lrecv_size)) {
+        if (!tvpn_client_tcp_handle_auth_ok(state, data_size)) {
           state->stop = true;
         }
+        break;
+
+      case SRV_PKT_AUTH_REJECT:
+        debug_log(2, "Got SRV_PKT_AUTH_REJECT!");
+        debug_log(0, "Authentication failed!");
+        state->stop = true;
+        break;
+
+      case SRV_PKT_DATA:
+        break;
+
+      case SRV_PKT_DISCONNECT:
+        debug_log(2, "Got SRV_PKT_DISCONNECT!");
+        debug_log(0, "Disconnecting...");
+        state->stop = true;
+        break;
+
+      default:
+        debug_log(3, "Got invalid packet type: %d", srv_pkt->type);
         break;
     }
   }
@@ -368,13 +388,11 @@ inline static void tvpn_client_tcp_recv_handler(client_tcp_state *__restrict__ s
 /**
  * @param  client_tcp_state *__restrict__ state
  * @param  size_t                         data_size
- * @param  size_t                         lrecv_size
  * @return bool
  */
 inline static bool tvpn_client_tcp_handle_auth_ok(
   client_tcp_state *__restrict__ state,
-  size_t data_size,
-  size_t lrecv_size
+  size_t data_size
 )
 {
   client_cfg       *config   = state->config;
@@ -387,23 +405,20 @@ inline static bool tvpn_client_tcp_handle_auth_ok(
   }
 
   {
-    static char ipv4[sizeof("xxx.xxx.xxx.xxx/xx")];
-    static char ipv4_netmask[sizeof("xxx.xxx.xxx.xxx/xx")];
+    char ipv4[sizeof("xxx.xxx.xxx.xxx/xx")];
+    char ipv4_netmask[sizeof("xxx.xxx.xxx.xxx")];
 
+    iface->ipv4            = ipv4;
+    iface->ipv4_netmask    = ipv4_netmask;
     srv_auth_res *auth_res = (srv_auth_res *)srv_pkt->data;
-    __be32        netmask  = auth_res->ipv4_netmask;
 
     inet_ntop(AF_INET, &(auth_res->ipv4), ipv4, sizeof(ipv4));
     inet_ntop(AF_INET, &(auth_res->ipv4_netmask), ipv4_netmask, sizeof(ipv4_netmask));
 
-    sprintf(
-      &(ipv4[strlen(ipv4)]), "/%d",
-      ((~netmask) == 0) ? 32 : __builtin_ctz(~netmask)
-    );
-
-    iface->ipv4        = ipv4;
-    iface->ipv4_netmask = ipv4_netmask;
-    client_tun_iface_up(iface);
+    if (!client_tun_iface_up(iface)) {
+      debug_log(0, "client_tun_iface_up failed!");
+      return false;
+    }
   }
 
   return true;

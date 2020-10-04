@@ -34,7 +34,14 @@ inline static int32_t tvpn_server_tcp_chan_get(tcp_channel *channels, uint16_t m
 inline static void tvpn_server_tcp_accept_and_drop(int net_fd);
 
 inline static void *tvpn_server_tcp_worker_thread(void *_chan);
-inline static void tvpn_server_tcp_recv_handler(tcp_channel *chan, server_tcp_state *state);
+inline static void tvpn_server_tcp_recv_handler(
+  tcp_channel * __restrict__ chan,
+  server_tcp_state * __restrict__ state
+);
+inline static void tvpn_server_tcp_tun_handler(
+  tcp_channel * __restrict__ chan,
+  server_tcp_state * __restrict__ state
+);
 
 inline static bool tvpn_server_tcp_auth_hander(
   tcp_channel *chan,
@@ -509,8 +516,7 @@ inline static void *tvpn_server_tcp_worker_thread(void *_chan)
     }
 
     if (likely(fds[0].revents == POLLIN)) {
-      char buff[4096];
-      debug_log(5, "Reading from tun... %d", read(fds[0].fd, buff, 4096));
+      tvpn_server_tcp_tun_handler(chan, state);
     }
 
     if (likely(fds[1].revents == POLLIN)) {
@@ -539,11 +545,14 @@ inline static void *tvpn_server_tcp_worker_thread(void *_chan)
 
 
 /**
- * @param  tcp_channel       *chan
- * @param  server_tcp_state  *state
+ * @param  tcp_channel       * __restrict__ chan
+ * @param  server_tcp_state  * __restrict__ state
  * @return void
  */
-inline static void tvpn_server_tcp_recv_handler(tcp_channel *chan, server_tcp_state *state)
+inline static void tvpn_server_tcp_recv_handler(
+  tcp_channel * __restrict__ chan,
+  server_tcp_state * __restrict__ state
+)
 {
   register ssize_t  ret;
   register size_t   lrecv_size = chan->recv_size;
@@ -596,6 +605,7 @@ inline static void tvpn_server_tcp_recv_handler(tcp_channel *chan, server_tcp_st
         break;
 
       default:
+        debug_log(3, "Got invalid packet type: %d", cli_pkt->type);
         break;
     }
   }
@@ -624,15 +634,18 @@ inline static bool tvpn_server_tcp_auth_hander(
     return true;
   }
 
-
   {
-    int               rv;
+    ssize_t           rv;
     bool              ret;
     server_pkt        srv_pkt;
     client_auth_tmp   auth_tmp;
     uint8_t           data_size = 0;
     srv_auth_res      *auth_res = (srv_auth_res *)srv_pkt.data;
     auth_pkt          *auth_p   = (auth_pkt   *)cli_pkt->data;
+
+    /* For string safety. */
+    auth_p->username[254] = '\0';
+    auth_p->password[254] = '\0';
 
     debug_log(2, "[%s:%d] Receiving auth data...", HP_CC(chan));
     debug_log(2, "[%s:%d] Username: \"%s\"", HP_CC(chan), auth_p->username);
@@ -642,13 +655,23 @@ inline static bool tvpn_server_tcp_auth_hander(
       chan->authorized = true;
       chan->recv_size  = 0;
       srv_pkt.type     = SRV_PKT_AUTH_OK;
-      srv_pkt.size     = 0;
+      srv_pkt.size     = data_size;
       ret              = true;
       data_size        = sizeof(srv_auth_res);
 
-      inet_pton(AF_INET, auth_tmp.ipv4, &(auth_res->ipv4));
-      inet_pton(AF_INET, auth_tmp.ipv4_netmask, &(auth_res->ipv4_netmask));
+      if (!inet_pton(AF_INET, auth_tmp.ipv4, &(auth_res->ipv4))) {
+        debug_log(0, "[%s:%d] Error, invalid ipv4: \"%s\"",
+          auth_tmp.ipv4);
+        return false;
+      }
+      if (!inet_pton(AF_INET, auth_tmp.ipv4_netmask, &(auth_res->ipv4_netmask))) {
+        debug_log(0, "[%s:%d] Error, invalid ipv4_netmask: \"%s\"",
+          auth_tmp.ipv4_netmask);
+        return false;
+      }
     } else {
+      srv_pkt.type     = SRV_PKT_AUTH_REJECT;
+      srv_pkt.size     = 0;
       ret              = false;
     }
 
@@ -660,6 +683,38 @@ inline static bool tvpn_server_tcp_auth_hander(
 
     return ret;
   }
+}
+
+
+/**
+ * @param  tcp_channel       * __restrict__ chan
+ * @param  server_tcp_state  * __restrict__ state
+ * @return void
+ */
+inline static void tvpn_server_tcp_tun_handler(
+  tcp_channel * __restrict__ chan,
+  server_tcp_state * __restrict__ state
+)
+{
+  ssize_t     rv;
+  server_pkt  *srv_pkt = (server_pkt *)chan->send_buff;
+  srv_pkt->type        = SRV_PKT_DATA;
+
+  rv = read(chan->tun_fd, srv_pkt->data, SERVER_DATA_SIZE);
+  if (rv < 0) {
+    debug_log(0, "Error read from tun: %s", strerror(errno));
+    return;
+  }
+  debug_log(5, "Reading from tun_fd %ld bytes", rv);
+
+  srv_pkt->size = (size_t)rv;
+
+  rv = send(chan->cli_fd, srv_pkt, SRV_IDENT_PKT_SIZE + srv_pkt->size, MSG_DONTWAIT);
+  if (rv < 0) {
+    debug_log(0, "[%s:%d] Error send(): %s", HP_CC(chan), strerror(errno));
+    return;
+  }
+  debug_log(5, "Send to cli_fd %ld bytes", rv);
 }
 
 
