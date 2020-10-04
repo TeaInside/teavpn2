@@ -649,6 +649,7 @@ inline static void tvpn_client_tcp_handle_data(
     }
     debug_log(5, "Write to tun_fd %ld bytes", rv);
   }
+  chan->recv_size = 0;
 }
 
 
