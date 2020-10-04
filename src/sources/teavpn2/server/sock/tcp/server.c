@@ -612,6 +612,7 @@ inline static void tvpn_server_tcp_recv_handler(
        */
 
       case CLI_PKT_PING:
+        cli_pkt->size   = 0;
         chan->recv_size = 0;
         break;
 
@@ -628,10 +629,12 @@ inline static void tvpn_server_tcp_recv_handler(
         break;
 
       case CLI_PKT_DISCONNECT:
+        cli_pkt->size   = 0;
         chan->recv_size = 0;
         break;
 
       default:
+        cli_pkt->size   = 0;
         chan->recv_size = 0;
         debug_log(3, "Got invalid packet type: %d", cli_pkt->type);
         break;
@@ -658,19 +661,21 @@ inline static void tvpn_client_tcp_handle_data(
     return;
   }
 
-  chan->recv_size = 0;
-
   {
     ssize_t rv;
 
     rv = write(chan->tun_fd, cli_pkt->data, cli_pkt->size);
     if (rv < 0) {
       debug_log(0, "Error write to tun: %s", strerror(errno));
-      return;
+      goto ret;
     }
     debug_log(5, "Write to tun_fd %ld bytes", rv);
-    cli_pkt->size = 0;
   }
+
+  ret:
+  cli_pkt->size   = 0;
+  chan->recv_size = 0;
+  return;
 }
 
 
@@ -688,6 +693,7 @@ inline static bool tvpn_server_tcp_auth_hander(
   size_t lrecv_size
 )
 {
+  bool ret;
   client_pkt *cli_pkt = (client_pkt *)chan->recv_buff;
 
   if (data_size < cli_pkt->size) {
@@ -695,12 +701,9 @@ inline static bool tvpn_server_tcp_auth_hander(
     return true;
   }
 
-  cli_pkt->size   = 0;
-  chan->recv_size = 0;
 
   {
     ssize_t           rv;
-    bool              ret;
     server_pkt        srv_pkt;
     client_auth_tmp   auth_tmp;
     uint8_t           data_size = 0;
@@ -725,13 +728,17 @@ inline static bool tvpn_server_tcp_auth_hander(
       if (!inet_pton(AF_INET, auth_tmp.ipv4, &(auth_res->ipv4))) {
         debug_log(0, "[%s:%d] Error, invalid ipv4: \"%s\"",
           auth_tmp.ipv4);
-        return false;
+        ret = false;
+        goto ret;
       }
+
       if (!inet_pton(AF_INET, auth_tmp.ipv4_netmask, &(auth_res->ipv4_netmask))) {
         debug_log(0, "[%s:%d] Error, invalid ipv4_netmask: \"%s\"",
           auth_tmp.ipv4_netmask);
-        return false;
+        ret = false;
+        goto ret;
       }
+
     } else {
       srv_pkt.type     = SRV_PKT_AUTH_REJECT;
       srv_pkt.size     = 0;
@@ -741,11 +748,16 @@ inline static bool tvpn_server_tcp_auth_hander(
     rv = send(chan->cli_fd, &srv_pkt, SRV_IDENT_PKT_SIZE + data_size, MSG_DONTWAIT);
     if (rv < 0) {
       debug_log(0, "[%s:%d] Error send(): %s", HP_CC(chan), strerror(errno));
-      return false;
+      ret = false;
+      goto ret;
     }
 
-    return ret;
   }
+
+  ret:
+  cli_pkt->size   = 0;
+  chan->recv_size = 0;
+  return ret;
 }
 
 
