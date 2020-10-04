@@ -25,7 +25,9 @@ inline static bool getopt_handler(int argc, char **argv, client_cfg *config);
 
 static const uint16_t default_mtu = 1500;
 static const uint16_t default_server_port = 55555;
-static char default_dev_name[] = "tun0";
+static char default_dev_name[]    = "teavpn00";
+static char default_data_dir[]    = "data/client";
+static char default_config_file[] = "config/client.ini";
 
 /**
  * Return false if parse fails.
@@ -38,12 +40,6 @@ bool tvpn_client_argv_parse(
 )
 {
   (void)envp;
-
-  if (argc == 1) {
-    printf("Usage: %s [options]\n", argv[0]);
-    return false;
-  }
-
   set_default_config(config);
   return getopt_handler(argc, argv, config);
 }
@@ -54,8 +50,15 @@ bool tvpn_client_argv_parse(
  */
 inline static void set_default_config(client_cfg *config)
 {
-  config->config_file = NULL;
-  config->data_dir    = NULL;
+  FILE *handle = fopen(default_config_file, "r");
+  if (handle) {
+    config->config_file = default_config_file;
+    fclose(handle);
+  } else {
+    config->config_file = NULL;
+  }
+
+  config->data_dir    = default_data_dir;
 
   /* Virtual network interface. */
   config->iface.dev          = default_dev_name;
@@ -63,8 +66,13 @@ inline static void set_default_config(client_cfg *config)
 
   /* Socket. */
   config->sock.server_addr = NULL;
-  config->sock.server_port   = default_server_port;
+  config->sock.server_port = default_server_port;
   config->sock.type        = sock_tcp;
+
+  /* Auth. */
+  config->auth.username    = NULL;
+  config->auth.password    = NULL;
+  config->auth.secret_key  = NULL;
 }
 
 static const struct option long_options[] = {
@@ -81,8 +89,16 @@ static const struct option long_options[] = {
   {"server-port",  required_argument, 0, 'P'},
   {"sock-type",    required_argument, 0, 's'},
 
+  /* Auth option. */
+  {"username",     required_argument, 0, 'u'},
+  {"password",     required_argument, 0, 'p'},
+  {"secret-key",   required_argument, 0, 'k'},
+
+  {"data-dir",     required_argument, 0, 'D'},
+
   {0, 0, 0, 0}
 };
+
 
 
 /**
@@ -99,7 +115,7 @@ inline static bool getopt_handler(int argc, char **argv, client_cfg *config)
   while (1) {
     int option_index = 0;
     /*int this_option_optind = optind ? optind : 1;*/
-    c = getopt_long(argc, argv, "hc:d:m:H:P:s:", long_options, &option_index);
+    c = getopt_long(argc, argv, "hc:d:m:H:P:s:u:p:k:D:", long_options, &option_index);
 
     if (c == -1)
       break;
@@ -111,8 +127,12 @@ inline static bool getopt_handler(int argc, char **argv, client_cfg *config)
         return false;
         break;
       case 'c':
-        config->config_file = optarg;
-        PRINT_CONFIG(config->config_file, "\"%s\"", optarg);
+        if (*optarg) {
+          config->config_file = optarg;
+        } else {
+          config->config_file = NULL;
+        }
+        PRINT_CONFIG(config->config_file, "\"%s\"", config->config_file);
         break;
 
       /* [Config options] */
@@ -163,7 +183,22 @@ inline static bool getopt_handler(int argc, char **argv, client_cfg *config)
       }
         break;
 
+      /* Auth */
       case 'u':
+        config->auth.username = optarg;
+        PRINT_CONFIG(config->auth.username, "\"%s\"", config->auth.username);
+        break;
+      case 'p':
+        config->auth.password = optarg;
+        PRINT_CONFIG(config->auth.password, "\"%s\"", config->auth.password);
+        break;
+      case 'k':
+        config->auth.secret_key = optarg;
+        PRINT_CONFIG(config->auth.secret_key, "\"%s\"", config->auth.secret_key);
+        break;
+
+
+      case 'D':
         config->data_dir = optarg;
         break;
 
@@ -187,7 +222,7 @@ inline static void show_help(char *app)
   printf("\n");
   printf("Available options:\n");
   printf("  -h, --help\t\t\tShow this help message.\n");
-  printf("  -c, --config=FILE\t\tSet config file.\n");
+  printf("  -c, --config=FILE\t\tSet config file (default: %s).\n", default_config_file);
 
   printf("\n");
   printf("[Config options]\n");
@@ -198,12 +233,18 @@ inline static void show_help(char *app)
   printf("\n");
   printf("Socket:\n");
   printf("  -H, --server-addr=IP\t\tSet server address.\n");
-  printf("  -P, --server-port=PORT\t\tSet server port (default: %d).\n", default_server_port);
+  printf("  -P, --server-port=PORT\tSet server port (default: %d).\n", default_server_port);
   printf("  -s, --sock-type=TYPE\t\tSet socket type (must be tcp or udp) (default: tcp).\n");
 
   printf("\n");
+  printf("Auth:\n");
+  printf("  -u, --username=USERNAME\tSet username.\n");
+  printf("  -p, --password=PASSWORD\tSet password.\n");
+  printf("  -k, --secret-key=KEY\t\tSet secret key.\n");
+
+  printf("\n");
   printf("Other:\n");
-  printf("  -u, --data-dir\t\tSet data directory.\n");
+  printf("  -D, --data-dir=DIR\t\tSet data directory (default: %s).\n", default_data_dir);
 
   printf("\n");
   printf("\n");
@@ -212,3 +253,4 @@ inline static void show_help(char *app)
   printf("\n");
   printf("This software is licensed under the MIT license.\n");
 }
+

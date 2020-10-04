@@ -95,6 +95,21 @@ inline static int client_parser_handler(
   } else
   RMATCH_S("other") {
     config->data_dir = t_ar_strndup(value, 256);
+  } else
+  RMATCH_S("auth") {
+
+    RMATCH_N("username") {
+      config->auth.username = t_ar_strndup(value, 256);
+    } else
+    RMATCH_N("password") {
+      config->auth.password = t_ar_strndup(value, 256);
+    } else
+    RMATCH_N("secret_key") {
+      config->auth.secret_key = t_ar_strndup(value, 256);
+    } else {
+      goto invalid_name;
+    }
+
   } else {
     printf("Invalid section \"%s\" on line %d\n", section, lineno);
     failed = true;

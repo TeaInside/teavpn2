@@ -121,7 +121,7 @@ inline static bool tvpn_client_tcp_iface_init(client_tcp_state * __restrict__ st
   fd = tun_alloc(iface->dev, IFF_TAP);
 
   if (fd < 0) {
-    printf("Cannot allocate virtual network interface");
+    debug_log(0, "Cannot allocate virtual network interface");
     return false;
   }
 

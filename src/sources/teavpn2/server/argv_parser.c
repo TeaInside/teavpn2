@@ -27,7 +27,7 @@ static const int default_back_log = 10;
 static const uint16_t default_mtu = 1500;
 static const uint16_t default_bind_port = 55555;
 static const uint16_t default_max_conn  = 10;
-static char default_dev_name[] = "tun0";
+static char default_dev_name[] = "teavpn10";
 
 /**
  * Return false if parse fails.
@@ -91,7 +91,7 @@ static const struct option long_options[] = {
   {"backlog",      required_argument, 0, 'B'},
   {"max-conn",     required_argument, 0, 'M'},
 
-  {"data-dir",     required_argument, 0, 'u'},
+  {"data-dir",     required_argument, 0, 'D'},
 
   {0, 0, 0, 0}
 };
@@ -110,7 +110,7 @@ inline static bool getopt_handler(int argc, char **argv, server_cfg *config)
   while (1) {
     int option_index = 0;
     /*int this_option_optind = optind ? optind : 1;*/
-    c = getopt_long(argc, argv, "c:hd:m:4:b:H:P:s:B:u:M:", long_options, &option_index);
+    c = getopt_long(argc, argv, "c:hd:m:4:b:H:P:s:B:D:M:", long_options, &option_index);
 
     if (c == -1)
       break;
@@ -191,7 +191,7 @@ inline static bool getopt_handler(int argc, char **argv, server_cfg *config)
         break;
 
 
-      case 'u':
+      case 'D':
         config->data_dir = optarg;
         break;
 
@@ -235,7 +235,7 @@ inline static void show_help(char *app)
 
   printf("\n");
   printf("Other:\n");
-  printf("  -u, --data-dir\t\tSet data directory.\n");
+  printf("  -D, --data-dir\t\tSet data directory.\n");
 
   printf("\n");
   printf("\n");

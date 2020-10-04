@@ -23,11 +23,11 @@ int tvpn_client_run(client_cfg *config)
       goto ret;
 
     case sock_udp:
-      printf("UDP socket is not supported yet!\n");
+      debug_log(0, "UDP socket is not supported yet!");
       goto ret;
 
     default:
-      printf("Invalid socket type %d\n", config->sock.type);
+      debug_log(0, "Invalid socket type %d", config->sock.type);
       goto ret;
   }
 
@@ -44,7 +44,7 @@ inline static bool tvpn_client_config_validate(client_cfg *config)
     client_iface_cfg *iface = &(config->iface);
 
     if (!iface->dev) {
-      printf("config->iface.dev cannot be empty\n");
+      debug_log(0, "config->iface.dev cannot be empty");
       return false;
     }
   }
@@ -54,12 +54,12 @@ inline static bool tvpn_client_config_validate(client_cfg *config)
     client_socket_cfg *sock = &(config->sock);
 
     if (!sock->server_addr) {
-      printf("config->sock.server_addr cannot be empty\n");
+      debug_log(0, "config->sock.server_addr cannot be empty");
       return false;
     }
 
     if (sock->type != sock_tcp && sock->type != sock_udp) {
-      printf("config->sock.type must be \"tcp\" or \"udp\"\n");
+      debug_log(0, "config->sock.type must be \"tcp\" or \"udp\"");
       return false;
     }
 
@@ -69,9 +69,31 @@ inline static bool tvpn_client_config_validate(client_cfg *config)
   {
     /* Validate other section. */
     if (!config->data_dir) {
-      printf("config->data_dir cannot be empty\n");
+      debug_log(0, "config->data_dir cannot be empty");
       return false;
     }
   }
+
+
+  {
+    /* Validate auth section. */
+    client_auth_cfg *auth = &(config->auth);
+
+    if (!auth->username) {
+      debug_log(0, "config->auth.username cannot be empty");
+      return false;
+    }
+
+    if (!auth->password) {
+      debug_log(0, "config->auth.password cannot be empty");
+      return false;
+    }
+
+    if (!auth->secret_key) {
+      debug_log(0, "config->auth.secret_key cannot be empty");
+      return false;
+    }
+  }
+
   return true;
 }

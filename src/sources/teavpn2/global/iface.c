@@ -37,12 +37,12 @@ int tun_alloc(char *dev, int flags)
   ifr.ifr_flags = flags;
 
   if ((fd = open("/dev/net/tun", O_RDWR)) < 0) {
-    printf("Error open(/dev/net/tun): %s\n", strerror(errno));
+    debug_log(0, "Error open(/dev/net/tun): %s", strerror(errno));
     return fd;
   }
 
   if ((ret = ioctl(fd, TUNSETIFF, (void *)&ifr)) < 0) {
-    printf("Error ioctl(%d, TUNSETIFF): %s\n", fd, strerror(errno));
+    debug_log(0, "Error ioctl(%d, TUNSETIFF): %s", fd, strerror(errno));
     close(fd);
     return ret;
   }
