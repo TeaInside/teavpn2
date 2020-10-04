@@ -43,9 +43,9 @@ typedef struct _client_tcp_state {
   bool                  stop;           /* Stop signal. */
   client_cfg            *config;        /* Server config. */
 
-  char                  recv_buff[TCP_BUFFER];
+  char                  recv_buff[sizeof(server_pkt) + 1024];
   size_t                recv_size;
-  char                  send_buff[TCP_BUFFER];
+  char                  send_buff[sizeof(client_pkt) + 1024];
   size_t                send_size;
 } client_tcp_state;
 

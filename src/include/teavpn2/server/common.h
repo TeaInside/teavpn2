@@ -77,9 +77,9 @@ typedef struct _tcp_channel {
   uint16_t              r_port_src;
   struct sockaddr_in    addr;
 
-  char                  recv_buff[TCP_BUFFER];
+  char                  recv_buff[sizeof(client_pkt) + 1024];
   size_t                recv_size;
-  char                  send_buff[TCP_BUFFER];
+  char                  send_buff[sizeof(server_pkt) + 1024];
   size_t                send_size;
 } tcp_channel;
 

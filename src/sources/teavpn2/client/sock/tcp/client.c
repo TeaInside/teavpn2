@@ -422,6 +422,8 @@ inline static bool tvpn_client_tcp_handle_auth_ok(
     return true;
   }
 
+  state->recv_size = 0;
+
   {
     char ipv4[sizeof("xxx.xxx.xxx.xxx/xx")];
     char ipv4_netmask[sizeof("xxx.xxx.xxx.xxx")];
@@ -461,6 +463,8 @@ inline static void tvpn_client_tcp_handle_data(
     return;
   }
 
+  state->recv_size = 0;
+
   {
     ssize_t rv;
 
@@ -486,7 +490,7 @@ inline static void tvpn_server_tcp_tun_handler(
   server_pkt  *srv_pkt = (server_pkt *)state->send_buff;
   srv_pkt->type        = CLI_PKT_DATA;
 
-  rv = read(state->tun_fd, srv_pkt->data, SERVER_DATA_SIZE);
+  rv = read(state->tun_fd, srv_pkt->data, DATA_SIZE);
   if (rv < 0) {
     debug_log(0, "Error read from tun: %s", strerror(errno));
     return;
