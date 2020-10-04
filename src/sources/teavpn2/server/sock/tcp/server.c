@@ -502,7 +502,9 @@ inline static void *tvpn_server_tcp_worker_thread(void *_chan)
   fds[1].events = POLLIN;
 
   pthread_mutex_lock(&(chan->ht_mutex));
-  tun_set_queue(chan->tun_fd, 1);
+  if (tun_set_queue(chan->tun_fd, 1) < 0) {
+    debug_log(0, "tun_set_queue(): %s", strerror(errno));
+  }
 
   while (true) {
     int rv;
@@ -705,7 +707,7 @@ inline static void tvpn_server_tcp_tun_handler(
     debug_log(0, "Error read from tun: %s", strerror(errno));
     return;
   }
-  debug_log(5, "Reading from tun_fd %ld bytes", rv);
+  debug_log(5, "Read from tun_fd %ld bytes", rv);
 
   srv_pkt->size = (size_t)rv;
 

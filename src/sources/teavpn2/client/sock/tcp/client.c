@@ -31,6 +31,11 @@ inline static bool tvpn_client_tcp_handle_auth_ok(
   size_t data_size
 );
 
+inline static void tvpn_client_tcp_handle_data(
+  client_tcp_state *__restrict__ state,
+  size_t data_size
+);
+
 static client_tcp_state *g_state = NULL;
 
 /**
@@ -225,11 +230,13 @@ inline static bool tvpn_client_tcp_sock_init(client_tcp_state * __restrict__ sta
   still_connecting:
   if (connect(fd, (struct sockaddr *)&server_addr, addrlen) < 0) {
 
-    if (errno == EINPROGRESS) {
+    register int _errno = errno;
+
+    if (_errno == EINPROGRESS || _errno == EALREADY) {
       goto still_connecting;
     }
 
-    debug_log(0, "Error connect(): %s", strerror(errno));
+    debug_log(0, "Error connect(): %s", strerror(_errno));
     goto err;
   }
 
@@ -369,6 +376,8 @@ inline static void tvpn_client_tcp_recv_handler(client_tcp_state *__restrict__ s
         break;
 
       case SRV_PKT_DATA:
+        debug_log(5, "Got SRV_PKT_DATA!");
+        tvpn_client_tcp_handle_data(state, data_size);
         break;
 
       case SRV_PKT_DISCONNECT:
@@ -422,6 +431,36 @@ inline static bool tvpn_client_tcp_handle_auth_ok(
   }
 
   return true;
+}
+
+
+/**
+ * @param  client_tcp_state *__restrict__ state
+ * @param  size_t                         data_size
+ * @return void
+ */
+inline static void tvpn_client_tcp_handle_data(
+  client_tcp_state *__restrict__ state,
+  size_t data_size
+)
+{
+  server_pkt *srv_pkt  = (server_pkt *)state->recv_buff;
+
+  if (data_size < srv_pkt->size) {
+    /* Data has not been received completely. */
+    return;
+  }
+
+  {
+    ssize_t rv;
+
+    rv = write(state->tun_fd, srv_pkt->data, srv_pkt->size);
+    if (rv < 0) {
+      debug_log(0, "Error read from tun: %s", strerror(errno));
+      return;
+    }
+    debug_log(5, "Write to tun_fd %ld bytes", rv);
+  }
 }
 
 
