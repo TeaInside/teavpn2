@@ -509,6 +509,7 @@ inline static void *tvpn_server_tcp_worker_thread(void *_chan)
   pthread_mutex_lock(&(chan->ht_mutex));
   if (tun_set_queue(chan->tun_fd, 1) < 0) {
     debug_log(0, "tun_set_queue(): %s", strerror(errno));
+    goto close_conn;
   }
 
   while (true) {
@@ -537,6 +538,7 @@ inline static void *tvpn_server_tcp_worker_thread(void *_chan)
     }
   }
 
+  close_conn:
   debug_log(1, "Closing connection from %s:%d...", HP_CC(chan));
 
   if (chan->cli_fd != -1) {
@@ -637,6 +639,8 @@ inline static void tvpn_client_tcp_handle_data(
     return;
   }
 
+  chan->recv_size = 0;
+
   {
     ssize_t rv;
 
@@ -647,7 +651,6 @@ inline static void tvpn_client_tcp_handle_data(
     }
     debug_log(5, "Write to tun_fd %ld bytes", rv);
   }
-  chan->recv_size = 0;
 }
 
 
@@ -672,6 +675,8 @@ inline static bool tvpn_server_tcp_auth_hander(
     return true;
   }
 
+  chan->recv_size = 0;
+
   {
     ssize_t           rv;
     bool              ret;
@@ -691,7 +696,6 @@ inline static bool tvpn_server_tcp_auth_hander(
 
     if (tvpn_auth_tcp(auth_p, chan, &auth_tmp)) {
       chan->authorized = true;
-      chan->recv_size  = 0;
       srv_pkt.type     = SRV_PKT_AUTH_OK;
       srv_pkt.size     = data_size;
       ret              = true;
