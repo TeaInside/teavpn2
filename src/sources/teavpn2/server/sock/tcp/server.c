@@ -590,6 +590,8 @@ inline static void tvpn_server_tcp_recv_handler(
     return;
   }
 
+  debug_log(5, "recv %ld bytes from cli_fd", ret);
+
   client_pkt *cli_pkt  = (client_pkt *)&(chan->recv_buff[0]);
   chan->recv_size     += (size_t)ret;
 
