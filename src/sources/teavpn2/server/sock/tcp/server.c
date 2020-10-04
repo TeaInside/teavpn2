@@ -612,6 +612,7 @@ inline static void tvpn_server_tcp_recv_handler(
        */
 
       case CLI_PKT_PING:
+        chan->recv_size = 0;
         break;
 
       case CLI_PKT_AUTH:
@@ -627,9 +628,11 @@ inline static void tvpn_server_tcp_recv_handler(
         break;
 
       case CLI_PKT_DISCONNECT:
+        chan->recv_size = 0;
         break;
 
       default:
+        chan->recv_size = 0;
         debug_log(3, "Got invalid packet type: %d", cli_pkt->type);
         break;
     }
