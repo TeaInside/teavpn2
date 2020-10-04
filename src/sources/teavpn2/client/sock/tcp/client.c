@@ -36,6 +36,11 @@ inline static void tvpn_client_tcp_handle_data(
   size_t data_size
 );
 
+
+inline static void tvpn_server_tcp_tun_handler(
+  client_tcp_state *__restrict__ state
+);
+
 static client_tcp_state *g_state = NULL;
 
 /**
@@ -53,13 +58,14 @@ int tvpn_client_tcp_run(client_cfg *config)
   int                   ptimeout;
 
 
-  state.net_fd    = -1;
-  state.tun_fd    = -1;
-  state.stop      = false;
-  g_state         = &state;
-  state.config    = config;
-  state.recv_size = 0;
-  state.send_size = 0;
+  state.net_fd     = -1;
+  state.tun_fd     = -1;
+  state.authorized = false;
+  state.stop       = false;
+  g_state          = &state;
+  state.config     = config;
+  state.recv_size  = 0;
+  state.send_size  = 0;
 
   debug_log(2, "Allocating virtual network interface...");
   if (!tvpn_client_tcp_iface_init(&state)) {
@@ -90,8 +96,8 @@ int tvpn_client_tcp_run(client_cfg *config)
   fds[1].events = POLLIN;
 
   /* Add pipe fd to fds. */
-  fds[1].fd     = pipe_fd[0];
-  fds[1].events = POLLIN;
+  fds[2].fd     = pipe_fd[0];
+  fds[2].events = POLLIN;
 
   nfds     = 3;
   ptimeout = 3000;
@@ -114,14 +120,13 @@ int tvpn_client_tcp_run(client_cfg *config)
 
     /* Reading from TUN/TAP. */
     if (likely(fds[1].revents == POLLIN)) {
-      char buff[4096];
-      debug_log(5, "Reading from TUN/TAP: %ld bytes", read(fds[0].fd, buff, 4096));
+      tvpn_server_tcp_tun_handler(&state);
     }
 
     /* Pipe interrupt. */
-    if (unlikely(fds[1].revents == POLLIN)) {
+    if (unlikely(fds[2].revents == POLLIN)) {
       char buf[PIPE_BUF];
-      if (read(pipe_fd[0], buf, PIPE_BUF) < 0) {
+      if (read(fds[2].fd, buf, PIPE_BUF) < 0) {
         debug_log(0, "Error reading from pipe_fd[0]: %s", strerror(errno));
       }
     }
@@ -172,7 +177,7 @@ inline static bool tvpn_client_tcp_iface_init(client_tcp_state * __restrict__ st
 
 
   debug_log(5, "Allocating tun_fd...");
-  fd = tun_alloc(iface->dev, IFF_TAP);
+  fd = tun_alloc(iface->dev, IFF_TUN);
 
   if (fd < 0) {
     debug_log(0, "Cannot allocate virtual network interface");
@@ -376,8 +381,11 @@ inline static void tvpn_client_tcp_recv_handler(client_tcp_state *__restrict__ s
         break;
 
       case SRV_PKT_DATA:
-        debug_log(5, "Got SRV_PKT_DATA!");
-        tvpn_client_tcp_handle_data(state, data_size);
+        if (state->authorized) {
+          tvpn_client_tcp_handle_data(state, data_size);
+        } else {
+          debug_log(4, "Got invalid SRV_PKT_DATA");
+        }
         break;
 
       case SRV_PKT_DISCONNECT:
@@ -409,6 +417,7 @@ inline static bool tvpn_client_tcp_handle_auth_ok(
   server_pkt       *srv_pkt  = (server_pkt *)state->recv_buff;
 
   if (data_size < srv_pkt->size) {
+    debug_log(4, "Pending auth ok data...");
     /* Data has not been received completely. */
     return true;
   }
@@ -430,6 +439,7 @@ inline static bool tvpn_client_tcp_handle_auth_ok(
     }
   }
 
+  state->authorized = true;
   return true;
 }
 
@@ -456,11 +466,41 @@ inline static void tvpn_client_tcp_handle_data(
 
     rv = write(state->tun_fd, srv_pkt->data, srv_pkt->size);
     if (rv < 0) {
-      debug_log(0, "Error read from tun: %s", strerror(errno));
+      debug_log(0, "Error write to tun: %s", strerror(errno));
       return;
     }
     debug_log(5, "Write to tun_fd %ld bytes", rv);
   }
+}
+
+
+/**
+ * @param  client_tcp_state *__restrict__ state
+ * @return void
+ */
+inline static void tvpn_server_tcp_tun_handler(
+  client_tcp_state *__restrict__ state
+)
+{
+  ssize_t     rv;
+  server_pkt  *srv_pkt = (server_pkt *)state->send_buff;
+  srv_pkt->type        = SRV_PKT_DATA;
+
+  rv = read(state->tun_fd, srv_pkt->data, SERVER_DATA_SIZE);
+  if (rv < 0) {
+    debug_log(0, "Error read from tun: %s", strerror(errno));
+    return;
+  }
+  debug_log(5, "Read from tun_fd %ld bytes", rv);
+
+  srv_pkt->size = (size_t)rv;
+
+  rv = send(state->net_fd, srv_pkt, SRV_IDENT_PKT_SIZE + srv_pkt->size, MSG_DONTWAIT);
+  if (rv < 0) {
+    debug_log(0, "Error send(): %s", strerror(errno));
+    return;
+  }
+  debug_log(5, "Send to net_fd %ld bytes", rv);
 }
 
 
