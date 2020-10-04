@@ -212,6 +212,7 @@ inline static bool tvpn_server_tcp_iface_init(server_tcp_state * __restrict__ st
       printf("Cannot allocate virtual network interface: i = %d\n", i);
       goto err;
     }
+    tun_set_queue(fd, 0);
 
     channels[i].tun_fd = fd;
   }
