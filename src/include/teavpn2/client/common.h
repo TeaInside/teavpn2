@@ -17,15 +17,21 @@ typedef struct _client_socket_cfg {
   socket_type           type;           /* Socket type, TCP/UDP. */
 } client_socket_cfg;
 
+typedef struct _client_auth_cfg {
+  char                  *username;
+  char                  *password;
+  char                  *secret_key;
+} client_auth_cfg;
 
 typedef struct _client_cfg {
 
   char                  *config_file;   /* Config file. */
   char                  *data_dir;      /* Data directory. */
   client_iface_cfg      iface;          /* Virtual interface configuration. */
-  client_socket_cfg      sock;          /* Socket configuration. */
-
+  client_socket_cfg     sock;           /* Socket configuration. */
+  client_auth_cfg       auth;
 } client_cfg;
+
 
 typedef struct _client_tcp_state {
   int                   net_fd;         /* Master socket fd. */
