@@ -562,15 +562,21 @@ inline static void tvpn_server_tcp_recv_handler(
   server_tcp_state * __restrict__ state
 )
 {
+  char x;
   register ssize_t  ret;
   register size_t   lrecv_size = chan->recv_size;
+  register char     *buf       = &(chan->recv_buff[lrecv_size]);
 
-  ret = recv(chan->cli_fd, &(chan->recv_buff[lrecv_size]), TCP_RECV_BUFFER, 0);
+  if (*buf) {
+    x = *buf;
+  }
+
+  ret = recv(chan->cli_fd, buf, TCP_RECV_BUFFER, 0);
 
   if (likely(ret < 0)) {
     if (errno != EWOULDBLOCK) {
       /* An error occured that causes disconnection. */
-      debug_log(0, "[%s:%d] Error recv(): %s", HP_CC(chan), strerror(errno));
+      debug_log(0, "[%s:%d] Error recv(): %s %c", HP_CC(chan), strerror(errno), x);
       chan->is_connected = false;
     }
     return;

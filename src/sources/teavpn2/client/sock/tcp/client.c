@@ -66,6 +66,8 @@ int tvpn_client_tcp_run(client_cfg *config)
   state.config     = config;
   state.recv_size  = 0;
   state.send_size  = 0;
+  memset(state.recv_buff, 0, sizeof(state.recv_buff));
+  memset(state.send_buff, 0, sizeof(state.send_buff));
 
   debug_log(2, "Allocating virtual network interface...");
   if (!tvpn_client_tcp_iface_init(&state)) {
