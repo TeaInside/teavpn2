@@ -512,6 +512,9 @@ inline static void *tvpn_server_tcp_worker_thread(void *_chan)
     goto close_conn;
   }
 
+  memset(chan->recv_buff, 0, sizeof(chan->recv_buff));
+  memset(chan->send_buff, 0, sizeof(chan->send_buff));
+
   while (true) {
     int rv;
 
@@ -599,6 +602,11 @@ inline static void tvpn_server_tcp_recv_handler(
       /*
        * In this branch table, the callee is responsible to
        * zero the recv_size if it has finished its job.
+       *
+       * Not only zero the recv_table, the callee is also
+       * responsible to zero the buffer, since it contains
+       * the length of data. This length of data may be reused
+       * if it is not zeroed.
        */
 
       case CLI_PKT_PING:
@@ -656,6 +664,7 @@ inline static void tvpn_client_tcp_handle_data(
       return;
     }
     debug_log(5, "Write to tun_fd %ld bytes", rv);
+    cli_pkt->size = 0;
   }
 }
 
@@ -681,6 +690,7 @@ inline static bool tvpn_server_tcp_auth_hander(
     return true;
   }
 
+  cli_pkt->size   = 0;
   chan->recv_size = 0;
 
   {
