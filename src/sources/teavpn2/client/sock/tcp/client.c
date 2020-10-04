@@ -364,7 +364,13 @@ inline static void tvpn_client_tcp_recv_handler(client_tcp_state *__restrict__ s
       /*
        * In this branch table, the callee is responsible to
        * zero the recv_size if it has finished its job.
+       *
+       * Not only zero the recv_table, the callee is also
+       * responsible to zero the buffer, since it contains
+       * the length of data. This length of data may be reused
+       * if it is not zeroed.
        */
+
       case SRV_PKT_PING:
         break;
 
@@ -377,6 +383,8 @@ inline static void tvpn_client_tcp_recv_handler(client_tcp_state *__restrict__ s
         break;
 
       case SRV_PKT_AUTH_REJECT:
+        srv_pkt->size    = 0;
+        state->recv_size = 0;
         debug_log(2, "Got SRV_PKT_AUTH_REJECT!");
         debug_log(0, "Authentication failed!");
         state->stop = true;
@@ -386,17 +394,23 @@ inline static void tvpn_client_tcp_recv_handler(client_tcp_state *__restrict__ s
         if (state->authorized) {
           tvpn_client_tcp_handle_data(state, data_size);
         } else {
+          srv_pkt->size    = 0;
+          state->recv_size = 0;
           debug_log(4, "Got invalid SRV_PKT_DATA");
         }
         break;
 
       case SRV_PKT_DISCONNECT:
+        srv_pkt->size    = 0;
+        state->recv_size = 0;
         debug_log(2, "Got SRV_PKT_DISCONNECT!");
         debug_log(0, "Disconnecting...");
         state->stop = true;
         break;
 
       default:
+        srv_pkt->size    = 0;
+        state->recv_size = 0;
         debug_log(3, "Got invalid packet type: %d", srv_pkt->type);
         break;
     }
@@ -414,6 +428,7 @@ inline static bool tvpn_client_tcp_handle_auth_ok(
   size_t data_size
 )
 {
+  bool             ret;
   client_cfg       *config   = state->config;
   client_iface_cfg *iface    = &(config->iface);
   server_pkt       *srv_pkt  = (server_pkt *)state->recv_buff;
@@ -444,7 +459,11 @@ inline static bool tvpn_client_tcp_handle_auth_ok(
   }
 
   state->authorized = true;
-  return true;
+  
+  ret:
+  srv_pkt->size    = 0;
+  state->recv_size = 0;
+  return ret;
 }
 
 
@@ -465,18 +484,21 @@ inline static void tvpn_client_tcp_handle_data(
     return;
   }
 
-  state->recv_size = 0;
-
   {
     ssize_t rv;
 
     rv = write(state->tun_fd, srv_pkt->data, srv_pkt->size);
     if (rv < 0) {
       debug_log(0, "Error write to tun: %s", strerror(errno));
-      return;
+      goto ret;
     }
     debug_log(5, "Write to tun_fd %ld bytes", rv);
   }
+
+  ret:
+  srv_pkt->size    = 0;
+  state->recv_size = 0;
+  return;
 }
 
 
@@ -506,6 +528,7 @@ inline static void tvpn_server_tcp_tun_handler(
     debug_log(0, "Error send(): %s", strerror(errno));
     return;
   }
+
   debug_log(5, "Send to net_fd %ld bytes", rv);
 }
 
