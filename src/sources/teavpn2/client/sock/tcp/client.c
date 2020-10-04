@@ -484,7 +484,7 @@ inline static void tvpn_server_tcp_tun_handler(
 {
   ssize_t     rv;
   server_pkt  *srv_pkt = (server_pkt *)state->send_buff;
-  srv_pkt->type        = SRV_PKT_DATA;
+  srv_pkt->type        = CLI_PKT_DATA;
 
   rv = read(state->tun_fd, srv_pkt->data, SERVER_DATA_SIZE);
   if (rv < 0) {
