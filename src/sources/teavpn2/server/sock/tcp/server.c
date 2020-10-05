@@ -200,6 +200,7 @@ inline static bool tvpn_server_tcp_iface_init(server_tcp_state * __restrict__ st
 
   for (i = 0; i < max_conn; i++) {
     int fd;
+    int flags;
 
     debug_log(5, "Allocating tun_fd, (seq:%d)...", i);
     fd = tun_alloc(iface->dev, IFF_TUN | IFF_MULTI_QUEUE);
@@ -207,6 +208,19 @@ inline static bool tvpn_server_tcp_iface_init(server_tcp_state * __restrict__ st
       printf("Cannot allocate virtual network interface: i = %d\n", i);
       goto err;
     }
+
+    flags = fcntl(fd, F_GETFL, 0);
+    if (flags == -1) {
+      debug_log(0, "Error fcntl(): %s", strerror(errno));
+      goto err;
+    }
+
+    flags = (flags & ~O_NONBLOCK);
+    if (fcntl(fd, F_SETFL, flags) != 0) {
+      debug_log(0, "Error fcntl(): %s", strerror(errno));
+      goto err;
+    }
+
     tun_set_queue(fd, 0);
 
     channels[i].tun_fd = fd;
@@ -561,9 +575,18 @@ inline static void tvpn_server_tcp_recv_handler(
 {
   register ssize_t  ret;
   register size_t   lrecv_size = chan->recv_size;
-  register char     *buf       = &(chan->recv_buff[lrecv_size]);
+  register char     *rbuf      = &(chan->recv_buff[0]);
+  client_pkt        *cli_pkt   = (client_pkt *)rbuf;
+  register size_t   cur_read_size;
 
-  ret = recv(chan->cli_fd, buf, TCP_RECV_BUFFER, 0);
+
+  if (unlikely(lrecv_size >= CLI_IDENT_PKT_SIZE)) {
+    cur_read_size = cli_pkt->size;
+  } else {
+    cur_read_size = TCP_RECV_BUFFER;
+  }
+
+  ret = recv(chan->cli_fd, &(rbuf[lrecv_size]), cur_read_size, 0);
 
   if (likely(ret < 0)) {
     if (errno != EWOULDBLOCK) {
@@ -580,9 +603,8 @@ inline static void tvpn_server_tcp_recv_handler(
   }
 
   debug_log(5, "recv %ld bytes from cli_fd", ret);
-
-  client_pkt *cli_pkt  = (client_pkt *)&(chan->recv_buff[0]);
   chan->recv_size     += (size_t)ret;
+
 
   if (likely(chan->recv_size >= CLI_IDENT_PKT_SIZE)) {
 
