@@ -25,6 +25,7 @@ bool server_tun_iface_up(server_iface_cfg *iface)
   __be32 _ipv4;
   __be32 _ipv4_network;
   __be32 _ipv4_netmask;
+  __be32 _ipv4_netmask_sc;
   __be32 _ipv4_broadcast;
 
 
@@ -35,8 +36,12 @@ bool server_tun_iface_up(server_iface_cfg *iface)
   }
 
   /* Convert netmask from big endian integer to CIDR. */
-  //cidr = (~_ipv4_netmask) ? __builtin_ctz(~_ipv4_netmask) : 32;
-  cidr = 32 - __builtin_clz(_ipv4_netmask);
+  _ipv4_netmask_sc = _ipv4_netmask;
+  cidr = 0;
+  while (_ipv4_netmask_sc) {
+    cidr++;
+    _ipv4_netmask_sc >>= 1;
+  }
 
   /* Convert IPv4 from chars to big endian integer. */
   if (!inet_pton(AF_INET, iface->ipv4, &_ipv4)) {
