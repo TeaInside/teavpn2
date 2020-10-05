@@ -10,7 +10,7 @@
 #include <teavpn2/global/debug.h>
 #include <teavpn2/global/memory.h>
 
-#define DATA_SIZE (8096)
+#define DATA_SIZE (6144)
 
 
 #ifndef OFFSETOF
@@ -67,14 +67,20 @@ typedef struct __attribute__((__packed__)) _server_pkt {
 #define CLI_IDENT_PKT_SIZE (OFFSETOF(client_pkt, data))
 #define SRV_IDENT_PKT_SIZE (OFFSETOF(client_pkt, data))
 
+#define CL_IDENT_SIZ (OFFSETOF(client_pkt, data))
+#define SR_IDENT_SIZ (OFFSETOF(server_pkt, data))
+
 char *escapeshellarg(char *alloc, char *str);
 
 int tun_alloc(char *dev, int flags);
-int tun_set_queue(int fd, int enable);
+int tun_set_queue(int fd, bool enable);
 uint8_t cidr_jump_table(__be32 netmask);
 int fd_set_nonblock(int fd);
 
 #define TCP_RECV_BUFFER DATA_SIZE
 #define TCP_SEND_BUFFER DATA_SIZE
+
+#define TCP_RECV_SIZE (DATA_SIZE)
+#define TCP_SEND_SIZE (DATA_SIZE)
 
 #endif

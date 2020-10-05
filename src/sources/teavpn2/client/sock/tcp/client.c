@@ -385,7 +385,7 @@ inline static void tvpn_client_tcp_recv_handler(
        * In this branch table, the callee is responsible to
        * zero the recv_size if it has finished its job.
        *
-       * Not only zero the recv_table, the callee is also
+       * Not only zero the recv_size, the callee is also
        * responsible to zero the buffer, since it contains
        * the length of data. This length of data may be reused
        * if it is not zeroed.
