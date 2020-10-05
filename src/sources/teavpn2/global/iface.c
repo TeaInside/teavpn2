@@ -30,7 +30,7 @@ int tun_alloc(char *dev, int flags)
     return -1;
   }
 
-  memset(&ifr, 0, sizeof(ifr));
+  memset(&ifr, 0, sizeof(struct ifreq));
 
   /* Fill the interface name. */
   strncpy(ifr.ifr_name, dev, IFNAMSIZ);
@@ -51,55 +51,11 @@ int tun_alloc(char *dev, int flags)
 }
 
 
-int tun_set_queue(int fd, int enable)
+int tun_set_queue(int fd, bool enable)
 {
   struct ifreq ifr;
 
-  memset(&ifr, 0, sizeof(ifr));
-
-  if (enable)
-    ifr.ifr_flags = IFF_ATTACH_QUEUE;
-  else
-    ifr.ifr_flags = IFF_DETACH_QUEUE;
-
+  memset(&ifr, 0, sizeof(struct ifreq));
+  ifr.ifr_flags = enable ? IFF_ATTACH_QUEUE : IFF_DETACH_QUEUE;
   return ioctl(fd, TUNSETQUEUE, (void *)&ifr);
-}
-
-uint8_t cidr_jump_table(__be32 netmask) {
-  switch (netmask) {
-    case 0b1: return 1;
-    case 0b11: return 2;
-    case 0b111: return 3;
-    case 0b1111: return 4;
-    case 0b11111: return 5;
-    case 0b111111: return 6;
-    case 0b1111111: return 7;
-    case 0b11111111: return 8;
-    case 0b111111111: return 9;
-    case 0b1111111111: return 10;
-    case 0b11111111111: return 11;
-    case 0b111111111111: return 12;
-    case 0b1111111111111: return 13;
-    case 0b11111111111111: return 14;
-    case 0b111111111111111: return 15;
-    case 0b1111111111111111: return 16;
-    case 0b11111111111111111: return 17;
-    case 0b111111111111111111: return 18;
-    case 0b1111111111111111111: return 19;
-    case 0b11111111111111111111: return 20;
-    case 0b111111111111111111111: return 21;
-    case 0b1111111111111111111111: return 22;
-    case 0b11111111111111111111111: return 23;
-    case 0b111111111111111111111111: return 24;
-    case 0b1111111111111111111111111: return 25;
-    case 0b11111111111111111111111111: return 26;
-    case 0b111111111111111111111111111: return 27;
-    case 0b1111111111111111111111111111: return 28;
-    case 0b11111111111111111111111111111: return 29;
-    case 0b111111111111111111111111111111: return 30;
-    case 0b1111111111111111111111111111111: return 31;
-    case 0b11111111111111111111111111111111: return 32;
-    /* Invalid. */
-    default: return 0;
-  }
 }

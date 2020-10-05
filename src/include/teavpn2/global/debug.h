@@ -9,7 +9,7 @@
 extern uint8_t verbose_level;
 #endif
 
-#define MAX_DEBUG_LEVEL (3)
+#define MAX_DEBUG_LEVEL (100)
 
 __attribute__((force_align_arg_pointer))
 uint8_t __internal_debug_log(const char *msg, ...);
