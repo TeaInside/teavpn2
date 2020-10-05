@@ -386,7 +386,7 @@ inline static int32_t tvpn_server_tcp_chan_get(tcp_channel *channels, uint16_t m
 {
   for (register uint16_t i = 0; i < max_conn; i++) {
     if (!channels[i].is_used) {
-      return (uint32_t)i;
+      return (int32_t)i;
     }
   }
 

@@ -25,16 +25,5 @@ int main(int argc, char *argv[], char *envp[])
     }
   }
 
-  server_pkt pkt;
-  char x[] = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
-  memset(&pkt, 0, sizeof(pkt));
-  memcpy(&pkt, x, SRV_IDENT_PKT_SIZE);
-
-  printf("Type: %x\n", pkt.type);
-  printf("Size: %x\n", pkt.size);
-  printf("Data: %s\n", pkt.data);
-
-  return 0;
-
   return tvpn_server_run(&config);
 }
