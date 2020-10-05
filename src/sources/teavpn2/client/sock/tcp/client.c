@@ -1,6 +1,5 @@
 
 #include <poll.h>
-#include <fcntl.h>
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
@@ -113,7 +112,7 @@ int tvpn_client_tcp_run(client_cfg *config)
 
     /* Poll reached timeout. */
     if (unlikely(rv == 0)) {
-      debug_log(5, "poll() timeout, no action required.");
+      /*debug_log(5, "poll() timeout, no action required.");*/
       goto end_loop;
     }
 
@@ -186,6 +185,12 @@ inline static bool tvpn_client_tcp_iface_init(client_tcp_state * __restrict__ st
   if (fd < 0) {
     debug_log(0, "Cannot allocate virtual network interface");
     return false;
+  }
+
+  if (fd_set_nonblock(fd) < 0) {
+    debug_log(0, "Error fd_set_nonblock(): %s", strerror(errno));
+    close(fd);
+    return false; 
   }
 
   state->tun_fd = fd;

@@ -205,19 +205,13 @@ inline static bool tvpn_server_tcp_iface_init(server_tcp_state * __restrict__ st
     debug_log(5, "Allocating tun_fd, (seq:%d)...", i);
     fd = tun_alloc(iface->dev, IFF_TUN | IFF_MULTI_QUEUE);
     if (fd < 0) {
-      printf("Cannot allocate virtual network interface: i = %d\n", i);
+      debug_log(0, "Cannot allocate virtual network interface: i = %d\n", i);
       goto err;
     }
 
-    flags = fcntl(fd, F_GETFL, 0);
-    if (flags == -1) {
-      debug_log(0, "Error fcntl(): %s", strerror(errno));
-      goto err;
-    }
-
-    flags = (flags & ~O_NONBLOCK);
-    if (fcntl(fd, F_SETFL, flags) != 0) {
-      debug_log(0, "Error fcntl(): %s", strerror(errno));
+    if (fd_set_nonblock(fd) < 0) {
+      debug_log(0, "Error fd_set_nonblock(): %s", strerror(errno));
+      close(fd);
       goto err;
     }
 
@@ -809,5 +803,3 @@ inline static void tvpn_server_tcp_signal_handler(int signal)
   (void)signal;
   g_state->stop = true;
 }
-
-
