@@ -337,13 +337,15 @@ inline static void tvpn_client_tcp_recv_handler(
 )
 {
   register ssize_t  ret;
+  register size_t   data_size;
   register size_t   lrecv_size     = state->recv_size;
   register char     *rbuf          = &(state->recv_buff[0]);
   server_pkt        *srv_pkt       = (server_pkt *)rbuf;
   register size_t   cur_read_size;
 
-  if (unlikely(lrecv_size >= CLI_IDENT_PKT_SIZE)) {
-    cur_read_size = srv_pkt->size;
+  if (unlikely(lrecv_size >= SRV_IDENT_PKT_SIZE)) {
+    data_size     = state->recv_size - SRV_IDENT_PKT_SIZE;
+    cur_read_size = srv_pkt->size - data_size;
   } else {
     cur_read_size = TCP_RECV_BUFFER;
   }
@@ -369,7 +371,8 @@ inline static void tvpn_client_tcp_recv_handler(
   state->recv_size    += (size_t)ret;
 
   if (likely(state->recv_size >= SRV_IDENT_PKT_SIZE)) {
-    size_t data_size = state->recv_size - CLI_IDENT_PKT_SIZE;
+
+    data_size = state->recv_size - SRV_IDENT_PKT_SIZE;
 
     switch (srv_pkt->type) {
 
