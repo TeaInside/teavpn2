@@ -1,38 +1,39 @@
 
-#include <errno.h>
 #include <stdio.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
-
 #include <linux/if.h>
 #include <linux/if_tun.h>
 
+#include <teavpn2/global/debug.h>
 
-#include <teavpn2/global/common.h>
-
-/* https://www.kernel.org/doc/Documentation/networking/tuntap.txt */
-
-/* Flags: IFF_TUN   - TUN device (no Ethernet headers)
+/*
+ * https://www.kernel.org/doc/Documentation/networking/tuntap.txt
+ *
+ * Flags: IFF_TUN   - TUN device (no Ethernet headers)
  *        IFF_TAP   - TAP device
  *
  *        IFF_NO_PI - Do not provide packet information
  *        IFF_MULTI_QUEUE - Create a queue of multiqueue device
  */
 
-int tun_alloc(char *dev, int flags)
+
+int
+tun_alloc(char *dev, int flags)
 {
   int fd, ret;
   struct ifreq ifr;
 
-  if (!dev) {
+  if ((!dev) || (!*dev)) {
+    debug_log(0, "Error tun_alloc(): dev cannot be empty");
     return -1;
   }
 
   memset(&ifr, 0, sizeof(struct ifreq));
 
-  /* Fill the interface name. */
   strncpy(ifr.ifr_name, dev, IFNAMSIZ - 1);
   ifr.ifr_flags = flags;
 
@@ -51,11 +52,13 @@ int tun_alloc(char *dev, int flags)
 }
 
 
-int tun_set_queue(int fd, bool enable)
+int
+tun_set_queue(int fd, bool enable)
 {
   struct ifreq ifr;
 
   memset(&ifr, 0, sizeof(struct ifreq));
   ifr.ifr_flags = enable ? IFF_ATTACH_QUEUE : IFF_DETACH_QUEUE;
+
   return ioctl(fd, TUNSETQUEUE, (void *)&ifr);
 }

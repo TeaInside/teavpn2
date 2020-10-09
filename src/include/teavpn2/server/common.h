@@ -54,41 +54,6 @@ typedef struct _client_auth_tmp {
   char                  ipv4_netmask[sizeof("xxx.xxx.xxx.xxx")];
 } client_auth_tmp;
 
-typedef struct _tcp_channel {
-  bool                  is_used;
-  bool                  is_connected;
-  bool                  authorized;
-
-  int                   tun_fd;
-  int                   cli_fd;
-
-  uint64_t              recv_count;
-  uint64_t              send_count;
-
-  pthread_t             thread;
-  pthread_mutex_t       ht_mutex;
-
-  __be32                ipv4;
-  __be32                ipv4_netmask;
-
-  char                  *username;
-
-  char                  r_ip_src[sizeof("xxx.xxx.xxx.xxx")];
-  uint16_t              r_port_src;
-  struct sockaddr_in    addr;
-
-  char                  recv_buff[sizeof(client_pkt) + 1024];
-  size_t                recv_size;
-  char                  send_buff[sizeof(server_pkt) + 1024];
-  size_t                send_size;
-} tcp_channel;
-
-typedef struct _server_tcp_state {
-  int                   net_fd;         /* Master socket fd. */
-  bool                  stop;           /* Stop signal. */
-  server_cfg            *config;        /* Server config. */
-  tcp_channel           *channels;      /* Client channels. */
-} server_tcp_state;
 
 /* argv_parser */
 bool tvpn_server_argv_parse(
@@ -108,11 +73,6 @@ int tvpn_server_run(server_cfg *config);
 
 int tvpn_server_tcp_run(server_cfg *state);
 
-bool tvpn_auth_tcp(
-  auth_pkt *auth_p,
-  tcp_channel *chan,
-  client_auth_tmp *auth_tmp
-);
 
 /* iface */
 bool server_tun_iface_up(server_iface_cfg *iface);

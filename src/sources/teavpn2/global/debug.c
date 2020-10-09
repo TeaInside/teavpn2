@@ -3,14 +3,14 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#define DONT_EXTERN_VERBOSE_LEVEL 1
+#define DONT_EXTERN_DEBUG_VERBOSE_LEVEL 1
 
 #include <teavpn2/global/debug.h>
 
-uint8_t verbose_level = 5;
+uint8_t __debug_verbose_level = DEFAULT_DEBUG_VERBOSE_LEVEL;
 
-__attribute__((force_align_arg_pointer))
-uint8_t __internal_debug_log(const char *msg, ...)
+void
+__internal_debug_log(const char *msg, ...)
 {
   va_list argp;
   time_t rawtime;
@@ -27,5 +27,4 @@ uint8_t __internal_debug_log(const char *msg, ...)
   fprintf(stdout, "\n");
   va_end(argp);
   fflush(stdout);
-  return 0;
 }
