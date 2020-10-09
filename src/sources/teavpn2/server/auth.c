@@ -108,13 +108,13 @@ inline static int auth_file_parser(
   RMATCH_S("auth") {
 
     RMATCH_N("username") {
-      strncpy(auth_tmp->username, value, sizeof(auth_tmp->username));
+      strncpy(auth_tmp->username, value, sizeof(auth_tmp->username) - 1);
     } else
     RMATCH_N("password") {
-      strncpy(auth_tmp->password, value, sizeof(auth_tmp->password));
+      strncpy(auth_tmp->password, value, sizeof(auth_tmp->password) - 1);
     } else
     RMATCH_N("secret_key") {
-      strncpy(auth_tmp->secret_key, value, sizeof(auth_tmp->secret_key));
+      strncpy(auth_tmp->secret_key, value, sizeof(auth_tmp->secret_key) - 1);
     } else {
       goto invalid_name;
     }
@@ -123,10 +123,10 @@ inline static int auth_file_parser(
   RMATCH_S("ip_assign") {
 
     RMATCH_N("ipv4") {
-      strncpy(auth_tmp->ipv4, value, sizeof(auth_tmp->ipv4));
+      strncpy(auth_tmp->ipv4, value, sizeof(auth_tmp->ipv4) - 1);
     } else
     RMATCH_N("ipv4_netmask") {
-      strncpy(auth_tmp->ipv4_netmask, value, sizeof(auth_tmp->ipv4_netmask));
+      strncpy(auth_tmp->ipv4_netmask, value, sizeof(auth_tmp->ipv4_netmask) - 1);
     } else {
       goto invalid_name;
     }
