@@ -1,14 +1,10 @@
 
-#include <linux/if.h>
-#include <linux/if_tun.h>
-
 #include <teavpn2/server/common.h>
-
 
 inline static bool tvpn_server_config_validate(server_cfg *config);
 
-
-int tvpn_server_run(server_cfg *config)
+int
+tvpn_server_run(server_cfg *config)
 {
   int ret = 1;
 
@@ -37,7 +33,8 @@ int tvpn_server_run(server_cfg *config)
 }
 
 
-inline static bool tvpn_server_config_validate(server_cfg *config)
+inline static bool
+tvpn_server_config_validate(server_cfg *config)
 {
   {
     /* Validate server_iface_cfg. */
