@@ -1,12 +1,8 @@
 
-
 # Compiler and linker options.
-CC     = cc
-CXX    = c++
-NASM   = nasm
-LINKER = $(CXX)
-
-# Source and include directories.
+CC          = cc
+CXX         = c++
+LINKER      = $(CXX)
 SRC_DIR     = src
 INCLUDE_DIR = -I$(SRC_DIR)/include -I$(SRC_DIR)/include/third_party
 SOURCES_DIR = $(SRC_DIR)/sources
@@ -16,32 +12,26 @@ GLOBAL_SOURCE_DIR = $(SOURCES_DIR)/teavpn2/global
 CLIENT_SOURCE_DIR = $(SOURCES_DIR)/teavpn2/client
 SERVER_SOURCE_DIR = $(SOURCES_DIR)/teavpn2/server
 
+CFLAGS         = -std=c99 $(INCLUDE_DIR) -c
+CXXFLAGS       = -std=c++17 $(INCLUDE_DIR) -D_GLIBCXX_ASSERTIONS -c
+LIB_LDFLAGS    = -lpthread
+
+
 ifndef DEFAULT_OPTIMIZATION
 	DEFAULT_OPTIMIZATION = -O0
 endif
 
-# C/C++ compile flags.
-CFLAGS   = -std=c99 $(INCLUDE_DIR) -c
-CXXFLAGS = -std=c++17 $(INCLUDE_DIR) -D_GLIBCXX_ASSERTIONS -c
-
-LIB_LDFLAGS    = -lpthread
-
 ifeq ($(RELEASE_MODE),1)
-
-	# Compile flags that apply to CC and CXX.
-	CCXXFLAGS = -Wall -Wextra -s -fno-stack-protector -O3 -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -DNDEBUG -D_GNU_SOURCE -D_REENTRANT
-
-	# Link flags
-	LDFLAGS = -Wall -Wextra -O3 -fPIC
-
+	CCXXFLAGS = -Wall -Wextra -s -fstack-protector -O3 -fPIC       \
+				-fasynchronous-unwind-tables -fexceptions -DNDEBUG \
+				-D_GNU_SOURCE -D_REENTRANT
+	LDFLAGS   = -Wall -Wextra -O3 -fPIC
 else
-
-	# Compile flags that apply to CC and CXX.
-	CCXXFLAGS = -Wall -Wextra -fstack-protector-strong -ggdb3 $(DEFAULT_OPTIMIZATION) -grecord-gcc-switches -fPIC -fasynchronous-unwind-tables -fexceptions -mstackrealign -D_GNU_SOURCE -D_REENTRANT -DTEAVPN_DEBUG
-
-	# Link flags
-	LDFLAGS = -Wall -Wextra -ggdb3 $(DEFAULT_OPTIMIZATION) -fPIC
-
+	CCXXFLAGS = -Wall -Wextra -fstack-protector-strong -ggdb3    \
+				$(DEFAULT_OPTIMIZATION) -grecord-gcc-switches    \
+				-fPIC -fasynchronous-unwind-tables -fexceptions  \
+				-D_GNU_SOURCE -D_REENTRANT -DTEAVPN_DEBUG
+	LDFLAGS   = -Wall -Wextra -ggdb3 $(DEFAULT_OPTIMIZATION) -fPIC
 endif
 
 ifndef TEST_JOBS
