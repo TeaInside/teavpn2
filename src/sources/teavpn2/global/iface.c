@@ -33,7 +33,7 @@ int tun_alloc(char *dev, int flags)
   memset(&ifr, 0, sizeof(struct ifreq));
 
   /* Fill the interface name. */
-  strncpy(ifr.ifr_name, dev, IFNAMSIZ);
+  strncpy(ifr.ifr_name, dev, IFNAMSIZ - 1);
   ifr.ifr_flags = flags;
 
   if ((fd = open("/dev/net/tun", O_RDWR)) < 0) {
