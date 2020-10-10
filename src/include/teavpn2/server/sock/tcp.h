@@ -20,6 +20,8 @@
 /* Send buffer size. */
 #define SENDBZ (6144)
 
+#define HP_CC(chan) (chan)->r_ip_src, (chan)->r_port_src
+
 typedef struct _tcp_channel {
   bool                  is_used;
   bool                  is_connected;
@@ -31,8 +33,8 @@ typedef struct _tcp_channel {
   pthread_t             thread;
   pthread_mutex_t       ht_mutex;
 
-  __be32                ipv4;
-  __be32                ipv4_netmask;
+  __be32                p_ipv4;
+  __be32                p_ipv4_netmask;
 
   char                  *username;
 

@@ -16,8 +16,8 @@ inline static void
 tvpn_server_tcp_clean_up_tun_fd(server_tcp_state *__restrict__ state)
 {
   /* Close tun fd(s). */
-  const uint16_t max_conn  = state->config->sock.max_conn;
-  tcp_channel    *channels = state->channels;
+  register uint16_t    max_conn  = state->config->sock.max_conn;
+  register tcp_channel *channels = state->channels;
 
   for (uint16_t i = 0; i < max_conn; ++i) {
     int the_fd = channels[i].tun_fd;
@@ -49,7 +49,7 @@ tvpn_server_tcp_clean_up_tun_fd(server_tcp_state *__restrict__ state)
 inline static void
 tvpn_server_tcp_close_socket(server_tcp_state *__restrict__ state)
 {
-  const int net_fd = state->net_fd;
+  register int net_fd = state->net_fd;
 
   /* Close TCP socket. */
   if (net_fd != -1) {
