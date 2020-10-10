@@ -12,14 +12,21 @@
     return -1;                         \
   }
 
-bool server_tun_iface_up(server_iface_cfg *iface)
+#define IPV4_MSIZE (sizeof("xxx.xxx.xxx.xxx/xx") + 5)
+
+/**
+ * @param server_iface_cfg *iface
+ * @return bool
+ */
+bool
+server_tun_iface_up(server_iface_cfg *iface)
 {
   char dev[16];
   char cmd[256];
-  char ipv4[sizeof("xxx.xxx.xxx.xxx/xx") + 2];
-  char ipv4_network[sizeof("xxx.xxx.xxx.xxx/xx") + 2];
-  char ipv4_broadcast[sizeof("xxx.xxx.xxx.xxx/xx") + 2];
-  char ipv4_tmp_data[sizeof("xxx.xxx.xxx.xxx/xx")];
+  char ipv4[IPV4_MSIZE];
+  char ipv4_network[IPV4_MSIZE];
+  char ipv4_broadcast[IPV4_MSIZE];
+  char ipv4_tmp_data[IPV4_MSIZE];
 
   uint8_t cidr;
   __be32 _ipv4;

@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #ifndef DONT_EXTERN_DEBUG_VERBOSE_LEVEL
-extern uint8_t verbose_level;
+extern uint8_t __debug_verbose_level;
 #endif
 
 #ifndef MAX_DEBUG_LEVEL
@@ -19,13 +19,13 @@ extern uint8_t verbose_level;
 void
 __internal_debug_log(const char *msg, ...);
 
-#define debug_log(VLEVEL, Y, ...) do {           \
-    const uint8_t __vlevel = (VLEVEL);           \
-    if (__vlevel <= MAX_DEBUG_LEVEL) {           \
-      if (__vlevel <= verbose_level) {           \
-        __internal_debug_log(Y, ##__VA_ARGS__);  \
-      }                                          \
-    }                                            \
+#define debug_log(VLEVEL, Y, ...) do {              \
+    const uint8_t __vlevel = (VLEVEL);              \
+    if ((__vlevel) <= (MAX_DEBUG_LEVEL)) {          \
+      if ((__vlevel) <= (__debug_verbose_level)) {  \
+        __internal_debug_log(Y, ##__VA_ARGS__);     \
+      }                                             \
+    }                                               \
   } while (0)
 
 #endif

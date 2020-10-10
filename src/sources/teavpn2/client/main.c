@@ -8,7 +8,8 @@
 #endif
 
 
-int main(int argc, char *argv[], char *envp[])
+int
+main(int argc, char *argv[], char *envp[])
 {
   char arena[ARENA_SIZE];
   client_cfg config;

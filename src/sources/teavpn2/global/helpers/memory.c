@@ -6,11 +6,6 @@
 #include <teavpn2/global/helpers/memory.h>
 
 
-#define t_arena     __t_arena
-#define t_arena_len __t_arena_len
-#define t_arena_pos __t_arena_pos
-
-
 static void    *t_arena      = NULL;
 static size_t  t_arena_len   = 0;
 static size_t  t_arena_pos   = 0;
@@ -28,7 +23,7 @@ void *
 t_ar_alloc(register size_t len)
 {
   register char *ret  = &(((char *)t_arena)[t_arena_pos]);
-  t_arena_pos      += len;
+  t_arena_pos        += len;
 
   /* Check if run out of arena. */
   assert(t_arena_pos <= t_arena_len);
@@ -40,9 +35,9 @@ t_ar_alloc(register size_t len)
 char *
 t_ar_strdup(register const char *str)
 {
-  register size_t len  = strlen(str);
-  register char *ret   = &(((char *)t_arena)[t_arena_pos]);
-  t_arena_pos       += len + 1;
+  register size_t len   = strlen(str);
+  register char   *ret  = &(((char *)t_arena)[t_arena_pos]);
+  t_arena_pos          += len + 1;
 
   t_ar_memcpy(ret, str, len);
   ret[len] = '\0';
@@ -54,10 +49,10 @@ t_ar_strdup(register const char *str)
 char *
 t_ar_strndup(register const char *str, register size_t tlen)
 {
-  register size_t len = strlen(str);
-  register char *ret  = &(((char *)t_arena)[t_arena_pos]);
+  register size_t len  = strlen(str);
+  register char   *ret = &(((char *)t_arena)[t_arena_pos]);
 
-  tlen = len < tlen ? len : tlen;
+  tlen = (len < tlen) ? len : tlen;
 
   t_arena_pos += tlen + 1;
   t_ar_memcpy(ret, str, tlen);

@@ -7,12 +7,13 @@
 char *
 escapeshellarg(char *alloc, char *str)
 {
-  size_t x, y = 0;
-  size_t l = strlen(str);
-  char *cmd;
+  register size_t y     = 0;
+  register size_t l     = strlen(str);
+  register size_t x;
+  register char   *cmd;
 
-  if (!alloc) {
-    cmd = (char *)malloc(sizeof(char) * l * 4); // Worst case
+  if (alloc == NULL) {
+    cmd = (char *)malloc(sizeof(char) * l * 4); /* Worst case */
   } else {
     cmd = alloc;
   }

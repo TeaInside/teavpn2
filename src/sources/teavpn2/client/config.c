@@ -8,16 +8,13 @@
 
 static bool failed = false;
 
-inline static int client_parser_handler(
-  void *user,
-  const char *section,
-  const char *name,
-  const char *value,
-  int lineno
-);
+inline static int
+client_parser_handler(void *user, const char *section, const char *name,
+                      const char *value, int lineno);
 
 
-bool tvpn_client_load_config_file(char *file, client_cfg *config)
+bool
+tvpn_client_load_config_file(char *file, client_cfg *config)
 {
   int ret = ini_parse(file, client_parser_handler, config);
 
@@ -35,13 +32,9 @@ bool tvpn_client_load_config_file(char *file, client_cfg *config)
 }
 
 
-inline static int client_parser_handler(
-  void *user,
-  const char *section,
-  const char *name,
-  const char *value,
-  int lineno
-)
+inline static int
+client_parser_handler(void *user, const char *section, const char *name,
+                      const char *value, int lineno)
 {
   client_cfg *config = (client_cfg *)user;
 

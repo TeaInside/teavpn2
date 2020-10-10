@@ -29,10 +29,13 @@ t_ar_memcpy_x86_64(void *__restrict__ dest,
 
 void
 t_ar_init(register void *ptr, register size_t len);
+
 void *
 t_ar_alloc(register size_t len);
+
 char *
 t_ar_strdup(register const char *str);
+
 char *
 t_ar_strndup(register const char *str, register size_t tlen);
 

@@ -21,12 +21,11 @@
 #endif
 
 #include <teavpn2/global/debug.h>
-#include <teavpn2/global/memory.h>
-
-/* Packet data structures. */
-#include <teavpn2/global/packet/server.h>
-#include <teavpn2/global/packet/client.h>
-
 #include <teavpn2/global/helpers.h>
+
+typedef enum {
+  SOCK_TCP,
+  SOCK_UDP
+} socket_type;
 
 #endif

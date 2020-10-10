@@ -13,31 +13,33 @@
 #endif
 
 #if ARGV_DEBUG
-  #define PRINT_CONFIG(CONFIG_NAME, VAL_LT, VAL) \
+#  define PRINT_CONFIG(CONFIG_NAME, VAL_LT, VAL) \
     printf("  "#CONFIG_NAME" = "VAL_LT"\n", VAL)
 #else
-  #define PRINT_CONFIG(CONFIG_NAME, VAL_LT, VAL)
+#  define PRINT_CONFIG(CONFIG_NAME, VAL_LT, VAL)
 #endif
 
-inline static void show_help(char *app);
-inline static void set_default_config(server_cfg *config);
-inline static bool getopt_handler(int argc, char **argv, server_cfg *config);
+inline static
+void show_help(char *app);
 
-static const int default_back_log = 10;
-static const uint16_t default_mtu = 1500;
-static const uint16_t default_bind_port = 55555;
-static const uint16_t default_max_conn  = 10;
-static char default_dev_name[] = "teavpn10";
+inline static
+void set_default_config(server_cfg *config);
+
+inline static
+bool getopt_handler(int argc, char **argv, server_cfg *config);
+
+static const int      default_back_log   = 10;
+static const uint16_t default_mtu        = 1500;
+static const uint16_t default_bind_port  = 55555;
+static const uint16_t default_max_conn   = 10;
+static char           default_dev_name[] = "teavpn10";
 
 /**
  * Return false if parse fails.
  */
-bool tvpn_server_argv_parse(
-  int argc,
-  char *argv[],
-  char *envp[],
-  server_cfg *config
-)
+bool
+tvpn_server_argv_parse(int argc, char *argv[], char *envp[],
+                       server_cfg *config)
 {
   (void)envp;
 
@@ -54,7 +56,8 @@ bool tvpn_server_argv_parse(
 /**
  * Initialize default config values.
  */
-inline static void set_default_config(server_cfg *config)
+inline static void
+set_default_config(server_cfg *config)
 {
   config->config_file = NULL;
   config->data_dir    = NULL;
@@ -69,29 +72,29 @@ inline static void set_default_config(server_cfg *config)
   config->sock.bind_addr  = NULL;
   config->sock.backlog    = default_back_log;
   config->sock.bind_port  = default_bind_port;
-  config->sock.type       = sock_tcp;
+  config->sock.type       = SOCK_TCP;
   config->sock.max_conn   = default_max_conn;
 }
 
 static const struct option long_options[] = {
 
-  {"help",         no_argument      , 0, 'h'},
-  {"config",       required_argument, 0, 'c'},
+  {"help",          no_argument      , 0, 'h'},
+  {"config",        required_argument, 0, 'c'},
 
   /* Interface options. */
-  {"dev",          required_argument, 0, 'd'},
-  {"mtu",          required_argument, 0, 'm'},
-  {"ipv4",         required_argument, 0, '4'},
+  {"dev",           required_argument, 0, 'd'},
+  {"mtu",           required_argument, 0, 'm'},
+  {"ipv4",          required_argument, 0, '4'},
   {"ipv4-netmask",  required_argument, 0, 'b'},
 
   /* Socket options. */
-  {"bind-addr",    required_argument, 0, 'H'},
-  {"bind-port",    required_argument, 0, 'P'},
-  {"sock-type",    required_argument, 0, 's'},
-  {"backlog",      required_argument, 0, 'B'},
-  {"max-conn",     required_argument, 0, 'M'},
+  {"bind-addr",     required_argument, 0, 'H'},
+  {"bind-port",     required_argument, 0, 'P'},
+  {"sock-type",     required_argument, 0, 's'},
+  {"backlog",       required_argument, 0, 'B'},
+  {"max-conn",      required_argument, 0, 'M'},
 
-  {"data-dir",     required_argument, 0, 'D'},
+  {"data-dir",      required_argument, 0, 'D'},
 
   {0, 0, 0, 0}
 };
@@ -99,7 +102,8 @@ static const struct option long_options[] = {
 /**
  * Parse the arguments and plug it to config.
  */
-inline static bool getopt_handler(int argc, char **argv, server_cfg *config)
+inline static bool
+getopt_handler(int argc, char **argv, server_cfg *config)
 {
   int c;
 
@@ -110,7 +114,8 @@ inline static bool getopt_handler(int argc, char **argv, server_cfg *config)
   while (1) {
     int option_index = 0;
     /*int this_option_optind = optind ? optind : 1;*/
-    c = getopt_long(argc, argv, "c:hd:m:4:b:H:P:s:B:D:M:", long_options, &option_index);
+    c = getopt_long(argc, argv, "c:hd:m:4:b:H:P:s:B:D:M:", long_options,
+                    &option_index);
 
     if (c == -1)
       break;
@@ -155,20 +160,27 @@ inline static bool getopt_handler(int argc, char **argv, server_cfg *config)
         PRINT_CONFIG(config->sock.bind_port, "%d", config->sock.bind_port);
         break;
       case 's': {
+        register char tc;
         char targ[4];
 
         strncpy(targ, optarg, 3);
 
-        targ[0] = (targ[0] >= 'A' && targ[0] <= 'Z') ? targ[0] + 32 : targ[0];
-        targ[1] = (targ[1] >= 'A' && targ[1] <= 'Z') ? targ[1] + 32 : targ[1];
-        targ[2] = (targ[2] >= 'A' && targ[2] <= 'Z') ? targ[2] + 32 : targ[2];
+        tc       = targ[0];
+        targ[0] += ('A' <= tc && tc <= 'Z') ? 32 : 0;
+
+        tc       = targ[1];
+        targ[1] += ('A' <= tc && tc <= 'Z') ? 32 : 0;
+
+        tc       = targ[2];
+        targ[2] += ('A' <= tc && tc <= 'Z') ? 32 : 0;
+
         targ[3] = '\0';
 
         if (!strcmp(targ, "tcp")) {
-          config->sock.type = sock_tcp;
+          config->sock.type = SOCK_TCP;
         } else
         if (!strcmp(targ, "udp")) {
-          config->sock.type = sock_udp;
+          config->sock.type = SOCK_UDP;
         } else {
           printf("Invalid socket type: \"%s\"\n", optarg);
           return false;
@@ -177,7 +189,7 @@ inline static bool getopt_handler(int argc, char **argv, server_cfg *config)
         PRINT_CONFIG(
           config->sock.type,
           "%s",
-          (config->sock.type == sock_tcp) ? "tcp" : "udp"
+          (config->sock.type == SOCK_TCP) ? "tcp" : "udp"
         );
       }
         break;
@@ -205,7 +217,8 @@ inline static bool getopt_handler(int argc, char **argv, server_cfg *config)
   return true;
 }
 
-inline static void show_help(char *app)
+inline static void
+show_help(char *app)
 {
   printf("Usage: %s [options]\n", app);
 
@@ -220,7 +233,8 @@ inline static void show_help(char *app)
   printf("\n");
   printf("[Config options]\n");
   printf("Virtual network interface:\n");
-  printf("  -d, --dev=DEV\t\t\tSet virtual network interface name (default: %s).\n", default_dev_name);
+  printf("  -d, --dev=DEV\t\t\tSet virtual network interface name"
+         " (default: %s).\n", default_dev_name);
   printf("  -m, --mtu=MTU\t\t\tSet mtu value (default: %d).\n", default_mtu);
   printf("  -4, --ipv4=IP\t\t\tSet IPv4.\n");
   printf("  -b, --ipv4-netmask=MASK\tSet IPv4 netmask.\n");
@@ -228,10 +242,14 @@ inline static void show_help(char *app)
   printf("\n");
   printf("Socket:\n");
   printf("  -H, --bind-addr=IP\t\tSet bind address.\n");
-  printf("  -P, --bind-port=PORT\t\tSet bind port (default: %d).\n", default_bind_port);
-  printf("  -s, --sock-type=TYPE\t\tSet socket type (must be tcp or udp) (default: tcp).\n");
-  printf("  -B, --backlog=TYPE\t\tSet socket listen backlog (default: %d).\n", default_back_log);
-  printf("  -M, --max-conn=N\t\tSet max connections (default: %d).\n", default_max_conn);
+  printf("  -P, --bind-port=PORT\t\tSet bind port (default: %d).\n",
+         default_bind_port);
+  printf("  -s, --sock-type=TYPE\t\tSet socket type (must be tcp or udp)"
+         " (default: tcp).\n");
+  printf("  -B, --backlog=TYPE\t\tSet socket listen backlog (default: %d).\n",
+         default_back_log);
+  printf("  -M, --max-conn=N\t\tSet max connections (default: %d).\n",
+         default_max_conn);
 
   printf("\n");
   printf("Other:\n");
