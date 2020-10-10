@@ -8,16 +8,12 @@
 
 static bool failed = false;
 
-inline static int server_parser_handler(
-  void *user,
-  const char *section,
-  const char *name,
-  const char *value,
-  int lineno
-);
+inline static int
+server_parser_handler(void *user, const char *section, const char *name,
+                      const char *value, int lineno);
 
-
-bool tvpn_server_load_config_file(char *file, server_cfg *config)
+bool
+tvpn_server_load_config_file(char *file, server_cfg *config)
 {
   int ret = ini_parse(file, server_parser_handler, config);
 
@@ -35,13 +31,9 @@ bool tvpn_server_load_config_file(char *file, server_cfg *config)
 }
 
 
-inline static int server_parser_handler(
-  void *user,
-  const char *section,
-  const char *name,
-  const char *value,
-  int lineno
-)
+inline static int
+server_parser_handler(void *user, const char *section, const char *name,
+                      const char *value, int lineno)
 {
   server_cfg *config = (server_cfg *)user;
 
@@ -76,19 +68,27 @@ inline static int server_parser_handler(
       config->sock.bind_port = (uint16_t)atoi(value);
     } else
     RMATCH_N("sock_type") {
+      register char tc;
       char targ[4];
 
       strncpy(targ, value, 3);
-      targ[0] = (targ[0] >= 'A' && targ[0] <= 'Z') ? targ[0] + 32 : targ[0];
-      targ[1] = (targ[1] >= 'A' && targ[1] <= 'Z') ? targ[1] + 32 : targ[1];
-      targ[2] = (targ[2] >= 'A' && targ[2] <= 'Z') ? targ[2] + 32 : targ[2];
+
+      tc       = targ[0];
+      targ[0] += ('A' <= tc && tc <= 'Z') ? 32 : 0;
+
+      tc       = targ[1];
+      targ[1] += ('A' <= tc && tc <= 'Z') ? 32 : 0;
+
+      tc       = targ[2];
+      targ[2] += ('A' <= tc && tc <= 'Z') ? 32 : 0;
+
       targ[3] = '\0';
 
       if (!strcmp(targ, "tcp")) {
-        config->sock.type = sock_tcp;
+        config->sock.type = SOCK_TCP;
       } else
       if (!strcmp(targ, "udp")) {
-        config->sock.type = sock_udp;
+        config->sock.type = SOCK_UDP;
       } else {
         printf("Invalid socket type: \"%s\"\n", value);
         failed = true;
@@ -112,6 +112,8 @@ inline static int server_parser_handler(
   }
 
   return 1;
+
+
 invalid_name:
   printf("Invalid name: \"%s\" in section \"%s\" on line %d\n", name, section, lineno);
   failed = true;

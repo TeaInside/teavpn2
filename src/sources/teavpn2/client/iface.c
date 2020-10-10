@@ -19,7 +19,8 @@
     return -1;                         \
   }
 
-bool client_tun_iface_up(client_iface_cfg *iface)
+bool
+client_tun_iface_up(client_iface_cfg *iface)
 {
   char dev[16];
   char cmd[256];

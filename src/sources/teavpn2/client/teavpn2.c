@@ -5,10 +5,12 @@
 #include <teavpn2/client/common.h>
 
 
-inline static bool tvpn_client_config_validate(client_cfg *config);
+inline static bool
+tvpn_client_config_validate(client_cfg *config);
 
 
-int tvpn_client_run(client_cfg *config)
+int
+tvpn_client_run(client_cfg *config)
 {
   int ret = 1;
 
@@ -37,7 +39,8 @@ int tvpn_client_run(client_cfg *config)
 }
 
 
-inline static bool tvpn_client_config_validate(client_cfg *config)
+inline static bool
+tvpn_client_config_validate(client_cfg *config)
 {
   {
     /* Validate client_iface_cfg. */

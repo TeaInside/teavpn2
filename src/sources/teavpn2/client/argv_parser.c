@@ -32,12 +32,9 @@ static char default_config_file[] = "config/client.ini";
 /**
  * Return false if parse fails.
  */
-bool tvpn_client_argv_parse(
-  int argc,
-  char *argv[],
-  char *envp[],
-  client_cfg *config
-)
+bool
+tvpn_client_argv_parse(int argc, char *argv[], char *envp[],
+                       client_cfg *config)
 {
   (void)envp;
   set_default_config(config);
@@ -48,7 +45,8 @@ bool tvpn_client_argv_parse(
 /**
  * Initialize default config values.
  */
-inline static void set_default_config(client_cfg *config)
+inline static void
+set_default_config(client_cfg *config)
 {
   FILE *handle = fopen(default_config_file, "r");
   if (handle) {
@@ -89,7 +87,7 @@ static const struct option long_options[] = {
   {"server-port",  required_argument, 0, 'P'},
   {"sock-type",    required_argument, 0, 's'},
 
-  /* Auth option. */
+  /* Auth options. */
   {"username",     required_argument, 0, 'u'},
   {"password",     required_argument, 0, 'p'},
   {"secret-key",   required_argument, 0, 'k'},
@@ -104,7 +102,8 @@ static const struct option long_options[] = {
 /**
  * Parse the arguments and plug it to config.
  */
-inline static bool getopt_handler(int argc, char **argv, client_cfg *config)
+inline static bool
+getopt_handler(int argc, char **argv, client_cfg *config)
 {
   int c;
 
@@ -117,7 +116,7 @@ inline static bool getopt_handler(int argc, char **argv, client_cfg *config)
     /*int this_option_optind = optind ? optind : 1;*/
     c = getopt_long(argc, argv, "hc:d:m:H:P:s:u:p:k:D:", long_options, &option_index);
 
-    if (c == -1)
+    if (-1 == c)
       break;
 
     switch (c) {
@@ -212,7 +211,8 @@ inline static bool getopt_handler(int argc, char **argv, client_cfg *config)
   return true;
 }
 
-inline static void show_help(char *app)
+inline static
+void show_help(char *app)
 {
   printf("Usage: %s [options]\n", app);
 

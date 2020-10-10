@@ -37,12 +37,14 @@ tun_alloc(char *dev, int flags)
   strncpy(ifr.ifr_name, dev, IFNAMSIZ - 1);
   ifr.ifr_flags = flags;
 
-  if ((fd = open("/dev/net/tun", O_RDWR)) < 0) {
+  fd = open("/dev/net/tun", O_RDWR);
+  if (fd < 0) {
     debug_log(0, "Error open(/dev/net/tun): %s", strerror(errno));
     return fd;
   }
 
-  if ((ret = ioctl(fd, TUNSETIFF, (void *)&ifr)) < 0) {
+  ret = ioctl(fd, TUNSETIFF, (void *)&ifr);
+  if (ret < 0) {
     debug_log(0, "Error ioctl(%d, TUNSETIFF): %s", fd, strerror(errno));
     close(fd);
     return ret;

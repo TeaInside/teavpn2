@@ -5,24 +5,28 @@
 #if defined(__linux__)
 #  include <linux/if.h>
 #  include <linux/if_tun.h>
+#  include <arpa/inet.h>
 #else
-
 #  error "Compiler is not supported!"
-
-typedef unsigned int __be32;
-
 #endif
+
+#include <teavpn2/global/types.h>
+
+#define I4CHRZ (sizeof("xxx.xxx.xxx.xxx"))
+
+/* Recv buffer size. */
+#define RECVBZ (6144)
+
+/* Send buffer size. */
+#define SENDBZ (6144)
 
 typedef struct _tcp_channel {
   bool                  is_used;
   bool                  is_connected;
-  bool                  authorized;
+  bool                  is_authorized;
 
-  int                   tun_fd;
-  int                   cli_fd;
-
-  uint64_t              recv_count;
-  uint64_t              send_count;
+  int                   tun_fd;            /* TUN/TAP queue fd. */
+  int                   cli_fd;            /* Client TCP fd.    */
 
   pthread_t             thread;
   pthread_mutex_t       ht_mutex;
@@ -32,27 +36,30 @@ typedef struct _tcp_channel {
 
   char                  *username;
 
-  char                  r_ip_src[sizeof("xxx.xxx.xxx.xxx")];
-  uint16_t              r_port_src;
+  char                  r_ip_src[I4CHRZ];  /* Human-readable remote IPv4.  */
+  uint16_t              r_port_src;        /* Host byte order remote port. */
   struct sockaddr_in    addr;
 
-  char                  recv_buff[sizeof(client_pkt) + 1024];
-  size_t                recv_size;
-  char                  send_buff[sizeof(server_pkt) + 1024];
+  char                  recv_buff[RECVBZ];
+  size_t                recv_size;         
+  uint64_t              recv_count;        /* Number of recv calls.        */
+
+  char                  send_buff[SENDBZ]; /* send_buff size to be sent.   */
   size_t                send_size;
+  uint64_t              send_count;        /* Number of send calls.        */
 } tcp_channel;
 
 
 typedef struct _server_tcp_state {
-  int                   net_fd;         /* Master socket fd. */
-  bool                  stop;           /* Stop signal.      */
-  server_cfg            *config;        /* Server config.    */
-  tcp_channel           *channels;      /* Client channels.  */
+  int                   net_fd;         /* Master socket fd.      */
+  bool                  stop;           /* Stop signal.           */
+  server_cfg            *config;        /* Server config.         */
+  tcp_channel           *channels;      /* Client channels.       */
+  int                   pipe_fd[2];     /* Pipe fd for interrupt. */
 } server_tcp_state;
 
 
-bool
-tvpn_auth_tcp(auth_pkt *auth_p, tcp_channel *chan,
-              client_auth_tmp *auth_tmp);
+int
+tvpn_server_tcp_run(server_cfg *state);
 
 #endif
