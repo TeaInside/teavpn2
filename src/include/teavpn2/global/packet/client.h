@@ -30,7 +30,7 @@ typedef enum {
   CL_PKT_AUTH       = 0x2,
   CL_PKT_DATA       = 0x3,
   CL_PKT_DISCONNECT = 0x4
-} cl_packet_type;
+} cl_pkt_type;
 
 
 typedef struct __attribute__((__packed__)) _cl_pkt {

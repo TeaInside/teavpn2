@@ -4,8 +4,8 @@
          teavpn2/server/sock/tcp/server/linux.h
 #endif
 
-#ifndef TEAVPN2__SERVER__SOCK__TCP__SERVER__LINUX__INIT_CHAN_H
-#define TEAVPN2__SERVER__SOCK__TCP__SERVER__LINUX__INIT_CHAN_H
+#ifndef TEAVPN2__SERVER__SOCK__TCP__SERVER__LINUX__INIT_H
+#define TEAVPN2__SERVER__SOCK__TCP__SERVER__LINUX__INIT_H
 
 
 /**
@@ -83,7 +83,7 @@ tvpn_server_tcp_init_pipe(int *__restrict__ pipe_fd)
 
   debug_log(2, "Initializing pipe...");
 
-  ret = !(pipe(pipe_fd) < -1);
+  ret = (pipe(pipe_fd) != -1);
 
   if (!ret) {
     debug_log(0, "Error pipe(): %s", strerror(errno));
@@ -178,4 +178,4 @@ tvpn_server_tcp_init_socket(server_tcp_state *__restrict__ state)
 }
 
 
-#endif /* #ifndef TEAVPN2__SERVER__SOCK__TCP__SERVER__LINUX__INIT_CHAN_H */
+#endif /* #ifndef TEAVPN2__SERVER__SOCK__TCP__SERVER__LINUX__INIT_H */
