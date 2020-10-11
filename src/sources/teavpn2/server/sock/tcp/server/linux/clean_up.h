@@ -13,7 +13,7 @@
  * @return void
  */
 inline static void
-tvpn_server_tcp_clean_up_tun_fd(server_tcp_state *__restrict__ state)
+tvpn_server_tcp_close_tun_fd(server_tcp_state *__restrict__ state)
 {
   /* Close tun fd(s). */
   register uint16_t    max_conn  = state->config->sock.max_conn;
@@ -43,18 +43,35 @@ tvpn_server_tcp_clean_up_tun_fd(server_tcp_state *__restrict__ state)
 
 
 /**
- * @param server_tcp_state *__restrict__ state
+ * @param int net_fd
  * @return void
  */
 inline static void
-tvpn_server_tcp_close_socket(server_tcp_state *__restrict__ state)
+tvpn_server_tcp_close_net_fd(int net_fd)
 {
-  register int net_fd = state->net_fd;
-
   /* Close TCP socket. */
   if (net_fd != -1) {
     debug_log(0, "Closing net_fd -> (%d)...", net_fd);
     close(net_fd);
+  }
+}
+
+
+/**
+ * @param int pipe_fd[2]
+ * @return void
+ */
+inline static void
+tvpn_server_tcp_close_pipe_fd(int pipe_fd[2])
+{
+  if (pipe_fd[0] != -1) {
+    debug_log(0, "Closing pipe_fd[0] -> (%d)...", pipe_fd[0]);
+    close(pipe_fd[0]);
+  }
+
+  if (pipe_fd[1] != -1) {
+    debug_log(0, "Closing pipe_fd[1] -> (%d)...", pipe_fd[1]);
+    close(pipe_fd[1]);
   }
 }
 
@@ -66,8 +83,9 @@ tvpn_server_tcp_close_socket(server_tcp_state *__restrict__ state)
 inline static void
 tvpn_server_tcp_clean_up(server_tcp_state *__restrict__ state)
 {
-  tvpn_server_tcp_clean_up_tun_fd(state);
-  tvpn_server_tcp_close_socket(state);
+  tvpn_server_tcp_close_tun_fd(state);
+  tvpn_server_tcp_close_pipe_fd(state->pipe_fd);
+  tvpn_server_tcp_close_net_fd(state->net_fd);
 }
 
 #endif /* #ifndef TEAVPN2__SERVER__SOCK__TCP__SERVER__LINUX__CLEAN_UP_H */

@@ -36,6 +36,8 @@ server_tcp_state *g_state;
 #include "linux/client_event_loop.h"
 #include "linux/master_event_loop.h"
 
+#define RACT(EXPR) ((state.stop) || (EXPR))
+
 /**
  * @param server_cfg *config
  * @return int
@@ -48,24 +50,30 @@ __internal_tvpn_server_tcp_run(server_cfg *config)
   server_tcp_state  state;
 
   /* ================================================= */
-  g_state        = &state;
-  state.net_fd   = -1;
-  state.stop     = false;
-  state.config   = config;
-  state.channels = (tcp_channel *)
-                   malloc(sizeof(tcp_channel) * max_conn);
+  g_state          = &state;
+  state.net_fd     = -1;
+  state.stop       = false;
+  state.config     = config;
+  state.pipe_fd[0] = -1;
+  state.pipe_fd[1] = -1;
+  state.channels   = (tcp_channel *)
+                     malloc(sizeof(tcp_channel) * max_conn);
   tvpn_server_tcp_init_channels(state.channels, max_conn);
   /* ================================================= */
 
-  if (!tvpn_server_tcp_init_iface(&state)) {
+  signal(SIGINT, tvpn_server_tcp_signal_handler);
+  signal(SIGHUP, tvpn_server_tcp_signal_handler);
+  signal(SIGTERM, tvpn_server_tcp_signal_handler);
+
+  if (RACT(!tvpn_server_tcp_init_iface(&state))) {
     goto ret;
   }
 
-  if (!tvpn_server_tcp_init_pipe(state.pipe_fd)) {
+  if (RACT(!tvpn_server_tcp_init_pipe(state.pipe_fd))) {
     goto ret;
   }
 
-  if (!tvpn_server_tcp_init_socket(&state)) {
+  if (RACT(!tvpn_server_tcp_init_socket(&state))) {
     goto ret;
   }
 

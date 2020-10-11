@@ -16,6 +16,7 @@ inline static void
 tvpn_client_tcp_signal_handler(int signal)
 {
   (void)signal;
+  printf("\n");
   g_state->stop = true;
 }
 
@@ -139,7 +140,8 @@ tvpn_client_tcp_sock_init(client_tcp_state * __restrict__ state)
   server_addr.sin_port        = htons(sock->server_port);
   server_addr.sin_addr.s_addr = inet_addr(sock->server_addr);
 
-  debug_log(0, "Connecting to %s:%d...", sock->server_addr, sock->server_port);
+  debug_log(0, "Connecting to %s:%d...", sock->server_addr,
+            sock->server_port);
 
   still_connecting:
   if (connect(fd, (struct sockaddr *)&server_addr, addrlen) < 0) {
@@ -147,6 +149,12 @@ tvpn_client_tcp_sock_init(client_tcp_state * __restrict__ state)
     register int _errno = errno;
 
     if (_errno == EINPROGRESS || _errno == EALREADY) {
+
+      if (state->stop) {
+        debug_log(0, "Aborted!");
+        goto err;
+      }
+
       goto still_connecting;
     }
 
@@ -161,10 +169,6 @@ tvpn_client_tcp_sock_init(client_tcp_state * __restrict__ state)
    * Ignore SIGPIPE
    */
   signal(SIGPIPE, SIG_IGN);
-
-  signal(SIGINT, tvpn_client_tcp_signal_handler);
-  signal(SIGHUP, tvpn_client_tcp_signal_handler);
-  signal(SIGTERM, tvpn_client_tcp_signal_handler);
 
   state->net_fd = fd;
   return true;

@@ -22,7 +22,10 @@
 
 #define HP_CC(chan) (chan)->r_ip_src, (chan)->r_port_src
 
+#define MAX_RECV_ERR_CC (10)
+
 typedef struct _tcp_channel {
+  bool                  stop;
   bool                  is_used;
   bool                  is_connected;
   bool                  is_authorized;
@@ -45,10 +48,12 @@ typedef struct _tcp_channel {
   char                  recv_buff[RECVBZ];
   size_t                recv_size;         
   uint64_t              recv_count;        /* Number of recv calls.        */
+  uint8_t               recv_err_c;
 
   char                  send_buff[SENDBZ]; /* send_buff size to be sent.   */
   size_t                send_size;
   uint64_t              send_count;        /* Number of send calls.        */
+  uint8_t               send_err_c;
 } tcp_channel;
 
 

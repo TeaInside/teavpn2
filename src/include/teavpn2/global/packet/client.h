@@ -39,4 +39,6 @@ typedef struct __attribute__((__packed__)) _cl_pkt {
   char              data[CL_PKT_DSIZE];
 } cl_pkt;
 
+#define CL_IDENT_SZ (OFFSETOF(cl_pkt, data))
+
 #endif
