@@ -106,7 +106,7 @@ inline static bool
 tvpn_client_tcp_sock_init(client_tcp_state * __restrict__ state)
 {
   int                  fd           = -1;
-  client_socket_cfg   *sock         = &(state->config->sock);
+  client_socket_cfg    *sock        = &(state->config->sock);
   socklen_t            addrlen      = sizeof(struct sockaddr_in);
   struct sockaddr_in   server_addr;
 
@@ -135,7 +135,7 @@ tvpn_client_tcp_sock_init(client_tcp_state * __restrict__ state)
   /*
    * Prepare server bind address data.
    */
-  bzero(&server_addr, sizeof(struct sockaddr_in));
+  memset(&server_addr, 0, sizeof(struct sockaddr_in));
   server_addr.sin_family      = AF_INET;
   server_addr.sin_port        = htons(sock->server_port);
   server_addr.sin_addr.s_addr = inet_addr(sock->server_addr);
@@ -143,7 +143,7 @@ tvpn_client_tcp_sock_init(client_tcp_state * __restrict__ state)
   debug_log(0, "Connecting to %s:%d...", sock->server_addr,
             sock->server_port);
 
-  still_connecting:
+still_connecting:
   if (connect(fd, (struct sockaddr *)&server_addr, addrlen) < 0) {
 
     register int _errno = errno;
@@ -173,7 +173,7 @@ tvpn_client_tcp_sock_init(client_tcp_state * __restrict__ state)
   state->net_fd = fd;
   return true;
 
-  err:
+err:
   if (fd != -1) {
     debug_log(0, "Closing socket descriptor...");
     close(fd);
