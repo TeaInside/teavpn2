@@ -30,6 +30,9 @@ client_tcp_state *g_state;
 
 #include "linux/init.h"
 #include "linux/auth.h"
+#include "linux/clean_up.h"
+
+#define RACT(EXPR) ((state.stop) || (EXPR))
 
 /**
  * @param client_cfg *config
@@ -44,30 +47,36 @@ __internal_tvpn_client_tcp_run(client_cfg *config)
 
   state.net_fd        = -1;
   state.tun_fd        = -1;
+  state.pipe_fd[0]    = -1;
+  state.pipe_fd[1]    = -1;
   state.is_authorized = false;
   state.stop          = false;
   state.config        = config;
 
   g_state             = &state;
 
+  signal(SIGINT, tvpn_client_tcp_signal_handler);
+  signal(SIGHUP, tvpn_client_tcp_signal_handler);
+  signal(SIGTERM, tvpn_client_tcp_signal_handler);
 
-  if (!tvpn_client_tcp_iface_init(&state)) {
+  if (RACT(!tvpn_client_tcp_iface_init(&state))) {
     goto ret;
   }
 
-  if (!tvpn_client_tcp_init_pipe(state.pipe_fd)) {
+  if (RACT(!tvpn_client_tcp_init_pipe(state.pipe_fd))) {
     goto ret;
   }
 
-  if (!tvpn_client_tcp_sock_init(&state)) {
+  if (RACT(!tvpn_client_tcp_sock_init(&state))) {
     goto ret;
   }
 
-  if (!tvpn_client_tcp_auth(&state)) {
+  if (RACT(!tvpn_client_tcp_auth(&state))) {
     goto ret;
   }
 
 ret:
+  tvpn_client_tcp_clean_up(&state);
   return ret;
 }
 

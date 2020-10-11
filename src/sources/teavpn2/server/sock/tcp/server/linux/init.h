@@ -16,6 +16,7 @@ inline static void
 tvpn_server_tcp_signal_handler(int signal)
 {
   (void)signal;
+  printf("\n");
   g_state->stop = true;
 }
 
@@ -161,10 +162,6 @@ tvpn_server_tcp_init_socket(server_tcp_state *__restrict__ state)
    * Ignore SIGPIPE
    */
   signal(SIGPIPE, SIG_IGN);
-
-  signal(SIGINT, tvpn_server_tcp_signal_handler);
-  signal(SIGHUP, tvpn_server_tcp_signal_handler);
-  signal(SIGTERM, tvpn_server_tcp_signal_handler);
 
   state->net_fd = fd;
   return true;

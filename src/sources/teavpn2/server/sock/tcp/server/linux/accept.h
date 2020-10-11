@@ -110,7 +110,8 @@ tvpn_server_tcp_accept(server_tcp_state *__restrict__ state)
     strncpy(chan->r_ip_src, remote_addr, sizeof(chan->r_ip_src));
     chan->r_port_src = remote_port;
 
-    debug_log(2, "New connection from %s:%d", HP_CC(chan));
+    debug_log(2, "New connection from %s:%d (setting up queue...)",
+              HP_CC(chan));
 
     pthread_create(&(chan->thread), NULL, tvpn_server_tcp_thread_worker,
                    (void *)chan);
@@ -137,12 +138,12 @@ inline static bool
 tvpn_server_tcp_insert_channel(int fd, tcp_channel *__restrict__ chan,
                                struct sockaddr_in *__restrict__ claddr)
 {
-
   if (tun_set_queue(chan->tun_fd, true) < 0) {
     debug_log(0, "tun_set_queue(): %s", strerror(errno));
     return false;
   }
 
+  chan->stop           = false;
   chan->is_used        = true;
   chan->is_connected   = true;
   chan->is_authorized  = false;
@@ -155,10 +156,12 @@ tvpn_server_tcp_insert_channel(int fd, tcp_channel *__restrict__ chan,
   memset(chan->recv_buff, 0, sizeof(chan->recv_buff));
   chan->recv_size      = 0;
   chan->recv_count     = 0;
+  chan->recv_err_c     = 0;
 
   memset(chan->send_buff, 0, sizeof(chan->send_buff));
   chan->send_size      = 0;
   chan->send_count     = 0;
+  chan->send_err_c     = 0;
 
   return true;
 }

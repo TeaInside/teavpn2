@@ -62,7 +62,7 @@ tvpn_server_tcp_event_loop(server_tcp_state *__restrict__ state)
       }
     }
 
-    end_loop:
+  end_loop:
     if (state->stop) {
       ret = 0;
       break;
