@@ -40,8 +40,8 @@ server_tcp_state *g_state;
  * @param server_cfg *config
  * @return int
  */
-int
-tvpn_server_tcp_run(server_cfg *config)
+inline static int
+__internal_tvpn_server_tcp_run(server_cfg *config)
 {
   int               ret        = 1; /* Exit code. */
   const uint16_t    max_conn   = config->sock.max_conn;

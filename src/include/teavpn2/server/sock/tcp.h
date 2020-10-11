@@ -62,6 +62,6 @@ typedef struct _server_tcp_state {
 
 
 int
-tvpn_server_tcp_run(server_cfg *state);
+tvpn_server_tcp_run(server_cfg *config);
 
 #endif
