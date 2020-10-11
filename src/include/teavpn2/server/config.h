@@ -40,4 +40,11 @@ typedef struct _server_cfg {
 } server_cfg;
 /* ======================================================= */
 
+bool
+tvpn_server_load_config_file(char *file, server_cfg *config);
+
+bool
+tvpn_server_argv_parse(int argc, char *argv[], char *envp[],
+                       server_cfg *config);
+
 #endif

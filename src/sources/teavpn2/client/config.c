@@ -62,19 +62,27 @@ client_parser_handler(void *user, const char *section, const char *name,
       config->sock.server_port = (uint16_t)atoi(value);
     } else
     RMATCH_N("sock_type") {
+      register char tc;
       char targ[4];
 
       strncpy(targ, value, 3);
-      targ[0] = (targ[0] >= 'A' && targ[0] <= 'Z') ? targ[0] + 32 : targ[0];
-      targ[1] = (targ[1] >= 'A' && targ[1] <= 'Z') ? targ[1] + 32 : targ[1];
-      targ[2] = (targ[2] >= 'A' && targ[2] <= 'Z') ? targ[2] + 32 : targ[2];
+
+      tc       = targ[0];
+      targ[0] += ('A' <= tc && tc <= 'Z') ? 32 : 0;
+
+      tc       = targ[1];
+      targ[1] += ('A' <= tc && tc <= 'Z') ? 32 : 0;
+
+      tc       = targ[2];
+      targ[2] += ('A' <= tc && tc <= 'Z') ? 32 : 0;
+
       targ[3] = '\0';
 
       if (!strcmp(targ, "tcp")) {
-        config->sock.type = sock_tcp;
+        config->sock.type = SOCK_TCP;
       } else
       if (!strcmp(targ, "udp")) {
-        config->sock.type = sock_udp;
+        config->sock.type = SOCK_UDP;
       } else {
         printf("Invalid socket type: \"%s\"\n", value);
         failed = true;

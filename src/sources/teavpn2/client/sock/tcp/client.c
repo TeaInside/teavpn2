@@ -3,6 +3,6 @@
 
 #if defined(__linux__)
 #  include "client/linux.h"
-#else
+#else 
 #  error "Compiler is not supported!"
 #endif

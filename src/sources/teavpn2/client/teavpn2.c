@@ -1,8 +1,6 @@
 
-#include <linux/if.h>
-#include <linux/if_tun.h>
-
 #include <teavpn2/client/common.h>
+#include <teavpn2/client/sock/tcp.h>
 
 
 inline static bool
@@ -20,11 +18,11 @@ tvpn_client_run(client_cfg *config)
   }
 
   switch (config->sock.type) {
-    case sock_tcp:
+    case SOCK_TCP:
       ret = tvpn_client_tcp_run(config);
       goto ret;
 
-    case sock_udp:
+    case SOCK_UDP:
       debug_log(0, "UDP socket is not supported yet!");
       goto ret;
 
@@ -61,7 +59,7 @@ tvpn_client_config_validate(client_cfg *config)
       return false;
     }
 
-    if (sock->type != sock_tcp && sock->type != sock_udp) {
+    if (sock->type != SOCK_TCP && sock->type != SOCK_UDP) {
       debug_log(0, "config->sock.type must be \"tcp\" or \"udp\"");
       return false;
     }
