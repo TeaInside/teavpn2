@@ -75,6 +75,8 @@ __internal_tvpn_client_tcp_run(client_cfg *config)
     goto ret;
   }
 
+  /* TODO: Event loop here. */
+
 ret:
   tvpn_client_tcp_clean_up(&state);
   return ret;

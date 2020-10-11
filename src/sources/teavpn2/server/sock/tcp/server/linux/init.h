@@ -166,7 +166,7 @@ tvpn_server_tcp_init_socket(server_tcp_state *__restrict__ state)
   state->net_fd = fd;
   return true;
 
-  err:
+err:
   if (fd != -1) {
     debug_log(0, "Closing socket descriptor...");
     close(fd);

@@ -20,8 +20,8 @@
  */
 
 typedef enum {
-  SR_AUTH_NO_AUTH  = 0x0,
-  SR_AUTH_REQUIRED = 0x1
+  SE_AUTH_NO_AUTH  = 0x0,
+  SE_AUTH_REQUIRED = 0x1
 } se_auth_info;
 
 
@@ -45,8 +45,8 @@ typedef struct __attribute__((__packed__)) _se_pkt_auth_info {
  */
 
 typedef enum {
-  SR_AUTH_RES_REJECTED = 0x0,
-  SR_AUTH_RES_ACCEPTED = 0x1,
+  SE_AUTH_RES_REJECTED = 0x0,
+  SE_AUTH_RES_ACCEPTED = 0x1,
 } se_auth_res;
 
 typedef struct __attribute__((__packed__)) _se_pkt_auth_res {
@@ -69,12 +69,12 @@ typedef struct __attribute__((__packed__)) _se_pkt_data {
 
 /* ======================================================= */
 typedef enum {
-  SR_PKT_PING        = 0x1,
-  SR_PKT_AUTH_INFO   = 0x2,
-  SR_PKT_AUTH_RES    = 0x3,
-  SR_PKT_DATA        = 0x4,
-  SR_PKT_DISCONNECT  = 0x5,
-} se_pkt_type;
+  SE_PKT_PING        = 0x1,
+  SE_PKT_AUTH_INFO   = 0x2,
+  SE_PKT_AUTH_RES    = 0x3,
+  SE_PKT_DATA        = 0x4,
+  SE_PKT_DISCONNECT  = 0x5,
+} __attribute__ ((__packed__))  se_pkt_type;
 
 
 typedef struct __attribute__((__packed__)) _se_pkt {
@@ -84,5 +84,10 @@ typedef struct __attribute__((__packed__)) _se_pkt {
 } se_pkt;
 /* end */
 /* ======================================================= */
+
+#define SE_IDENT_SZ (OFFSETOF(se_pkt, data))
+
+ST_ASSERT((SE_IDENT_SZ == (sizeof(se_pkt_type) + sizeof(uint16_t))));
+ST_ASSERT(sizeof(se_pkt_type) == 1);
 
 #endif

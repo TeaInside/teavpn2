@@ -55,8 +55,14 @@ tvpn_server_tcp_event_auth(tcp_channel *__restrict__ chan,
   }
 
 
+  {
+    register cl_pkt *cli_pkt;
+    cli_pkt = (cl_pkt *)chan->recv_buff;
 
-  chan->recv_size = 0;
+    VT_HEXDUMP(chan, chan->recv_size + 10000 * 10);
+
+    chan->recv_size = 0;
+  }
 }
 
 
@@ -107,6 +113,8 @@ tvpn_server_tcp_client_handle_cli(tcp_channel *__restrict__ chan)
     return;
   }
 
+  debug_log(5, "[%s:%d] recv() %d bytes", HP_CC(chan), ret);
+
   chan->recv_size += (size_t)ret;
 
   if (chan->recv_size >= CL_IDENT_SZ) {
@@ -137,17 +145,18 @@ tvpn_server_tcp_client_handle_cli(tcp_channel *__restrict__ chan)
 
       default:
         chan->recv_size = 0;
-        debug_log(3, "[%s:%d] Got invalid packet type: %d", cli_pkt->type);
+        debug_log(3, "[%s:%d] Got invalid packet type: %d",
+                  HP_CC(chan), cli_pkt->type);
         return;
     }
 
     /* Next packet is read at the moment. */
-    if (rdata_size >= pkt_len) {
+    if (rdata_size > pkt_len) {
       buff            = &(chan->recv_buff[CL_IDENT_SZ + pkt_len]);
       chan->recv_size = rdata_size - pkt_len;
       memmove(chan->recv_buff, buff, chan->recv_size);
       debug_log(4, "[%s:%d] Next packet is read at the moment: %d bytes",
-                chan->recv_size);
+                HP_CC(chan), chan->recv_size);
     }
   }
 }

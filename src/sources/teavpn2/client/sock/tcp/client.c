@@ -1,5 +1,6 @@
 
 #include <teavpn2/client/common.h>
+#include <teavpn2/global/packet.h>
 
 #if defined(__linux__)
 #  include "client/linux.h"
