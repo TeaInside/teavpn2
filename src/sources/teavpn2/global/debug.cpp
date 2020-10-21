@@ -5,9 +5,12 @@
 
 #define DONT_EXTERN_DEBUG_VERBOSE_LEVEL 1
 
+extern "C" {
+
 #include <teavpn2/global/debug.h>
 
 uint8_t __debug_verbose_level = DEFAULT_DEBUG_VERBOSE_LEVEL;
+
 
 void
 __internal_debug_log(const char *msg, ...)
@@ -27,4 +30,6 @@ __internal_debug_log(const char *msg, ...)
   fprintf(stdout, "\n");
   va_end(argp);
   fflush(stdout);
+}
+
 }

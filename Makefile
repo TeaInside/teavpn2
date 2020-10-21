@@ -1,236 +1,201 @@
 
 # Compiler and linker options.
-CC          = cc
-CXX         = c++
-LINKER      = $(CXX)
-SRC_DIR     = src
-INCLUDE_DIR = -I$(SRC_DIR)/include -I$(SRC_DIR)/include/third_party
-SOURCES_DIR = $(SRC_DIR)/sources
-ROOT_DEPDIR = .deps
+CC          := cc
+CXX         := c++
+LD	        := $(CXX)
+BASE_DIR	:= $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
+BASE_DIR    := $(strip $(patsubst %/, %, $(BASE_DIR)))
+SRC_DIR     := $(BASE_DIR)/src
+DEP_DIR		:= $(BASE_DIR)/.deps
+INCLUDE_DIR := -I$(SRC_DIR)/include               \
+               -I$(SRC_DIR)/include/third_party
 
-GLOBAL_SOURCE_DIR = $(SOURCES_DIR)/teavpn2/global
-CLIENT_SOURCE_DIR = $(SOURCES_DIR)/teavpn2/client
-SERVER_SOURCE_DIR = $(SOURCES_DIR)/teavpn2/server
+GLOBAL_SRC_DIR := $(SRC_DIR)/sources/teavpn2/global
+CLIENT_SRC_DIR := $(SRC_DIR)/sources/teavpn2/client
+SERVER_SRC_DIR := $(SRC_DIR)/sources/teavpn2/server
 
-CFLAGS         = -std=c99 $(INCLUDE_DIR) -c
-CXXFLAGS       = -std=c++17 $(INCLUDE_DIR) -D_GLIBCXX_ASSERTIONS -c
-LIB_LDFLAGS    = -lpthread
+## Target file ##
+SERVER_BIN  := tvpnserver
+CLIENT_BIN  := tvpnclient
 
+
+## Default flags ##
+LDFLAGS     := -Wall -Wextra
+CFLAGS      := -Wall -Wextra -fPIC -std=c99 $(INCLUDE_DIR) 
+CXXFLAGS    := -Wall -Wextra -fPIC -std=c++17 $(INCLUDE_DIR) \
+               -D_GLIBCXX_ASSERTIONS
+
+## Link library flags
+LIB_LDFLAGS := -lpthread
 
 ifndef DEFAULT_OPTIMIZATION
-	DEFAULT_OPTIMIZATION = -O0
+    DEFAULT_OPTIMIZATION = -O0
 endif
 
+## CCXXFLAGS are the flags that apply to CC and CXX.
 ifeq ($(RELEASE_MODE),1)
-	CCXXFLAGS = -Wall -Wextra -s -fstack-protector -O3 -fPIC       \
-				-fasynchronous-unwind-tables -fexceptions -DNDEBUG \
-				-D_GNU_SOURCE -D_REENTRANT
-	LDFLAGS   = -Wall -Wextra -O3 -fPIC
+    CCXXFLAGS := -O3                             \
+                 -s                              \
+                 -fstack-protector               \
+                 -DNDEBUG                        \
+                 -D_GNU_SOURCE                   \
+                 -D_REENTRANT
+
+    LDFLAGS   := -O3 -fPIC
 else
-	CCXXFLAGS = -Wall -Wextra -fstack-protector-strong -ggdb3    \
-				$(DEFAULT_OPTIMIZATION) -grecord-gcc-switches    \
-				-fPIC -fasynchronous-unwind-tables -fexceptions  \
-				-D_GNU_SOURCE -D_REENTRANT -DTEAVPN_DEBUG
-	LDFLAGS   = -Wall -Wextra -ggdb3 $(DEFAULT_OPTIMIZATION) -fPIC
+    CCXXFLAGS := $(DEFAULT_OPTIMIZATION)         \
+                 -fexceptions                    \
+                 -fstack-protector-strong        \
+                 -fasynchronous-unwind-tables    \
+                 -grecord-gcc-switches           \
+                 -ggdb3                          \
+                 -DTEAVPN_DEBUG                  \
+                 -D_GNU_SOURCE                   \
+                 -D_REENTRANT
+
+    LDFLAGS   := $(DEFAULT_OPTIMIZATION) -fPIC
 endif
 
-ifndef TEST_JOBS
-	TEST_JOBS = 1
+ifdef COVERAGE
+    ifeq ($(COVERAGE),1)
+        COVERAGE_FLAG := --coverage
+        LDFLAGS       := --coverage
+        LIB_LDFLAGS   := $(LIB_LDFLAGS) -lgcov
+        CCXXFLAGS     := $(CCXXFLAGS) -fprofile-arcs -ftest-coverage
+    else
+        COVERAGE_FLAG :=
+    endif
 endif
 
-CFLAGS   := $(CFLAGS) $(CCXXFLAGS)
-CXXFLAGS := $(CXXFLAGS) $(CCXXFLAGS)
-
-# Target compile.
-CLIENT_BIN = teavpn_client
-SERVER_BIN = teavpn_server
+CFLAGS   := $(strip $(COVERAGE_FLAG) $(CFLAGS) $(CCXXFLAGS))
+CXXFLAGS := $(strip $(COVERAGE_FLAG) $(CXXFLAGS) $(CCXXFLAGS))
 
 
-###################### Global Part ######################
-# Source code that must be compiled for client and server.
-
-# Global source code.
-GLOBAL_CC_SOURCES   = $(shell find ${GLOBAL_SOURCE_DIR} -name '*.c')
-GLOBAL_CXX_SOURCES  = $(shell find ${GLOBAL_SOURCE_DIR} -name '*.cc')
-GLOBAL_CXX_SOURCES += $(shell find ${GLOBAL_SOURCE_DIR} -name '*.cpp')
-GLOBAL_CXX_SOURCES += $(shell find ${GLOBAL_SOURCE_DIR} -name '*.cxx')
-
-# Global objects.
-GLOBAL_CC_OBJECTS   = $(GLOBAL_CC_SOURCES:%=%.o)
-GLOBAL_CXX_OBJECTS  = $(GLOBAL_CXX_SOURCES:%=%.o)
-GLOBAL_OBJECTS      = $(GLOBAL_CC_OBJECTS)
-GLOBAL_OBJECTS     += $(GLOBAL_CXX_OBJECTS)
-
-# Global depends directories.
-GLOBAL_DIR_L     = $(shell find ${GLOBAL_SOURCE_DIR} -type d)
-GLOBAL_DEPDIR    = $(GLOBAL_DIR_L:%=${ROOT_DEPDIR}/%)
-GLOBAL_DEPFLAGS  = -MT $@ -MMD -MP -MF ${ROOT_DEPDIR}/$*.d
-GLOBAL_DEPFILES  = $(GLOBAL_CC_SOURCES:%=${ROOT_DEPDIR}/%.d)
-GLOBAL_DEPFILES += $(GLOBAL_CXX_SOURCES:%=${ROOT_DEPDIR}/%.d)
-###################### End of Global Part ######################
+#
+# Global Source Code
+#
+# Modules that are required by $(SERVER_BIN) and $(CLIENT_BIN)
+#
+GLOBAL_SRC_CC    := $(shell find ${GLOBAL_SRC_DIR} -name '*.c')
+GLOBAL_SRC_CXX   := $(shell find ${GLOBAL_SRC_DIR} -name '*.cpp')
+GLOBAL_OBJ_CC    := $(GLOBAL_SRC_CC:%=%.o)
+GLOBAL_OBJ_CXX   := $(GLOBAL_SRC_CXX:%=%.o)
+GLOBAL_OBJ       := $(strip $(GLOBAL_OBJ_CC) $(GLOBAL_OBJ_CXX))
+GLOBAL_SRC_DIRL  := $(shell find ${GLOBAL_SRC_DIR} -type d)
+GLOBAL_DEP_DIRS  := $(GLOBAL_SRC_DIRL:$(BASE_DIR)/%=$(DEP_DIR)/%)
+GLOBAL_DEP_FLAGS  = -MT $(@) -MMD -MP -MF $(DEP_DIR)/$(@:$(BASE_DIR)/%.o=%.d)
+GLOBAL_DEP_FILES := $(GLOBAL_SRC_CC) $(GLOBAL_SRC_CXX)
+GLOBAL_DEP_FILES := $(GLOBAL_DEP_FILES:$(BASE_DIR)/%=$(DEP_DIR)/%.d)
 
 
-###################### Client Part ######################
-# Source code that must be compiled for client.
-
-# Global source code.
-CLIENT_CC_SOURCES   = $(shell find ${CLIENT_SOURCE_DIR} -name '*.c')
-CLIENT_CXX_SOURCES  = $(shell find ${CLIENT_SOURCE_DIR} -name '*.cc')
-CLIENT_CXX_SOURCES += $(shell find ${CLIENT_SOURCE_DIR} -name '*.cpp')
-CLIENT_CXX_SOURCES += $(shell find ${CLIENT_SOURCE_DIR} -name '*.cxx')
-
-# Global objects.
-CLIENT_CC_OBJECTS   = $(CLIENT_CC_SOURCES:%=%.o)
-CLIENT_CXX_OBJECTS  = $(CLIENT_CXX_SOURCES:%=%.o)
-CLIENT_OBJECTS      = $(CLIENT_CC_OBJECTS)
-CLIENT_OBJECTS     += $(CLIENT_CXX_OBJECTS)
-
-# Global depends directories.
-CLIENT_DIR_L     = $(shell find ${CLIENT_SOURCE_DIR} -type d)
-CLIENT_DEPDIR    = $(CLIENT_DIR_L:%=${ROOT_DEPDIR}/%)
-CLIENT_DEPFLAGS  = -MT $@ -MMD -MP -MF ${ROOT_DEPDIR}/$*.d
-CLIENT_DEPFILES  = $(CLIENT_CC_SOURCES:%=${ROOT_DEPDIR}/%.d)
-CLIENT_DEPFILES += $(CLIENT_CXX_SOURCES:%=${ROOT_DEPDIR}/%.d)
-###################### End of Client Part ######################
+#
+# Server Source Code
+#
+# Modules that are required by $(SERVER_BIN)
+#
+SERVER_SRC_CC    := $(shell find ${SERVER_SRC_DIR} -name '*.c')
+SERVER_SRC_CXX   := $(shell find ${SERVER_SRC_DIR} -name '*.cpp')
+SERVER_OBJ_CC    := $(SERVER_SRC_CC:%=%.o)
+SERVER_OBJ_CXX   := $(SERVER_SRC_CXX:%=%.o)
+SERVER_OBJ       := $(strip $(SERVER_OBJ_CC) $(SERVER_OBJ_CXX))
+SERVER_SRC_DIRL  := $(shell find ${SERVER_SRC_DIR} -type d)
+SERVER_DEP_DIRS  := $(SERVER_SRC_DIRL:$(BASE_DIR)/%=$(DEP_DIR)/%)
+SERVER_DEP_FLAGS  = -MT $(@) -MMD -MP -MF $(DEP_DIR)/$(@:$(BASE_DIR)/%.o=%.d)
+SERVER_DEP_FILES := $(SERVER_SRC_CC) $(SERVER_SRC_CXX)
+SERVER_DEP_FILES := $(SERVER_DEP_FILES:$(BASE_DIR)/%=$(DEP_DIR)/%.d)
 
 
-###################### Server Part ######################
-# Source code that must be compiled for client.
-
-# Server source code.
-SERVER_CC_SOURCES   = $(shell find ${SERVER_SOURCE_DIR} -name '*.c')
-SERVER_CXX_SOURCES  = $(shell find ${SERVER_SOURCE_DIR} -name '*.cc')
-SERVER_CXX_SOURCES += $(shell find ${SERVER_SOURCE_DIR} -name '*.cpp')
-SERVER_CXX_SOURCES += $(shell find ${SERVER_SOURCE_DIR} -name '*.cxx')
-
-# Server objects.
-SERVER_CC_OBJECTS   = $(SERVER_CC_SOURCES:%=%.o)
-SERVER_CXX_OBJECTS  = $(SERVER_CXX_SOURCES:%=%.o)
-SERVER_OBJECTS      = $(SERVER_CC_OBJECTS)
-SERVER_OBJECTS     += $(SERVER_CXX_OBJECTS)
-
-# Server depends directories.
-SERVER_DIR_L     = $(shell find ${SERVER_SOURCE_DIR} -type d)
-SERVER_DEPDIR    = $(SERVER_DIR_L:%=${ROOT_DEPDIR}/%)
-SERVER_DEPFLAGS  = -MT $@ -MMD -MP -MF ${ROOT_DEPDIR}/$*.d
-SERVER_DEPFILES  = $(SERVER_CC_SOURCES:%=${ROOT_DEPDIR}/%.d)
-SERVER_DEPFILES += $(SERVER_CXX_SOURCES:%=${ROOT_DEPDIR}/%.d)
-###################### End of Server Part ######################
+#
+# Client Source Code
+#
+# Modules that are required by $(CLIENT_BIN)
+#
+CLIENT_SRC_CC    := $(shell find ${CLIENT_SRC_DIR} -name '*.c')
+CLIENT_SRC_CXX   := $(shell find ${CLIENT_SRC_DIR} -name '*.cpp')
+CLIENT_OBJ_CC    := $(CLIENT_SRC_CC:%=%.o)
+CLIENT_OBJ_CXX   := $(CLIENT_SRC_CXX:%=%.o)
+CLIENT_OBJ       := $(strip $(CLIENT_OBJ_CC) $(CLIENT_OBJ_CXX))
+CLIENT_SRC_DIRL  := $(shell find ${CLIENT_SRC_DIR} -type d)
+CLIENT_DEP_DIRS  := $(CLIENT_SRC_DIRL:$(BASE_DIR)/%=$(DEP_DIR)/%)
+CLIENT_DEP_FLAGS  = -MT $(@) -MMD -MP -MF $(DEP_DIR)/$(@:$(BASE_DIR)/%.o=%.d)
+CLIENT_DEP_FILES := $(CLIENT_SRC_CC) $(CLIENT_SRC_CXX)
+CLIENT_DEP_FILES := $(CLIENT_DEP_FILES:$(BASE_DIR)/%=$(DEP_DIR)/%.d)
 
 
-all: client server
-
-.PHONY: deps_dir
-
-deps_dir: $(GLOBAL_DEPDIR)
+all: server client
+clean: clean_server clean_client clean_global
 
 
-${ROOT_DEPDIR}:
-	mkdir -pv $@
+###########################################
+# Build global modules
+global: $(GLOBAL_OBJ)
 
+$(GLOBAL_DEP_DIRS):
+	@mkdir -pv $(@)
 
-###################### Build global sources ######################
-global: $(GLOBAL_OBJECTS)
+$(GLOBAL_OBJ_CC): $(MAKEFILE_LIST) | $(GLOBAL_DEP_DIRS)
+	@echo "  CC   $(@:%.o=%)"
+	@$(CC) $(GLOBAL_DEP_FLAGS) $(CFLAGS) -c $(@:%.o=%) -o $(@)
 
-$(GLOBAL_DEPDIR): | $(ROOT_DEPDIR)
-	mkdir -pv $@
+$(GLOBAL_OBJ_CXX): $(MAKEFILE_LIST) | $(GLOBAL_DEP_DIRS)
+	@echo "  CXX  $(@:%.o=%)"
+	@$(CXX) $(GLOBAL_DEP_FLAGS) $(CXXFLAGS) -c $(@:%.o=%) -o $(@)
 
-$(GLOBAL_CC_OBJECTS): Makefile | $(GLOBAL_DEPDIR)
-	$(CC) $(GLOBAL_DEPFLAGS) $(CFLAGS) $(@:%.o=%) -o $@
-
-$(GLOBAL_CXX_OBJECTS): Makefile | $(GLOBAL_DEPDIR)
-	$(CXX) $(GLOBAL_DEPFLAGS) $(CXXFLAGS) $(@:%.o=%) -o $@
-
--include $(GLOBAL_DEPFILES)
-###################### End of build global sources ######################
-
-
-
-###################### Build client sources ######################
-client: $(CLIENT_BIN)
-
-$(CLIENT_DEPDIR): | $(ROOT_DEPDIR)
-	mkdir -pv $@
-
-$(CLIENT_CC_OBJECTS): Makefile | $(CLIENT_DEPDIR)
-	$(CC) $(CLIENT_DEPFLAGS) $(CFLAGS) $(@:%.o=%) -o $@
-
-$(CLIENT_CXX_OBJECTS): Makefile | $(CLIENT_DEPDIR)
-	$(CXX) $(CLIENT_DEPFLAGS) $(CXXFLAGS) $(@:%.o=%) -o $@
-
--include $(CLIENT_DEPFILES)
-
-$(CLIENT_BIN): Makefile $(GLOBAL_OBJECTS) $(CLIENT_OBJECTS)
-	$(LINKER) $(LDFLAGS) -o $@ $(CLIENT_OBJECTS) $(GLOBAL_OBJECTS) $(LIB_LDFLAGS)
-###################### End of build client sources ######################
-
-
-
-###################### Build server sources ######################
-server: $(SERVER_BIN)
-
-$(SERVER_DEPDIR): | $(ROOT_DEPDIR)
-	mkdir -pv $@
-
-$(SERVER_CC_OBJECTS): Makefile | $(SERVER_DEPDIR)
-	$(CC) $(SERVER_DEPFLAGS) $(CFLAGS) $(@:%.o=%) -o $@
-
-$(SERVER_CXX_OBJECTS): Makefile | $(SERVER_DEPDIR)
-	$(CXX) $(SERVER_DEPFLAGS) $(CXXFLAGS) $(@:%.o=%) -o $@
-
--include $(SERVER_DEPFILES)
-
-$(SERVER_BIN): Makefile $(GLOBAL_OBJECTS) $(SERVER_OBJECTS)
-	$(LINKER) $(LDFLAGS) -o $@ $(SERVER_OBJECTS) $(GLOBAL_OBJECTS) $(LIB_LDFLAGS)
-###################### End of build server sources ######################
-
-test: $(GLOBAL_OBJECTS) $(SERVER_OBJECTS) $(CLIENT_OBJECTS)
-	@cd tests && \
-	env INCLUDE_DIR="$(INCLUDE_DIR)" \
-	CC="$(CC)" \
-	CXX="$(CC)" \
-	LIB_LDFLAGS="$(LIB_LDFLAGS)" \
-	LDFLAGS="$(LDFLAGS)" \
-	GLOBAL_OBJECTS="$(GLOBAL_OBJECTS)" \
-	SERVER_OBJECTS="$(SERVER_OBJECTS)" \
-	CLIENT_OBJECTS="$(CLIENT_OBJECTS)" \
-	ROOT_DEPDIR="$(ROOT_DEPDIR)" \
-	DEFAULT_OPTIMIZATION="$(DEFAULT_OPTIMIZATION)" \
-	$(MAKE) -j $(TEST_JOBS) -f test.mk
-
-test_clean:
-	@cd tests && \
-	env INCLUDE_DIR="$(INCLUDE_DIR)" \
-	CC="$(CC)" \
-	CXX="$(CC)" \
-	LIB_LDFLAGS="$(LIB_LDFLAGS)" \
-	LDFLAGS="$(LDFLAGS)" \
-	GLOBAL_OBJECTS="$(GLOBAL_OBJECTS)" \
-	SERVER_OBJECTS="$(SERVER_OBJECTS)" \
-	CLIENT_OBJECTS="$(CLIENT_OBJECTS)" \
-	CLEAN=1 \
-	ROOT_DEPDIR="$(ROOT_DEPDIR)" \
-	$(MAKE) --no-print-directory -j $(TEST_JOBS) -f test.mk
-
-
-###################### Cleaning part ######################
-clean: clean_global clean_client clean_server test_clean clean_gcov
-	@rm -rfv $(ROOT_DEPDIR)
-
-clean_gcov:
-	@find -O2 tests \( -name '*.gcda' -o -name '*.gcno' -o -name '*.gcov' \) | xargs rm -vf
+-include $(GLOBAL_DEP_FILES)
 
 clean_global:
-	@rm -rfv $(GLOBAL_OBJECTS)
-	@rm -rfv $(GLOBAL_DEPDIR)
+	@rm -rfv $(GLOBAL_OBJ) $(GLOBAL_DEP_DIRS)
+###########################################
+
+
+###########################################
+# Build server modules
+server: $(SERVER_BIN)
+
+$(SERVER_BIN): $(GLOBAL_OBJ) $(SERVER_OBJ)
+	$(LD) $(LDFLAGS) $(GLOBAL_OBJ) $(SERVER_OBJ) -o $(@) $(LIB_LDFLAGS)
+
+$(SERVER_DEP_DIRS):
+	@mkdir -pv $(@)
+
+$(SERVER_OBJ_CC): $(MAKEFILE_LIST) | $(SERVER_DEP_DIRS)
+	@echo "  CC   $(@:%.o=%)"
+	@$(CC) $(SERVER_DEP_FLAGS) $(CFLAGS) -c $(@:%.o=%) -o $(@)
+
+$(SERVER_OBJ_CXX): $(MAKEFILE_LIST) | $(SERVER_DEP_DIRS)
+	@echo "  CXX  $(@:%.o=%)"
+	@$(CXX) $(SERVER_DEP_FLAGS) $(CXXFLAGS) -c $(@:%.o=%) -o $(@)
+
+-include $(SERVER_DEP_FILES)
 
 clean_server:
-	@rm -rfv $(SERVER_OBJECTS)
-	@rm -rfv $(SERVER_BIN)
-	@rm -rfv $(SERVER_DEPDIR)
+	@rm -rfv $(SERVER_OBJ) $(SERVER_DEP_DIRS) $(SERVER_BIN)
+###########################################
 
+###########################################
+# Build client modules
+client: $(CLIENT_BIN)
+
+$(CLIENT_BIN): $(GLOBAL_OBJ) $(CLIENT_OBJ)
+	$(LD) $(LDFLAGS) $(GLOBAL_OBJ) $(CLIENT_OBJ) -o $(@) $(LIB_LDFLAGS)
+
+$(CLIENT_DEP_DIRS):
+	@mkdir -pv $(@)
+
+$(CLIENT_OBJ_CC): $(MAKEFILE_LIST) | $(CLIENT_DEP_DIRS)
+	@echo "  CC   $(@:%.o=%)"
+	@$(CC) $(CLIENT_DEP_FLAGS) $(CFLAGS) -c $(@:%.o=%) -o $(@)
+
+$(CLIENT_OBJ_CXX): $(MAKEFILE_LIST) | $(CLIENT_DEP_DIRS)
+	@echo "  CXX  $(@:%.o=%)"
+	@$(CXX) $(CLIENT_DEP_FLAGS) $(CXXFLAGS) -c $(@:%.o=%) -o $(@)
+
+-include $(CLIENT_DEP_FILES)
 clean_client:
-	@rm -rfv $(CLIENT_OBJECTS)
-	@rm -rfv $(CLIENT_BIN)
-	@rm -rfv $(CLIENT_DEPDIR)
-###################### End of cleaning part ######################
+	@rm -rfv $(CLIENT_OBJ) $(CLIENT_DEP_DIRS) $(CLIENT_BIN)
+###########################################
+
+
+## TODO: Fix test command.
+test:
+	true

@@ -78,7 +78,8 @@ set_default_config(server_cfg *config)
 
 static const struct option long_options[] = {
 
-  {"help",          no_argument      , 0, 'h'},
+  {"help",          no_argument,       0, 'h'},
+  {"version",       no_argument,       0, 'v'},
   {"config",        required_argument, 0, 'c'},
 
   /* Interface options. */
@@ -114,13 +115,16 @@ getopt_handler(int argc, char **argv, server_cfg *config)
   while (1) {
     int option_index = 0;
     /*int this_option_optind = optind ? optind : 1;*/
-    c = getopt_long(argc, argv, "c:hd:m:4:b:H:P:s:B:D:M:", long_options,
+    c = getopt_long(argc, argv, "vc:hd:m:4:b:H:P:s:B:D:M:", long_options,
                     &option_index);
 
     if (c == -1)
       break;
 
     switch (c) {
+      case 'v':
+        
+        break;
 
       case 'h':
         show_help(argv[0]);
