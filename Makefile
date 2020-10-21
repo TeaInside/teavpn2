@@ -2,11 +2,11 @@
 # Compiler and linker options.
 CC          := cc
 CXX         := c++
-LD	        := $(CXX)
-BASE_DIR	:= $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
+LD          := $(CXX)
+BASE_DIR    := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
 BASE_DIR    := $(strip $(patsubst %/, %, $(BASE_DIR)))
 SRC_DIR     := $(BASE_DIR)/src
-DEP_DIR		:= $(BASE_DIR)/.deps
+DEP_DIR     := $(BASE_DIR)/.deps
 INCLUDE_DIR := -I$(SRC_DIR)/include               \
                -I$(SRC_DIR)/include/third_party
 
