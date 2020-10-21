@@ -56,10 +56,17 @@ tvpn_server_tcp_event_auth(tcp_channel *__restrict__ chan,
 
 
   {
-    register cl_pkt *cli_pkt;
-    cli_pkt = (cl_pkt *)chan->recv_buff;
+    cl_pkt       *cli_pkt  = (cl_pkt *)chan->recv_buff;
+    cl_pkt_auth  *auth_pkt = (cl_pkt_auth *)cli_pkt->data;
+    char         *username = &(auth_pkt->data[0]);
+    char         *password = &(auth_pkt->data[auth_pkt->username_len + 1]);
 
-    VT_HEXDUMP(chan, chan->recv_size + 10000 * 10);
+    /* For string safety. */
+    username[auth_pkt->username_len] = '\0';
+    password[auth_pkt->password_len] = '\0';
+
+    printf("Username: \"%s\"\n", username);
+    printf("Password: \"%s\"\n", password);
 
     chan->recv_size = 0;
   }

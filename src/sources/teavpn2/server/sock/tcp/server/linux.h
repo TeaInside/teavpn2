@@ -36,14 +36,12 @@ server_tcp_state *g_state;
 #include "linux/client_event_loop.h"
 #include "linux/master_event_loop.h"
 
-#define RACT(EXPR) ((state.stop) || (EXPR))
-
 /**
- * @param server_cfg *config
+ * @param server_tcp_state *state
  * @return int
  */
 inline static int
-__internal_tvpn_server_tcp_run(server_cfg *config)
+__internal_tvpn_server_tcp_run(server_tcp_state *state)
 {
   int               ret        = 1; /* Exit code. */
   const uint16_t    max_conn   = config->sock.max_conn;
