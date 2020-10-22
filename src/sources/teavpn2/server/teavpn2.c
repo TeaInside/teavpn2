@@ -1,9 +1,11 @@
 
+#include <stdio.h>
 #include <teavpn2/server/common.h>
 #include <teavpn2/server/sock/tcp.h>
 
 inline static bool
 tvpn_server_config_validate(server_cfg *config);
+
 
 /**
  * @param server_cfg *config
@@ -35,6 +37,7 @@ tvpn_server_run(server_cfg *config)
   ret:
   return ret;
 }
+
 
 /**
  * @param server_cfg *config
@@ -95,4 +98,14 @@ tvpn_server_config_validate(server_cfg *config)
   }
 
   return true;
+}
+
+
+/**
+ * @return void
+ */
+void 
+tvpn_server_version_info()
+{
+  printf("Version: %s\n", TEAVPN_SERVER_VERSION);
 }

@@ -12,4 +12,7 @@ tvpn_server_run(server_cfg *config);
 bool
 server_tun_iface_up(server_iface_cfg *iface);
 
+void 
+tvpn_server_version_info();
+
 #endif

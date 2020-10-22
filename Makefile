@@ -1,33 +1,39 @@
 
 # Compiler and linker options.
-CC          := cc
-CXX         := c++
-LD          := $(CXX)
-BASE_DIR    := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
-BASE_DIR    := $(strip $(patsubst %/, %, $(BASE_DIR)))
-SRC_DIR     := $(BASE_DIR)/src
-DEP_DIR     := $(BASE_DIR)/.deps
-INCLUDE_DIR := -I$(SRC_DIR)/include               \
-               -I$(SRC_DIR)/include/third_party
+CC              := cc
+CXX             := c++
+LD              := $(CXX)
+VALGRIND        := valgrind
+BASE_DIR        := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
+BASE_DIR        := $(strip $(patsubst %/, %, $(BASE_DIR)))
+SRC_DIR         := $(BASE_DIR)/src
+DEP_DIR         := $(BASE_DIR)/.deps
+GCOV_DIR        := $(BASE_DIR)/.gcov
+INCLUDE_DIR     := -I$(SRC_DIR)/include               \
+                   -I$(SRC_DIR)/include/third_party
 
-GLOBAL_SRC_DIR := $(SRC_DIR)/sources/teavpn2/global
-CLIENT_SRC_DIR := $(SRC_DIR)/sources/teavpn2/client
-SERVER_SRC_DIR := $(SRC_DIR)/sources/teavpn2/server
-TEST_MAKEFILE  := $(BASE_DIR)/tests/Makefile
+GLOBAL_SRC_DIR  := $(SRC_DIR)/sources/teavpn2/global
+CLIENT_SRC_DIR  := $(SRC_DIR)/sources/teavpn2/client
+SERVER_SRC_DIR  := $(SRC_DIR)/sources/teavpn2/server
+TEST_MAKEFILE   := $(BASE_DIR)/tests/Makefile
 
 ## Target file ##
-SERVER_BIN  := tvpnserver
-CLIENT_BIN  := tvpnclient
+SERVER_BIN      := tvpnserver
+CLIENT_BIN      := tvpnclient
+SERVER_VER      := 0.2.0
+CLIENT_VER      := 0.2.0
 
 
 ## Default flags ##
-LDFLAGS     := -Wall -Wextra
-CFLAGS      := -Wall -Wextra -fPIC -std=c99 $(INCLUDE_DIR) 
-CXXFLAGS    := -Wall -Wextra -fPIC -std=c++17 $(INCLUDE_DIR) \
-               -D_GLIBCXX_ASSERTIONS
+LDFLAGS         := -Wall -Wextra
+CFLAGS          := -Wall -Wextra -fPIC -std=c99 $(INCLUDE_DIR) 
+CXXFLAGS        := -Wall -Wextra -fPIC -std=c++17 $(INCLUDE_DIR) \
+                   -D_GLIBCXX_ASSERTIONS
 
 ## Link library flags
-LIB_LDFLAGS := -lpthread
+LIB_LDFLAGS     := -lpthread
+
+
 
 ifndef DEFAULT_OPTIMIZATION
     DEFAULT_OPTIMIZATION = -O0
@@ -69,21 +75,40 @@ ifdef COVERAGE
     endif
 endif
 
-CFLAGS   := $(strip $(COVERAGE_FLAG) $(CFLAGS) $(CCXXFLAGS))
-CXXFLAGS := $(strip $(COVERAGE_FLAG) $(CXXFLAGS) $(CCXXFLAGS))
+CCXXFLAGS       := $(CCXXFLAGS)                                  \
+                   -DTEAVPN_SERVER_VERSION="\"$(SERVER_VER)\""   \
+                   -DTEAVPN_CLIENT_VERSION="\"$(CLIENT_VER)\""
 
+CFLAGS          := $(strip $(COVERAGE_FLAG) $(CFLAGS) $(CCXXFLAGS))
+CXXFLAGS        := $(strip $(COVERAGE_FLAG) $(CXXFLAGS) $(CCXXFLAGS))
+VALGRIND_FLAGS  := --show-leak-kinds=all --track-origins=yes -s
+
+export CC
+export CXX
+export LD
+export VALGRIND
+export BASE_DIR
+export DEP_DIR
+export INCLUDE_DIR
+export JOB_FLAG
+export DEFAULT_OPTIMIZATION
+export GLOBAL_OBJ
+export SERVER_OBJ
+export CLIENT_OBJ
+export TEST_MAKEFILE
+export VALGRIND_FLAGS
 
 #
 # Global Source Code
 #
 # Modules that are required by $(SERVER_BIN) and $(CLIENT_BIN)
 #
-GLOBAL_SRC_CC    := $(shell find ${GLOBAL_SRC_DIR} -name '*.c')
-GLOBAL_SRC_CXX   := $(shell find ${GLOBAL_SRC_DIR} -name '*.cpp')
+GLOBAL_SRC_CC    := $(shell find "${GLOBAL_SRC_DIR}" -name '*.c')
+GLOBAL_SRC_CXX   := $(shell find "${GLOBAL_SRC_DIR}" -name '*.cpp')
 GLOBAL_OBJ_CC    := $(GLOBAL_SRC_CC:%=%.o)
 GLOBAL_OBJ_CXX   := $(GLOBAL_SRC_CXX:%=%.o)
 GLOBAL_OBJ       := $(strip $(GLOBAL_OBJ_CC) $(GLOBAL_OBJ_CXX))
-GLOBAL_SRC_DIRL  := $(shell find ${GLOBAL_SRC_DIR} -type d)
+GLOBAL_SRC_DIRL  := $(shell find "${GLOBAL_SRC_DIR}" -type d)
 GLOBAL_DEP_DIRS  := $(GLOBAL_SRC_DIRL:$(BASE_DIR)/%=$(DEP_DIR)/%)
 GLOBAL_DEP_FLAGS  = -MT $(@) -MMD -MP -MF $(DEP_DIR)/$(@:$(BASE_DIR)/%.o=%.d)
 GLOBAL_DEP_FILES := $(GLOBAL_SRC_CC) $(GLOBAL_SRC_CXX)
@@ -95,12 +120,12 @@ GLOBAL_DEP_FILES := $(GLOBAL_DEP_FILES:$(BASE_DIR)/%=$(DEP_DIR)/%.d)
 #
 # Modules that are required by $(SERVER_BIN)
 #
-SERVER_SRC_CC    := $(shell find ${SERVER_SRC_DIR} -name '*.c')
-SERVER_SRC_CXX   := $(shell find ${SERVER_SRC_DIR} -name '*.cpp')
+SERVER_SRC_CC    := $(shell find "${SERVER_SRC_DIR}" -name '*.c')
+SERVER_SRC_CXX   := $(shell find "${SERVER_SRC_DIR}" -name '*.cpp')
 SERVER_OBJ_CC    := $(SERVER_SRC_CC:%=%.o)
 SERVER_OBJ_CXX   := $(SERVER_SRC_CXX:%=%.o)
 SERVER_OBJ       := $(strip $(SERVER_OBJ_CC) $(SERVER_OBJ_CXX))
-SERVER_SRC_DIRL  := $(shell find ${SERVER_SRC_DIR} -type d)
+SERVER_SRC_DIRL  := $(shell find "${SERVER_SRC_DIR}" -type d)
 SERVER_DEP_DIRS  := $(SERVER_SRC_DIRL:$(BASE_DIR)/%=$(DEP_DIR)/%)
 SERVER_DEP_FLAGS  = -MT $(@) -MMD -MP -MF $(DEP_DIR)/$(@:$(BASE_DIR)/%.o=%.d)
 SERVER_DEP_FILES := $(SERVER_SRC_CC) $(SERVER_SRC_CXX)
@@ -112,12 +137,12 @@ SERVER_DEP_FILES := $(SERVER_DEP_FILES:$(BASE_DIR)/%=$(DEP_DIR)/%.d)
 #
 # Modules that are required by $(CLIENT_BIN)
 #
-CLIENT_SRC_CC    := $(shell find ${CLIENT_SRC_DIR} -name '*.c')
-CLIENT_SRC_CXX   := $(shell find ${CLIENT_SRC_DIR} -name '*.cpp')
+CLIENT_SRC_CC    := $(shell find "${CLIENT_SRC_DIR}" -name '*.c')
+CLIENT_SRC_CXX   := $(shell find "${CLIENT_SRC_DIR}" -name '*.cpp')
 CLIENT_OBJ_CC    := $(CLIENT_SRC_CC:%=%.o)
 CLIENT_OBJ_CXX   := $(CLIENT_SRC_CXX:%=%.o)
 CLIENT_OBJ       := $(strip $(CLIENT_OBJ_CC) $(CLIENT_OBJ_CXX))
-CLIENT_SRC_DIRL  := $(shell find ${CLIENT_SRC_DIR} -type d)
+CLIENT_SRC_DIRL  := $(shell find "${CLIENT_SRC_DIR}" -type d)
 CLIENT_DEP_DIRS  := $(CLIENT_SRC_DIRL:$(BASE_DIR)/%=$(DEP_DIR)/%)
 CLIENT_DEP_FLAGS  = -MT $(@) -MMD -MP -MF $(DEP_DIR)/$(@:$(BASE_DIR)/%.o=%.d)
 CLIENT_DEP_FILES := $(CLIENT_SRC_CC) $(CLIENT_SRC_CXX)
@@ -125,7 +150,7 @@ CLIENT_DEP_FILES := $(CLIENT_DEP_FILES:$(BASE_DIR)/%=$(DEP_DIR)/%.d)
 
 
 all: server client
-clean: clean_server clean_client clean_global
+clean: clean_server clean_client clean_global clean_test clean_gcov
 
 
 ###########################################
@@ -209,20 +234,33 @@ JOB_FLAG  := $(shell                                      \
                 grep -Po '\d+' || echo 1                  \
              )
 
-export CC
-export CXX
-export LD
-export BASE_DIR
-export DEP_DIR
-export INCLUDE_DIR
-export JOB_FLAG
-export DEFAULT_OPTIMIZATION
-export GLOBAL_OBJ
-export SERVER_OBJ
-export CLIENT_OBJ
-export TEST_MAKEFILE
-
 test: $(GLOBAL_OBJ) $(SERVER_OBJ) $(CLIENT_OBJ)
 	+@$(MAKE)                                       \
 	--no-print-directory                            \
 	-f $(TEST_MAKEFILE)
+
+clean_test:
+	+@$(MAKE)                                       \
+	--no-print-directory                            \
+	-f $(TEST_MAKEFILE)                             \
+	CLEAN_TEST=1
+
+
+$(GCOV_DIR):
+	@mkdir -pv $(@)
+
+clean_gcov:
+	@rm -rfv "$(GCOV_DIR)";
+	@find -O2 "$(BASE_DIR)" \( -name '*.gcda' -o -name '*.gcno' \) |  \
+	xargs rm -rfv
+
+gcov: | $(GCOV_DIR)
+	@cd "$(GCOV_DIR)" &&                                    \
+	find -O2 .. \( -name '*.gcda' -o -name '*.gcno' \) |    \
+	xargs gcov                                              \
+	--verbose                                               \
+	--human-readable                                        \
+	--hash-filenames                                        \
+	--demangled-names                                       \
+	--function-summaries                                    \
+	--unconditional-branches
