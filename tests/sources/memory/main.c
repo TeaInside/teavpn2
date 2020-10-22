@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include <criterion/criterion.h>
-#include <teavpn2/global/memory.h>
+#include <teavpn2/global/helpers/memory.h>
 
 Test(memory, contiguous_block_allocation_test)
 {
