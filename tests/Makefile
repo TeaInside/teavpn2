@@ -11,7 +11,7 @@ UNIT_TESTS     := $(shell find "${TEST_SRC_DIR}" -mindepth 1 -maxdepth 1 -type d
 
 
 ############################################
-## TODO: Unit tests for other architectures.
+## TODO: Add unit tests support for other architectures.
 ##
 ## Current supported arch: x86_64
 ##
@@ -40,7 +40,6 @@ CFLAGS         := $(strip $(COVERAGE_FLAG) $(CFLAGS) $(CCXXFLAGS))
 CXXFLAGS       := $(strip $(COVERAGE_FLAG) $(CXXFLAGS) $(CCXXFLAGS))
 LIB_LDFLAGS    := $(LIB_LDFLAGS) -L"$(CRITERION_DIR)/lib" -lcriterion -lgcov
 LD_PRELOAD     := $(CRITERION_DIR)/lib/libcriterion.so.3.1.0
-VALGRIND       := valgrind
 
 export TEST_DIR
 export TEST_SRC_DIR
@@ -53,6 +52,15 @@ export INCLUDE_DIR
 export CRITERION_DIR
 export LD_PRELOAD
 export VALGRIND
+export VALGRIND_FLAGS
+
+TEST_CMD := all
+
+ifdef CLEAN_TEST
+    ifneq ($(CLEAN_TEST),0)
+        TEST_CMD := clean
+    endif
+endif
 
 all: $(UNIT_TESTS)
 
@@ -67,4 +75,4 @@ $(TEST_BIN_DIR):
 $(UNIT_TESTS): | $(CRITERION_DIR) $(TEST_DEP_DIR) $(TEST_BIN_DIR)
 	@$(MAKE)                                       \
 	--no-print-directory                           \
-	-C $(@)
+	-C $(@) $(TEST_CMD)

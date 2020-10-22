@@ -28,6 +28,7 @@ void set_default_config(server_cfg *config);
 inline static
 bool getopt_handler(int argc, char **argv, server_cfg *config);
 
+static bool           just_check_version = false;
 static const int      default_back_log   = 10;
 static const uint16_t default_mtu        = 1500;
 static const uint16_t default_bind_port  = 55555;
@@ -49,7 +50,17 @@ tvpn_server_argv_parse(int argc, char *argv[], char *envp[],
   }
 
   set_default_config(config);
-  return getopt_handler(argc, argv, config);
+  if (getopt_handler(argc, argv, config)) {
+
+    if (just_check_version) {
+      tvpn_server_version_info();
+      return false;
+    }
+
+    return true;
+  }
+
+  return false;
 }
 
 
@@ -65,7 +76,7 @@ set_default_config(server_cfg *config)
   /* Virtual network interface. */
   config->iface.dev          = default_dev_name;
   config->iface.ipv4         = NULL;
-  config->iface.ipv4_netmask  = NULL;
+  config->iface.ipv4_netmask = NULL;
   config->iface.mtu          = default_mtu;
 
   /* Socket. */
@@ -123,7 +134,8 @@ getopt_handler(int argc, char **argv, server_cfg *config)
 
     switch (c) {
       case 'v':
-        
+        just_check_version = true;
+        return true;
         break;
 
       case 'h':
