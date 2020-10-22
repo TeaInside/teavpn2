@@ -13,6 +13,7 @@ INCLUDE_DIR := -I$(SRC_DIR)/include               \
 GLOBAL_SRC_DIR := $(SRC_DIR)/sources/teavpn2/global
 CLIENT_SRC_DIR := $(SRC_DIR)/sources/teavpn2/client
 SERVER_SRC_DIR := $(SRC_DIR)/sources/teavpn2/server
+TEST_MAKEFILE  := $(BASE_DIR)/tests/Makefile
 
 ## Target file ##
 SERVER_BIN  := tvpnserver
@@ -36,7 +37,8 @@ endif
 ifeq ($(RELEASE_MODE),1)
     CCXXFLAGS := -O3                             \
                  -s                              \
-                 -fstack-protector               \
+                 -fexceptions                    \
+                 -fstack-protector-strong        \
                  -DNDEBUG                        \
                  -D_GNU_SOURCE                   \
                  -D_REENTRANT
@@ -197,5 +199,30 @@ clean_client:
 
 
 ## TODO: Fix test command.
-test:
-	true
+
+.PHONY: test
+
+MAKE_PID  := $(shell echo $$PPID)
+JOB_FLAG  := $(shell                                      \
+                tr '\0' ' ' < /proc/$(MAKE_PID)/cmdline | \
+                grep -Po '\s\-j\s?(\d)(?:\s|$$)'        | \
+                grep -Po '\d+' || echo 1                  \
+             )
+
+export CC
+export CXX
+export LD
+export BASE_DIR
+export DEP_DIR
+export INCLUDE_DIR
+export JOB_FLAG
+export DEFAULT_OPTIMIZATION
+export GLOBAL_OBJ
+export SERVER_OBJ
+export CLIENT_OBJ
+export TEST_MAKEFILE
+
+test: $(GLOBAL_OBJ) $(SERVER_OBJ) $(CLIENT_OBJ)
+	+@$(MAKE)                                       \
+	--no-print-directory                            \
+	-f $(TEST_MAKEFILE)
