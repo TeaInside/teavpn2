@@ -58,15 +58,17 @@ typedef struct _tcp_channel {
 
 
 typedef struct _server_tcp_state {
-  int                   net_fd;         /* Master socket fd.      */
-  bool                  stop;           /* Stop signal.           */
-  server_cfg            *config;        /* Server config.         */
-  tcp_channel           *channels;      /* Client channels.       */
-  int                   pipe_fd[2];     /* Pipe fd for interrupt. */
+  int                   net_fd;         /* Master socket fd.        */
+  bool                  stop;           /* Stop signal.             */
+  server_cfg            *config;        /* Server config.           */
+  tcp_channel           *channels;      /* Client channels.         */
+#if defined(__linux__)
+  int                   pipe_fd[2];     /* Pipe for poll interrupt. */
+#endif
 } server_tcp_state;
 
 
 int
 tvpn_server_tcp_run(server_cfg *config);
 
-#endif
+#endif /* #ifndef TEAVPN2__SERVER__SOCK__TCP_H */
