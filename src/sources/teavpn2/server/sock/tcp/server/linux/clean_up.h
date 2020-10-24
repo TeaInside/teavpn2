@@ -1,25 +1,18 @@
 
-#ifndef TEAVPN2__SERVER__SOCK__TCP__SERVER__LINUX_H
-#  error This file must only be included from   \
-         teavpn2/server/sock/tcp/server/linux.h
+#if !defined(__linux__)
+#  error This code is supposed to be compiled only for Linux.
 #endif
 
 #ifndef TEAVPN2__SERVER__SOCK__TCP__SERVER__LINUX__CLEAN_UP_H
 #define TEAVPN2__SERVER__SOCK__TCP__SERVER__LINUX__CLEAN_UP_H
 
-
-/**
- * @param server_tcp_state *__restrict__ state
- * @return void
- */
 inline static void
-tvpn_server_tcp_close_tun_fd(server_tcp_state *__restrict__ state)
+tvpn_server_tcp_clean_up(server_tcp_state *state)
 {
-  /* Close tun fd(s). */
-  register uint16_t    max_conn  = state->config->sock.max_conn;
-  register tcp_channel *channels = state->channels;
+  const uint16_t n         = state->config->sock.max_conn;
+  tcp_channel    *channels = state->channels;
 
-  for (uint16_t i = 0; i < max_conn; ++i) {
+  for (uint16_t i = 0; i < n; ++i) {
     int the_fd = channels[i].tun_fd;
 
     if (channels[i].is_used) {
@@ -39,8 +32,9 @@ tvpn_server_tcp_close_tun_fd(server_tcp_state *__restrict__ state)
   }
 
   free(channels);
-}
 
+  tvpn_server_tcp_close_net_fd(state->net_fd);
+}
 
 /**
  * @param int net_fd
@@ -54,38 +48,6 @@ tvpn_server_tcp_close_net_fd(int net_fd)
     debug_log(0, "Closing net_fd -> (%d)...", net_fd);
     close(net_fd);
   }
-}
-
-
-/**
- * @param int pipe_fd[2]
- * @return void
- */
-inline static void
-tvpn_server_tcp_close_pipe_fd(int pipe_fd[2])
-{
-  if (pipe_fd[0] != -1) {
-    debug_log(0, "Closing pipe_fd[0] -> (%d)...", pipe_fd[0]);
-    close(pipe_fd[0]);
-  }
-
-  if (pipe_fd[1] != -1) {
-    debug_log(0, "Closing pipe_fd[1] -> (%d)...", pipe_fd[1]);
-    close(pipe_fd[1]);
-  }
-}
-
-
-/**
- * @param server_tcp_state *__restrict__ state
- * @return void
- */
-inline static void
-tvpn_server_tcp_clean_up(server_tcp_state *__restrict__ state)
-{
-  tvpn_server_tcp_close_tun_fd(state);
-  tvpn_server_tcp_close_pipe_fd(state->pipe_fd);
-  tvpn_server_tcp_close_net_fd(state->net_fd);
 }
 
 #endif /* #ifndef TEAVPN2__SERVER__SOCK__TCP__SERVER__LINUX__CLEAN_UP_H */

@@ -1,33 +1,35 @@
 
-#if !defined(__linux__)
-#  error This code is supposed to be compiled only for Linux.
+#ifndef TEAVPN2__SERVER__SOCK__TCP__SERVER__LINUX_H
+#  error This file must only be included from   \
+         teavpn2/server/sock/tcp/server/linux.h
 #endif
 
 #ifndef TEAVPN2__SERVER__SOCK__TCP__SERVER__LINUX__IFACE_H
 #define TEAVPN2__SERVER__SOCK__TCP__SERVER__LINUX__IFACE_H
 
+
 /**
- * @param server_tcp_state *state
+ * @param server_tcp_state *__restrict__ state
  * @return bool
  */
 inline static bool
-tvpn_server_tcp_init_iface(server_tcp_state *state)
+tvpn_server_tcp_init_iface(server_tcp_state *__restrict__ state)
 {
-  server_cfg        *config   = state->config;
-  tcp_channel       *channels = state->channels;
-  server_iface_cfg  *iface    = &(config->iface);
-  const uint16_t    max_conn  = config->sock.max_conn;
-  uint16_t          i;
+  register server_cfg        *config   = state->config;
+  register tcp_channel       *channels = state->channels;
+  register server_iface_cfg  *iface    = &(config->iface);
+  register uint16_t          i         = 0;
+  const uint16_t             max_conn  = config->sock.max_conn;
+
 
   debug_log(2, "Allocating virtual network interface...");
 
   for (i = 0; i < max_conn; i++) {
-    int fd;
+    register int fd;
 
     debug_log(5, "Allocating tun_fd, (seq:%d)...", i);
 
     fd = tun_alloc(iface->dev, IFF_TUN | IFF_MULTI_QUEUE);
-
     if (fd < 0) {
       debug_log(0, 
         "Cannot allocate virtual network interface: i = %d\n", i);
@@ -36,13 +38,13 @@ tvpn_server_tcp_init_iface(server_tcp_state *state)
 
     if (fd_set_nonblock(fd) < 0) {
       debug_log(0, "Error fd_set_nonblock(): %s", strerror(errno));
-      close(fd); /* Close current fd. */
+      close(fd);
       goto err;
     }
 
     if (tun_set_queue(fd, false) < 0) {
       debug_log(0, "Error tun_set_queue(): %s", strerror(errno));
-      close(fd); /* Close current fd. */
+      close(fd);
       goto err;
     }
 
@@ -62,7 +64,6 @@ tvpn_server_tcp_init_iface(server_tcp_state *state)
       channels[i].tun_fd = -1;
     }
   }
-
   return false;
 }
 
