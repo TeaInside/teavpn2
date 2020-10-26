@@ -3,7 +3,7 @@
 #include <teavpn2/global/packet.h>
 
 #include <teavpn2/server/sock/tcp.h>
-#include <teavpn2/server/sock/tcp_inline_functions.h>
+#include <teavpn2/server/sock/tcp_general_interface.h>
 
 #define RACT(EXPR) ((state.stop) || (EXPR))
 
@@ -22,8 +22,8 @@ server_tcp_state *g_state;
 int
 tvpn_server_tcp_run(server_cfg *config)
 {
-  int              ret = 1;
-  const uint16_t   n   = config->sock.max_conn;
+  int              ret    = 1;
+  const uint16_t   n      = config->sock.max_conn;
   server_tcp_state state;
 
   state.config   = config;
@@ -34,7 +34,9 @@ tvpn_server_tcp_run(server_cfg *config)
 
   tvpn_server_tcp_init_channels(state.channels, n);
 
-  tvpn_general_init();
+  if (RACV(!tvpn_general_init(&state))) {
+    goto ret;
+  }
 
   if (RACT(!tvpn_server_tcp_init_iface(&state))) {
     goto ret;

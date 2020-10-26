@@ -1,29 +1,44 @@
 
-#include <ctype.h>
 #include <string.h>
 #include <stdlib.h>
 
 #include <inih/ini.h>
 #include <teavpn2/server/common.h>
 
-static bool failed = false;
 
 inline static int
-server_parser_handler(void *user, const char *section, const char *name,
-                      const char *value, int lineno);
+parser_handler(void *user, const char *section, const char *name,
+               const char *value, int lineno);
 
+struct parse_struct {
+  bool      fail;
+  srv_cfg   *cfg;
+};
+
+
+/**
+ * @param char    *file
+ * @param srv_cfg *cfg
+ * @return bool
+ */
 bool
-tvpn_server_load_config_file(char *file, server_cfg *config)
+tvpn_srv_load_cfg_file(char *file, srv_cfg *cfg)
 {
-  int ret = ini_parse(file, server_parser_handler, config);
+  int                 ret;
+  struct parse_struct cx;
+  
+  cx.cfg  = cfg;
+  cx.fail = false;
+
+  ret = ini_parse(file, parser_handler, &cx);
 
   if (ret < 0) {
-    printf("File \"%s\" does not exist\n", file);
+    debug_log(0, "File \"%s\" does not exist", file);
     return false;
   }
 
-  if (failed) {
-    printf("Error loading config file!\n");
+  if (cx.fail) {
+    debug_log(0, "Error loading config file!");
     return false;
   }
 
@@ -31,11 +46,23 @@ tvpn_server_load_config_file(char *file, server_cfg *config)
 }
 
 
+/**
+ * @param void       *user
+ * @param const char *section
+ * @param const char *name
+ * @param const char *value
+ * @param int        lineno
+ * @return int
+ */
 inline static int
-server_parser_handler(void *user, const char *section, const char *name,
-                      const char *value, int lineno)
+parser_handler(void *user, const char *section, const char *name,
+               const char *value, int lineno)
 {
-  server_cfg *config = (server_cfg *)user;
+  struct parse_struct *cx  = (struct parse_struct *)user;
+  srv_cfg             *cfg = cx->cfg;
+
+  #define RMATCH_S(STR) if (!strcmp(section, STR))
+  #define RMATCH_N(STR) if (!strcmp(name, STR))
 
   #define RMATCH_S(STR) if (!strcmp(section, STR))
   #define RMATCH_N(STR) if (!strcmp(name, STR))
@@ -43,17 +70,17 @@ server_parser_handler(void *user, const char *section, const char *name,
   RMATCH_S("iface") {
 
     RMATCH_N("dev") {
-      config->iface.dev  = t_ar_strndup(value, 256);
+      cfg->iface.dev  = t_ar_strndup(value, 256);
     } else
     RMATCH_N("mtu") {
-      config->iface.mtu = (uint16_t)atoi(value);
+      cfg->iface.mtu = (uint16_t)atoi(value);
     } else
     RMATCH_N("ipv4") {
-      config->iface.ipv4 = t_ar_alloc(sizeof("xxx.xxx.xxx.xxx/xx"));
-      strncpy(config->iface.ipv4, value, sizeof("xxx.xxx.xxx.xxx") - 1);
+      cfg->iface.ipv4 = t_ar_alloc(IPV4L + 3);
+      strncpy(cfg->iface.ipv4, value, IPV4L + 2);
     } else
     RMATCH_N("ipv4_netmask") {
-      config->iface.ipv4_netmask = t_ar_strndup(value, sizeof("xxx.xxx.xxx.xxx") - 1);
+      cfg->iface.ipv4_netmask = t_ar_strndup(value, IPV4L - 1);
     } else {
       goto invalid_name;
     }
@@ -62,52 +89,45 @@ server_parser_handler(void *user, const char *section, const char *name,
   RMATCH_S("socket") {
 
     RMATCH_N("bind_addr") {
-      config->sock.bind_addr = t_ar_strndup(value, 256);
+      cfg->sock.bind_addr = t_ar_strndup(value, 256);
     } else
     RMATCH_N("bind_port") {
-      config->sock.bind_port = (uint16_t)atoi(value);
+      cfg->sock.bind_port = (uint16_t)atoi(value);
     } else
     RMATCH_N("sock_type") {
-      register char tc;
-      char targ[4];
+      char     targ[4];
+      uint32_t *targ_ptr = (uint32_t *)targ;
 
       strncpy(targ, value, 3);
 
-      tc       = targ[0];
-      targ[0] += ('A' <= tc && tc <= 'Z') ? 32 : 0;
-
-      tc       = targ[1];
-      targ[1] += ('A' <= tc && tc <= 'Z') ? 32 : 0;
-
-      tc       = targ[2];
-      targ[2] += ('A' <= tc && tc <= 'Z') ? 32 : 0;
-
-      targ[3] = '\0';
+      /* tolower */
+      *targ_ptr = (*targ_ptr) | 0x20202020;
+      targ[3]   = '\0';
 
       if (!strcmp(targ, "tcp")) {
-        config->sock.type = SOCK_TCP;
+        cfg->sock.type = SOCK_TCP;
       } else
       if (!strcmp(targ, "udp")) {
-        config->sock.type = SOCK_UDP;
+        cfg->sock.type = SOCK_UDP;
       } else {
-        printf("Invalid socket type: \"%s\"\n", value);
-        failed = true;
+        debug_log(0, "Invalid socket type: \"%s\"\n", value);
         return 0;
       }
 
     } else
     RMATCH_N("backlog") {
-      config->sock.backlog = atoi(value);
+      cfg->sock.backlog = atoi(value);
     } else {
       goto invalid_name;
     }
 
   } else
   RMATCH_S("other") {
-    config->data_dir = t_ar_strndup(value, 256);
+    cfg->data_dir = t_ar_strndup(value, 256);
   } else {
-    printf("Invalid section \"%s\" on line %d\n", section, lineno);
-    failed = true;
+    debug_log(0, "Invalid section \"%s\" on line %d\n",
+              section, lineno);
+    cx->fail = true;
     return 0;
   }
 
@@ -115,7 +135,10 @@ server_parser_handler(void *user, const char *section, const char *name,
 
 
 invalid_name:
-  printf("Invalid name: \"%s\" in section \"%s\" on line %d\n", name, section, lineno);
-  failed = true;
+  debug_log(0,
+            "Invalid name: \"%s\" in section \"%s\" on line %d\n",
+            name, section, lineno);
+
+  cx->fail = true;
   return 0;
 }

@@ -81,7 +81,7 @@ CCXXFLAGS       := $(CCXXFLAGS)                                  \
 
 CFLAGS          := $(strip $(COVERAGE_FLAG) $(CFLAGS) $(CCXXFLAGS))
 CXXFLAGS        := $(strip $(COVERAGE_FLAG) $(CXXFLAGS) $(CCXXFLAGS))
-VALGRIND_FLAGS  := --show-leak-kinds=all --track-origins=yes -s
+VALGRIND_FLAGS  := --leak-check=full --show-leak-kinds=all --track-origins=yes --track-fds=yes -s
 
 export CC
 export CXX
@@ -264,3 +264,6 @@ gcov: | $(GCOV_DIR)
 	--demangled-names                                       \
 	--function-summaries                                    \
 	--unconditional-branches
+
+server_run: $(SERVER_BIN)
+	sudo $(VALGRIND) $(VALGRIND_FLAGS) ./$(SERVER_BIN) -c config/server.ini

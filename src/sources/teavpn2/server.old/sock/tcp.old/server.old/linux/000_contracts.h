@@ -53,4 +53,5 @@ tvpn_server_tcp_thread_worker(void *_chan);
 inline static void
 tvpn_server_tcp_client_event_loop(tcp_channel *chan);
 
-#endif /* #ifndef TEAVPN2__SERVER__SOCK__TCP__SERVER__LINUX__000_CONTRACTS_H */
+#endif /*
+#ifndef TEAVPN2__SERVER__SOCK__TCP__SERVER__LINUX__000_CONTRACTS_H */
