@@ -21,7 +21,9 @@ tvpn_server_tcp_event_loop(server_tcp_state *state)
   nfds_t         nfds;
   struct pollfd  fds[2 + max_conn];
 
-  memset(fds, 0, sizeof(fds));
+  for (int i = 0; i < (2 + max_conn); i++) {
+    memset(&(fds[i]), 0, sizeof(struct pollfd));
+  }
 
   /* Add TCP socket fd to fds.       */
   fds[0].fd     = state->net_fd;

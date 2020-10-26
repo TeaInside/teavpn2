@@ -30,12 +30,4 @@
 #include "linux/evl_master.h"
 #include "linux/evl_client.h"
 
-inline static void
-tvpn_general_init()
-{
-  signal(SIGINT, tvpn_server_tcp_signal_handler);
-  signal(SIGHUP, tvpn_server_tcp_signal_handler);
-  signal(SIGTERM, tvpn_server_tcp_signal_handler);
-}
-
 #endif /* #ifndef TEAVPN2__SERVER__SOCK__TCP__SERVER__LINUX_H */

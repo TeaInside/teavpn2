@@ -7,6 +7,21 @@
 #define TEAVPN2__SERVER__SOCK__TCP__SERVER__LINUX__INIT_H
 
 /**
+ * @param server_tcp_state *state
+ * @return void
+ */
+inline static void
+tvpn_general_init(server_tcp_state *state)
+{
+  signal(SIGINT, tvpn_server_tcp_signal_handler);
+  signal(SIGHUP, tvpn_server_tcp_signal_handler);
+  signal(SIGTERM, tvpn_server_tcp_signal_handler);
+}
+
+
+
+
+/**
  * @param int signal
  * @return void
  */
@@ -105,6 +120,11 @@ tvpn_server_tcp_init_socket(server_tcp_state *state)
     goto err;
   }
 
+  debug_log(0, "Listening on %s:%d...",
+            sock_cfg->bind_addr,
+            sock_cfg->bind_port);
+
+  return true;
 err:
   if (fd != -1) {
     debug_log(0, "Closing socket descriptor...");
