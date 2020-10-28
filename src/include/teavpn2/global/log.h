@@ -3,6 +3,7 @@
 #define TEAVPN2__GLOBAL__LOG_H
 
 
+#include <stdio.h>
 #include <stdarg.h>
 
 #include <teavpn2/global/types.h>
@@ -13,6 +14,13 @@
 
 void
 _tvpn_internal_log(const char *msg, ...);
+
+void
+tvpn_add_log_stream(FILE *stream);
+
+void
+tvpn_clean_log_stream();
+
 
 extern FILE    **_log_res;
 extern uint8_t _log_res_c;

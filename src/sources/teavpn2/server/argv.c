@@ -1,5 +1,4 @@
 
-
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
@@ -25,13 +24,12 @@
 #endif
 
 
-static bool                no_exec             = false;
-static char                default_dev_name[]  = "teavpn10";
-static const int           default_back_log    = 10;
-static const uint16_t      default_mtu         = 1500;
-static const uint16_t      default_bind_port   = 55555;
-static const uint16_t      default_max_conn    = 10;
-
+static bool           no_exec             = false;
+static char           default_dev_name[]  = "teavpn10";
+static const int      default_back_log    = 10;
+static const uint16_t default_mtu         = 1500;
+static const uint16_t default_bind_port   = 55555;
+static const uint16_t default_max_conn    = 10;
 
 inline static void
 set_default_cfg(srv_cfg *cfg);
@@ -47,7 +45,7 @@ getopt_handler(int argc, char *argv[], srv_cfg *cfg);
  * @return bool
  */
 bool
-tvpn_server_argv_parse(int argc, char *argv[], srv_cfg *cfg)
+tvpn_srv_argv_parse(int argc, char *argv[], srv_cfg *cfg)
 {
 
   if (argc == 1) {
@@ -58,7 +56,6 @@ tvpn_server_argv_parse(int argc, char *argv[], srv_cfg *cfg)
   set_default_cfg(cfg);
 
   if (!getopt_handler(argc, argv, cfg)) {
-
     return false;
   }
 

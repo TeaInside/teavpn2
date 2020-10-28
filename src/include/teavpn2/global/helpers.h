@@ -4,6 +4,7 @@
 
 
 #include <teavpn2/global/helpers/vt_hexdump.h>
+#include <teavpn2/global/helpers/memory.h>
 
 
 #endif

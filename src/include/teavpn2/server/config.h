@@ -38,7 +38,7 @@ typedef struct _srv_cfg {
 
 
 bool
-srv_load_cfg_file(char *file, srv_cfg *config);
+tvpn_srv_load_cfg_file(char *file, srv_cfg *cfg);
 
 
 #endif /* #ifndef TEAVPN2__SERVER__CONFIG_H */
