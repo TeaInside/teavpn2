@@ -27,16 +27,29 @@ t_ar_init(void *ptr, size_t len)
  * @param size_t len
  * @return void *
  */
-void *
-t_ar_alloc(size_t len)
+inline static void *
+_internal_t_ar_alloc(size_t len)
 {
-  char *ret  = &(((char *)t_arena)[t_arena_pos]);
-  t_arena_pos        += len;
+  char *ret    = &(((char *)t_arena)[t_arena_pos]);
+
+  __sync_synchronize();
+  t_arena_pos += len;
 
   /* Check if run out of arena. */
   assert(t_arena_pos <= t_arena_len);
 
   return (void *)ret;
+}
+
+
+/**
+ * @param size_t len
+ * @return void *
+ */
+void *
+t_ar_alloc(size_t len)
+{
+  return _internal_t_ar_alloc(len);
 }
 
 
@@ -49,8 +62,9 @@ t_ar_strdup(const char *str)
 {
   size_t len   = strlen(str);
   char   *ret  = &(((char *)t_arena)[t_arena_pos]);
-  t_arena_pos          += len + 1;
 
+  __sync_synchronize();
+  t_arena_pos += len + 1;
   t_ar_memcpy(ret, str, len);
   ret[len] = '\0';
 
@@ -71,6 +85,7 @@ t_ar_strndup(const char *str, size_t tlen)
 
   tlen = (len < tlen) ? len : tlen;
 
+  __sync_synchronize();
   t_arena_pos += tlen + 1;
   t_ar_memcpy(ret, str, tlen);
   ret[tlen] = '\0';

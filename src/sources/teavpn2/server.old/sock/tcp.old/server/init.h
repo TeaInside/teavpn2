@@ -68,6 +68,9 @@ tvpn_server_init_first_state(server_tcp_state *state, server_cfg *config)
 
 #if defined(__linux__)
   tvpn_server_tcp_init_pipe(state->pipe_fd);
+  signal(SIGINT, tvpn_server_tcp_signal_handler);
+  signal(SIGHUP, tvpn_server_tcp_signal_handler);
+  signal(SIGTERM, tvpn_server_tcp_signal_handler);
 #endif
 
   return true;

@@ -25,7 +25,7 @@ typedef struct _tcp_channel {
   __be32              p_ipv4;
   __be32              p_ipv4_netmask;
 
-  char                *username[255];
+  char                username[255];
   char                r_ip_src[IPV4L];  /* Human-readable remote IPv4.  */
   uint16_t            r_port_src;       /* Host byte order remote port. */
 
@@ -46,13 +46,17 @@ typedef struct _tcp_channel {
 
 
 typedef struct _srv_tcp {
-  int                   net_fd;         /* Master socket fd.        */
-  bool                  stop;           /* Stop signal.             */
-  srv_cfg               *config;        /* Server config.           */
-  tcp_channel           *channels;      /* Client channels.         */
+  int                   net_fd;         /* Master socket fd.         */
+  bool                  stop;           /* Stop signal.              */
+  srv_cfg               *cfg;           /* Server config.            */
+  tcp_channel           *channels;      /* Client channels.          */
+
+  int32_t               fci;            /* Free channel index.
+                                           The value should be -1 if
+                                           there is no free channel. */
 
 #if defined(__linux__)
-  int                   pipe_fd[2];     /* Pipe for poll interrupt. */
+  int                   pipe_fd[2];     /* Pipe for poll interrupt.  */
 #endif
 
 } srv_tcp;
