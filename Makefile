@@ -26,7 +26,7 @@ CLIENT_VER      := 0.2.0
 
 ## Default flags ##
 LDFLAGS         := -Wall -Wextra
-CFLAGS          := -Wall -Wextra -fPIC -std=c99 $(INCLUDE_DIR) 
+CFLAGS          := -Wall -Wextra -fPIC -std=c11 $(INCLUDE_DIR) 
 CXXFLAGS        := -Wall -Wextra -fPIC -std=c++17 $(INCLUDE_DIR) \
                    -D_GLIBCXX_ASSERTIONS
 

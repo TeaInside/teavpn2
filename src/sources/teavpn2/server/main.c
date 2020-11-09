@@ -1,20 +1,14 @@
 
-#include <stdio.h>
-#include <string.h>
 
-#include <teavpn2/server/argv.h>
 #include <teavpn2/server/common.h>
-#include <teavpn2/server/teavpn2.h>
+#include <teavpn2/server/argv.h>
+#include <teavpn2/server/helpers.h>
+
 
 #ifndef ARENA_SIZE
-#define ARENA_SIZE 4096
+#define ARENA_SIZE (4096)
 #endif
 
-/**
- * @param int   argc
- * @param char  *argv[]
- * @return int
- */
 int
 main(int argc, char *argv[])
 {
@@ -22,26 +16,21 @@ main(int argc, char *argv[])
   srv_cfg cfg;
   char    arena[ARENA_SIZE];
 
-  memset(arena, 0, sizeof(arena));
-  t_ar_init(arena, sizeof(arena));
 
-  ret = 0;
+  ar_init(arena, ARENA_SIZE);
 
-  tvpn_add_log_stream(stdout);
-
-  if (!tvpn_srv_argv_parse(argc, argv, &cfg)) {
+  if (!tsrv_argv_parser(argc, argv, &cfg)) {
     ret = 1;
     goto ret;
   }
 
-  if (!tvpn_srv_load_cfg_file(cfg.config_file, &cfg)) {
-    ret = 1;
-    goto ret;
-  }
+  ret = tsrv_run(&cfg);
 
-  ret = tvpn_srv_run(&cfg);
+
+
+
+
 
 ret:
-  tvpn_clean_log_stream();
   return ret;
 }
