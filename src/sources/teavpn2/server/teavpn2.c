@@ -36,8 +36,10 @@ tsrv_clean_up()
 
 }
 
-#define err_cfg_pr(FMT, ...)                                \
-  err_printf("%s" FMT, "Config error: ", ##__VA_ARGS__)
+
+#define err_cfg_pr(FMT, ...) err_printf("%s" FMT, "Config error: ", \
+                             ##__VA_ARGS__)
+
 
 /** 
  * @param srv_cfg *cfg
