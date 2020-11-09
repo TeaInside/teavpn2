@@ -101,7 +101,7 @@ getopt_handler(int argc, char *argv[], struct parse_struct *cx)
 
     c = getopt_long(argc, argv, short_opt, long_opt, &option_index);
 
-    if (c == -1) {
+    if (unlikely(c == -1)) {
       break;
     }
 
