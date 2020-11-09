@@ -210,7 +210,7 @@ tsrv_argv_parser(int argc, char *argv[], srv_cfg *cfg)
     return true;
   }
 
-  cx.cfg  = cfg;
+  cx.cfg     = cfg;
   cx.no_exec = false;
 
   if (!getopt_handler(argc, argv, &cx)) {
