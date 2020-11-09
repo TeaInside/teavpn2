@@ -2,11 +2,9 @@
 #ifndef TEAVPN2__SERVER__ARGV_H
 #define TEAVPN2__SERVER__ARGV_H
 
-
-#include <teavpn2/server/config.h>
+#include <teavpn2/server/common.h>
 
 bool
-tvpn_srv_argv_parse(int argc, char *argv[], srv_cfg *cfg);
+tsrv_argv_parser(int argc, char *argv[], srv_cfg *cfg);
 
-
-#endif /* #ifndef TEAVPN2__SERVER__ARGV_H */
+#endif

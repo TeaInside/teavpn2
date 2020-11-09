@@ -2,15 +2,11 @@
 #ifndef TEAVPN2__GLOBAL__HELPERS__MEMORY_H
 #define TEAVPN2__GLOBAL__HELPERS__MEMORY_H
 
-#include <stddef.h>
-#include <string.h>
-
 #if defined(__x86_64__) && defined(__linux__)
-#  define NEED_MEMCPY_TEST 1
-#  define ar_memcpy ar_memcpy_x86_64
 
 inline static void *
-ar_memcpy_x86_64(void *restrict dest, const void *restrict src, size_t n)
+t_ar_memcpy_x86_64(void *__restrict__ dest,
+                   const void *__restrict__ src, size_t n)
 {
   __asm__ volatile(
     "rep movsb"
@@ -21,26 +17,27 @@ ar_memcpy_x86_64(void *restrict dest, const void *restrict src, size_t n)
   return dest;
 }
 
+#  define NEED_MEMCPY_TEST 1
+#  define t_ar_memcpy t_ar_memcpy_x86_64
 #else /* #if defined(__x86_64__) && defined(__linux__) */
-
 /* We believe in libc, so no need to test. */
+#  include <string.h>
 #  define NEED_MEMCPY_TEST 0
-#  define ar_memcpy memcpy
-
+#  define t_ar_memcpy memcpy
 #endif /* #if defined(__x86_64__) && defined(__linux__) */
 
 
 void
-ar_init(void *_arena_ptr, size_t _arena_size);
+t_ar_init(void *ptr, size_t len);
 
 void *
-ar_alloc(size_t len);
+t_ar_alloc(size_t len);
 
 char *
-ar_strdup(const char *str);
+t_ar_strdup(const char *str);
 
 char *
-ar_strndup(const char *str, size_t maxlen);
+t_ar_strndup(const char *str, size_t tlen);
 
 
-#endif /* #ifndef TEAVPN2__GLOBAL__HELPERS__MEMORY_H */
+#endif
