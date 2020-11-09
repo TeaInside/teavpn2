@@ -4,9 +4,14 @@
 #include <teavpn2/server/helpers.h>
 
 #ifndef ARENA_SIZE
-#define ARENA_SIZE (4096)
+#  define ARENA_SIZE (4096)
 #endif
 
+/**
+ * @param int  argc
+ * @param char *argv[]
+ * @return int
+ */
 int
 main(int argc, char *argv[])
 {

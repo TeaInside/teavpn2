@@ -63,7 +63,7 @@ static const struct option long_opt[] = {
   {"config",        required_argument, 0, 'c'},
   {"data-dir",      required_argument, 0, 'D'},
 
-  /* Interface options. */
+  /* Virtual network interface options. */
   {"dev",           required_argument, 0, 'd'},
   {"ipv4",          required_argument, 0, '4'},
   {"ipv4-netmask",  required_argument, 0, 'b'},
@@ -78,6 +78,9 @@ static const struct option long_opt[] = {
 
   {0, 0, 0, 0}
 };
+
+inline static void
+show_help(const char *app);
 
 /**
  * @param int                 argc
@@ -108,6 +111,7 @@ getopt_handler(int argc, char *argv[], struct parse_struct *cx)
         goto ret;
 
       case 'h':
+        show_help(argv[0]);
         cx->no_exec = true;
         goto ret;
 
@@ -345,4 +349,55 @@ invalid_name:
 err:
   cx->no_exec = true;
   return false;
+}
+
+
+/**
+ * @param const char *app
+ * @return void
+ */
+inline static void
+show_help(const char *app)
+{
+  printf("Usage: %s [options]\n", app);
+
+  printf("\n");
+  printf("TeaVPN2 (An open source VPN software).\n");
+
+  printf("\n");
+  printf("Available options:\n");
+  printf("  -h, --help\t\t\tShow this help message.\n");
+  printf("  -c, --config=FILE\t\tSet config file (default: %s).\n",
+         def_cfg_file);
+  printf("  -v, --version\t\t\tShow program version.\n");
+  printf("  -D, --data-dir\t\tSet data directory.\n");
+
+  printf("\n");
+  printf("[Config options]\n");
+  printf(" Virtual network interface:\n");
+  printf("  -d, --dev=DEV\t\t\tSet virtual network interface name"
+         " (default: %s).\n", def_dev);
+  printf("  -m, --mtu=MTU\t\t\tSet mtu value (default: %d).\n", def_mtu);
+  printf("  -4, --ipv4=IP\t\t\tSet IPv4 (default: %s).\n", def_ipv4);
+  printf("  -b, --ipv4-netmask=MASK\tSet IPv4 netmask (default: %s).\n",
+         def_ipv4_netmask);
+
+  printf("\n");
+  printf(" Socket:\n");
+  printf("  -s, --sock-type=TYPE\t\tSet socket type (must be tcp or udp)"
+         " (default: tcp).\n");
+  printf("  -H, --bind-addr=IP\t\tSet bind address (default 0.0.0.0).\n");
+  printf("  -P, --bind-port=PORT\t\tSet bind port (default: %d).\n",
+         def_bind_port);
+  printf("  -M, --max-conn=N\t\tSet max connections (default: %d).\n",
+         def_max_conn);
+  printf("  -B, --backlog=TYPE\t\tSet socket listen backlog (default: %d).\n",
+         def_backlog);
+
+  printf("\n");
+  printf("\n");
+  printf("For bug reporting, please open an issue on GitHub repository.\n");
+  printf("GitHub repository: https://github.com/TeaInside/teavpn2\n");
+  printf("\n");
+  printf("This software is licensed under the MIT license.\n");
 }
