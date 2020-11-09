@@ -51,6 +51,15 @@ tsrv_validate_cfg(srv_cfg *cfg)
   srv_iface_cfg *iface = &(cfg->iface);
   srv_sock_cfg  *sock  = &(cfg->sock);
 
+
+  {
+    if (cfg->data_dir == NULL) {
+      err_cfg_pr("cfg->data_dir cannot be empty!");
+      goto err;
+    }
+  }
+
+
   {
     /* Validate virtual network interface config. */
     if (iface->dev == NULL) {
