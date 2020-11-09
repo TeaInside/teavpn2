@@ -30,6 +30,8 @@ static char     def_ipv4[]         = "10.10.10.1";
 static char     def_ipv4_netmask[] = "255.255.255.0";
 static uint16_t def_mtu            = 1500;
 
+static char     def_cfg_file[]     = "config/server.ini";
+
 
 /**
  * @param srv_cfg *cfg
@@ -38,7 +40,7 @@ static uint16_t def_mtu            = 1500;
 inline static void
 set_default_cfg(srv_cfg *cfg)
 {
-  cfg->cfg_file       = NULL;
+  cfg->cfg_file       = def_cfg_file;
   cfg->data_dir       = NULL;
 
   cfg->sock.type      = SOCK_TCP;
@@ -54,11 +56,12 @@ set_default_cfg(srv_cfg *cfg)
 }
 
 
-static const char short_opt[] = "hvc:d:4:b:m:s:H:P:M:B:D:";
+static const char short_opt[] = "hvc:D:d:4:b:m:s:H:P:M:B:";
 static const struct option long_opt[] = {
   {"help",          no_argument,       0, 'h'},
   {"version",       no_argument,       0, 'v'},
   {"config",        required_argument, 0, 'c'},
+  {"data-dir",      required_argument, 0, 'D'},
 
   /* Interface options. */
   {"dev",           required_argument, 0, 'd'},
@@ -72,8 +75,6 @@ static const struct option long_opt[] = {
   {"bind-port",     required_argument, 0, 'P'},
   {"max-conn",      required_argument, 0, 'M'},
   {"backlog",       required_argument, 0, 'B'},
-
-  {"data-dir",      required_argument, 0, 'D'},
 
   {0, 0, 0, 0}
 };
@@ -112,6 +113,10 @@ getopt_handler(int argc, char *argv[], struct parse_struct *cx)
 
       case 'c':
         cfg->cfg_file = optarg;
+        break;
+
+      case 'D':
+        cfg->data_dir = optarg;
         break;
 
 
@@ -195,21 +200,18 @@ tsrv_argv_parser(int argc, char *argv[], srv_cfg *cfg)
 {
   struct parse_struct cx;
 
-  cx.cfg  = cfg;
-  cx.no_exec = false;
+  set_default_cfg(cfg);
 
   if (argc == 1) {
-    printf("Usage: %s [options]\n", argv[0]);
-    return false;
+    return true;
   }
 
-  set_default_cfg(cfg);
+  cx.cfg  = cfg;
+  cx.no_exec = false;
 
   if (!getopt_handler(argc, argv, &cx)) {
     cx.no_exec = true;
   }
-
-  print_cfg(cfg);
 
   return (!cx.no_exec);
 }
@@ -265,11 +267,8 @@ parser_handler(void *user, const char *section, const char *name,
   struct parse_struct *cx  = (struct parse_struct *)user;
   srv_cfg             *cfg = cx->cfg;
 
-  #define RMATCH_S(STR) if (unlikely(!strcmp(section, STR)))
-  #define RMATCH_N(STR) if (unlikely(!strcmp(name, STR)))
-
-  #define RMATCH_S(STR) if (unlikely(!strcmp(section, STR)))
-  #define RMATCH_N(STR) if (unlikely(!strcmp(name, STR)))
+  #define RMATCH_S(STR) if (unlikely(!strcmp(section, (STR))))
+  #define RMATCH_N(STR) if (unlikely(!strcmp(name, (STR))))
 
   RMATCH_S("iface") {
 
@@ -281,7 +280,7 @@ parser_handler(void *user, const char *section, const char *name,
     } else
     RMATCH_N("ipv4_netmask") {
       cfg->iface.ipv4_netmask = ar_strndup(value, IPV4L);
-    }
+    } else
     RMATCH_N("mtu") {
       cfg->iface.mtu = (uint16_t)atoi(value);
     } else {
@@ -325,6 +324,13 @@ parser_handler(void *user, const char *section, const char *name,
 
   } else
   RMATCH_S("other") {
+
+    RMATCH_N("data_dir") {
+      cfg->data_dir = ar_strndup(value, 255);
+    } else {
+      goto invalid_name;
+    }
+
   } else {
     err_printf("Invalid section \"%s\" on line %d", section, lineno);
     goto err;
@@ -334,7 +340,7 @@ parser_handler(void *user, const char *section, const char *name,
 
 
 invalid_name:
-  err_printf("Invalid name: \"%s\" in section \"%s\" on line %d\n",
+  err_printf("Invalid name \"%s\" in section \"%s\" on line %d",
              name, section, lineno);
 
 err:

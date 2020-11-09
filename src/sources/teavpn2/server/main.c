@@ -31,6 +31,7 @@ main(int argc, char *argv[])
     }
   }
 
+  print_cfg(&cfg);
 
   ret = tsrv_run(&cfg);
 
