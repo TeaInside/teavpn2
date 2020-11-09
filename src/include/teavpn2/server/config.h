@@ -2,7 +2,11 @@
 #ifndef TEAVPN2__SERVER__CONFIG_H
 #define TEAVPN2__SERVER__CONFIG_H
 
-#include <teavpn2/server/common.h>
+#ifndef TEAVPN2__SERVER__COMMON_H
+#  error <teavpn2/server/config.h>        \
+         must only be included fisrt then \
+         <teavpn2/server/common.h>
+#endif
 
 /* Virtual network interface configuration. */
 typedef struct _iface_cfg
@@ -44,7 +48,7 @@ typedef struct _srv_cfg
 #endif
 
 #if CFG_DEBUG
-#  define PRINT_CFG(A, B) dbg_printf(argv_debug, #B " = " A "\n", (B))
+#  define PRINT_CFG(A, B) dbg_printf(argv_debug, #B " = " A, (B))
 #else
 #  define PRINT_CFG(A, B)
 #endif
@@ -66,5 +70,11 @@ print_cfg(srv_cfg *cfg)
   PRINT_CFG("%s", cfg->iface.ipv4_netmask);
   PRINT_CFG("%d", cfg->iface.mtu);
 }
+
+bool
+tsrv_argv_parser(int argc, char *argv[], srv_cfg *cfg);
+
+bool
+tsrv_cfg_load(const char *cfg_file, srv_cfg *cfg);
 
 #endif
