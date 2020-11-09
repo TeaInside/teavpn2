@@ -49,6 +49,9 @@ typedef enum __attribute__((packed))
 } sock_type;
 
 
+STATIC_ASSERT(sizeof(int)       == 4, "sizeof(int) must be 4");
+STATIC_ASSERT(sizeof(char)      == 1, "sizeof(char) must be 1");
+STATIC_ASSERT(sizeof(short)     == 2, "sizeof(short) must be 2");
 STATIC_ASSERT(sizeof(sock_type) == 1, "sizeof(sock_type) must be 1");
 
 #endif

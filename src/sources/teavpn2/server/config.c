@@ -233,10 +233,9 @@ tsrv_cfg_load(const char *cfg_file, srv_cfg *cfg)
   int                 ret;
   struct parse_struct cx;
   
-  cx.cfg  = cfg;
+  cx.cfg     = cfg;
   cx.no_exec = false;
-
-  ret = ini_parse(cfg_file, parser_handler, &cx);
+  ret        = ini_parse(cfg_file, parser_handler, &cx);
 
   if (ret < 0) {
     err_printf("File \"%s\" does not exist", cfg_file);
