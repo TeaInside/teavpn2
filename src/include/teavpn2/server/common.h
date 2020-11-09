@@ -8,4 +8,7 @@
 int
 tsrv_run(srv_cfg *cfg);
 
+void
+tsrv_clean_up();
+
 #endif

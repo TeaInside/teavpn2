@@ -1,9 +1,7 @@
 
 
 #include <teavpn2/server/common.h>
-#include <teavpn2/server/argv.h>
 #include <teavpn2/server/helpers.h>
-
 
 #ifndef ARENA_SIZE
 #define ARENA_SIZE (4096)
@@ -16,21 +14,27 @@ main(int argc, char *argv[])
   srv_cfg cfg;
   char    arena[ARENA_SIZE];
 
-
   ar_init(arena, ARENA_SIZE);
 
+  /* Load config from the program arguments. */
   if (!tsrv_argv_parser(argc, argv, &cfg)) {
     ret = 1;
     goto ret;
   }
 
+
+  /* Load config from the config file. */
+  if (cfg.cfg_file != NULL) {
+    if (!tsrv_cfg_load(cfg.cfg_file, &cfg)) {
+      ret = 1;
+      goto ret;
+    }
+  }
+
+
   ret = tsrv_run(&cfg);
 
-
-
-
-
-
 ret:
+  tsrv_clean_up();
   return ret;
 }

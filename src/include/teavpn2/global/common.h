@@ -8,6 +8,17 @@
 
 #include <stdio.h>
 
+#if defined(__linux__)
+#  include <arpa/inet.h>
+#  include <linux/types.h>
+#else
+
+typedef uint64_t __be64;
+typedef uint32_t __be32;
+typedef uint16_t __be16;
+
+#endif
+
 #define likely(EXPR)   __builtin_expect(!!(EXPR), 1)
 #define unlikely(EXPR) __builtin_expect(!!(EXPR), 0)
 #define STATIC_ASSERT(EXPR, ASSERT) _Static_assert ((EXPR), ASSERT)
@@ -16,8 +27,20 @@
 #  define OFFSETOF(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT))
 #endif
 
-#define err_printf(...) printf(__VA_ARGS__)
-#define dbg_printf(TYPE, ...) printf(__VA_ARGS__)
+#ifndef INET_ADDRSTRLEN
+#  define IPV4L (sizeof("xxx.xxx.xxx.xxx"))
+#else
+#  define IPV4L (INET_ADDRSTRLEN)
+#endif
+
+#ifndef INET6_ADDRSTRLEN
+#  define IPV6L (sizeof("xxxx:xxxx:xxxx:xxxx:xxxx:xxxx:xxx.xxx.xxx.xxx"))
+#else
+#  define IPV6L (INET6_ADDRSTRLEN)
+#endif
+
+#define err_printf(FMT, ...) printf(FMT "\n", ##__VA_ARGS__)
+#define dbg_printf(TYPE, FMT, ...) printf(FMT "\n", ##__VA_ARGS__)
 
 typedef enum __attribute__((packed))
 {
