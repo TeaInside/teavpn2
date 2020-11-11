@@ -17,7 +17,7 @@ for details.
 
 - Commits in pull request MUST contain "Signed-Off-By" with
 corresponding email address. This can be done with `git commit -s` or
-manually write it. Example of the:
+manually write it. Example of the sign:
 ```
 commit 8655eb15c4e94bca421601e05617eb7299aac8bf
 Author: Ammar Faizi <ammarfaizi2@gmail.com>
