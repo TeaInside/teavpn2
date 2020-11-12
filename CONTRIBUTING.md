@@ -15,9 +15,9 @@ address.
 See https://docs.gitlab.com/ee/user/project/repository/gpg_signed_commits/
 for details.
 
-- Commits in pull request MUST contain "Signed-Off-By" with
+- Commits in pull request MUST contain "Signed-Off-By" sign with
 corresponding email address. This can be done with `git commit -s` or
-manually write it. Example of the sign:
+manually write it at the end of commit message. Example of the sign:
 ```
 commit 8655eb15c4e94bca421601e05617eb7299aac8bf
 Author: Ammar Faizi <ammarfaizi2@gmail.com>
@@ -46,6 +46,26 @@ at least one internal maintainer.
 involved in other ways than just moving the patch around.
 
 ## Code of Conduct
+
+### Our Responsibility
+Project maintainers are responsible for clarifying the standards of
+acceptable behavior and are expected to take appropriate and fair
+corrective action in response to any instances of unacceptable behavior.
+
+Project maintainers have the right and responsibility to remove, edit,
+or reject comments, commits, code, wiki edits, issues, and other
+contributions that are not aligned to this Code of Conduct, or to ban
+temporarily or permanently any contributor for other behaviors that they
+deem inappropriate, threatening, offensive, or harmful.
+
+### Scope
+This Code of Conduct applies both within project spaces and in public
+spaces when an individual is representing the project or its community.
+Examples of representing a project or community include using an
+official project e-mail address, posting via an official social media
+account, or acting as an appointed representative at an online or
+offline event. Representation of a project may be further defined and
+clarified by project maintainers.
 
 ### Our Pledge
 
