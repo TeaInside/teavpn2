@@ -19,8 +19,8 @@ typedef uint16_t __be16;
 
 #endif
 
-#define likely(EXPR)   __builtin_expect(!!(EXPR), 1)
-#define unlikely(EXPR) __builtin_expect(!!(EXPR), 0)
+#define likely(EXPR)   __builtin_expect((EXPR), 1)
+#define unlikely(EXPR) __builtin_expect((EXPR), 0)
 #define STATIC_ASSERT(EXPR, ASSERT) _Static_assert ((EXPR), ASSERT)
 
 #ifndef OFFSETOF
@@ -41,6 +41,7 @@ typedef uint16_t __be16;
 
 #define err_printf(FMT, ...) printf(FMT "\n", ##__VA_ARGS__)
 #define dbg_printf(TYPE, FMT, ...) printf(FMT "\n", ##__VA_ARGS__)
+#define log_printf(VERBOSE_LVL, FMT, ...) printf(FMT "\n", ##__VA_ARGS__)
 
 typedef enum __attribute__((packed))
 {

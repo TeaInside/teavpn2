@@ -1,9 +1,12 @@
 
 #include <teavpn2/server/common.h>
-
+#include <teavpn2/server/sock/tcp.h>
 
 inline static bool
 tsrv_validate_cfg(srv_cfg *cfg);
+
+static int
+tsrv_tcp_run(srv_cfg *cfg);
 
 
 /**
@@ -20,6 +23,20 @@ tsrv_run(srv_cfg *cfg)
     goto ret;
   }
 
+
+  switch (cfg->sock.type) {
+    case SOCK_TCP:
+      ret = tsrv_tcp_run(cfg);
+      goto ret;
+
+    case SOCK_UDP:
+      err_printf("UDP is not supported yet!");
+      goto ret;
+
+    default:
+      err_printf("Invalid socket type (%d)!", cfg->sock.type);
+      goto ret;
+  }
 
 
 ret:
@@ -114,4 +131,42 @@ tsrv_validate_cfg(srv_cfg *cfg)
 
 err:
   return false;
+}
+
+
+/**
+ * @param srv_cfg *cfg
+ * @return int
+ */
+static int
+tsrv_tcp_run(srv_cfg *cfg)
+{
+  int           sockfd;
+  int           tunfd;
+  srv_iface_cfg *iface = &(cfg->iface);
+  srv_sock_cfg  *sock  = &(cfg->sock);
+
+  sockfd = srv_init_tcp4(sock->bind_addr, sock->bind_port,
+                         sock->backlog);
+
+  if (unlikely(sockfd < 0)) {
+    goto err;
+  }
+
+  if (unlikely(!srv_set_tcp4(sockfd, sock))) {
+    goto err;
+  }
+
+
+  tunfd = srv_iface_init(iface);
+
+  if (unlikely(tunfd < 0)) {
+    goto err;
+  }
+
+
+  return 0;
+
+err:
+  return 1;
 }
