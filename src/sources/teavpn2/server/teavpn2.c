@@ -1,5 +1,6 @@
 
 #include <teavpn2/server/common.h>
+#include <teavpn2/server/iface.h>
 #include <teavpn2/server/sock/tcp.h>
 
 inline static bool
@@ -7,6 +8,9 @@ tsrv_validate_cfg(srv_cfg *cfg);
 
 static int
 tsrv_tcp_run(srv_cfg *cfg);
+
+
+#include "teavpn2/tcp.h"
 
 
 /**
@@ -54,9 +58,11 @@ tsrv_clean_up()
 }
 
 
-#define err_cfg_pr(FMT, ...) err_printf("%s" FMT, "Config error: ", \
-                             ##__VA_ARGS__)
-;
+#define err_cfg_pr(FMT, ...)                             \
+do {                                                     \
+  err_printf("%s" FMT, "Config error: ", ##__VA_ARGS__); \
+} while (0)
+
 
 /** 
  * @param srv_cfg *cfg
@@ -131,42 +137,4 @@ tsrv_validate_cfg(srv_cfg *cfg)
 
 err:
   return false;
-}
-
-
-/**
- * @param srv_cfg *cfg
- * @return int
- */
-static int
-tsrv_tcp_run(srv_cfg *cfg)
-{
-  int           sockfd;
-  int           tunfd;
-  srv_iface_cfg *iface = &(cfg->iface);
-  srv_sock_cfg  *sock  = &(cfg->sock);
-
-  sockfd = srv_init_tcp4(sock->bind_addr, sock->bind_port,
-                         sock->backlog);
-
-  if (unlikely(sockfd < 0)) {
-    goto err;
-  }
-
-  if (unlikely(!srv_set_tcp4(sockfd, sock))) {
-    goto err;
-  }
-
-
-  tunfd = srv_iface_init(iface);
-
-  if (unlikely(tunfd < 0)) {
-    goto err;
-  }
-
-
-  return 0;
-
-err:
-  return 1;
 }

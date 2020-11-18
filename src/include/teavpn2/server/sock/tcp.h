@@ -6,6 +6,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
+#include <teavpn2/server/common.h>
+
 /**
  * @param int    sockfd
  * @param void   *buf
