@@ -13,11 +13,10 @@ inline static void *
 ar_memcpy_x86_64(void *restrict dest, const void *restrict src, size_t n)
 {
   __asm__ volatile(
-    "cld\n\t"
     "rep movsb"
     : "+D"(dest), "+S"(src), "+c"(n)
     :
-    : "memory", "cc"
+    : "memory"
   );
   return dest;
 }

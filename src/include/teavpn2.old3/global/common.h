@@ -21,7 +21,7 @@ typedef uint16_t __be16;
 
 #define likely(EXPR)   __builtin_expect((EXPR), 1)
 #define unlikely(EXPR) __builtin_expect((EXPR), 0)
-#define STATIC_ASSERT(EXPR, ASSERT) _Static_assert((EXPR), ASSERT)
+#define STATIC_ASSERT(EXPR, ASSERT) _Static_assert ((EXPR), ASSERT)
 
 #ifndef OFFSETOF
 #  define OFFSETOF(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT))

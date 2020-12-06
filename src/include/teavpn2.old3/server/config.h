@@ -1,31 +1,29 @@
 
-
-#ifndef DO_INCLUDE_CONFIG_H
-#  error <teavpn2/server/config.h> must be included from \
-         <teavpn2/server/common.h>
-#endif
-
-
 #ifndef TEAVPN2__SERVER__CONFIG_H
 #define TEAVPN2__SERVER__CONFIG_H
 
-typedef struct _srv_iface_cfg
+#ifndef TEAVPN2__SERVER__COMMON_H
+#  error <teavpn2/server/config.h>        \
+         must only be included fisrt then \
+         <teavpn2/server/common.h>
+#endif
+
+/* Virtual network interface configuration. */
+typedef struct _iface_cfg
 {
   char            *dev;           /* Virtual network interface name. */
-
   char            *ipv4;          /* IPv4                            */
   char            *ipv4_netmask;  /* IPv4 netmask                    */
-
 #ifdef TEAVPN_IPV6_SUPPORT
   char            *ipv6;          /* IPv6                            */
   char            *ipv6_netmask;  /* IP6 netmask                     */
 #endif
-
   uint16_t        mtu;            /* MTU                             */
 } srv_iface_cfg;
 
 
-typedef struct _srv_sock_cfg
+/* Socket server configuration. */
+typedef struct _sock_cfg
 {
   sock_type       type;           /* Socket type (TCP/UDP).          */
   char            *bind_addr;     /* Bind address.                   */
@@ -35,6 +33,7 @@ typedef struct _srv_sock_cfg
 } srv_sock_cfg;
 
 
+/* TeaVPN server configuration structure. */
 typedef struct _srv_cfg
 {
   char            *cfg_file;      /* Config file to be loaded.       */
@@ -54,9 +53,8 @@ typedef struct _srv_cfg
 #  define PRINT_CFG(A, B)
 #endif
 
-
 inline static void
-print_srv_cfg(srv_cfg *cfg)
+print_cfg(srv_cfg *cfg)
 {
   PRINT_CFG("%s", cfg->cfg_file);
   PRINT_CFG("%s", cfg->data_dir);
@@ -71,8 +69,12 @@ print_srv_cfg(srv_cfg *cfg)
   PRINT_CFG("%s", cfg->iface.ipv4);
   PRINT_CFG("%s", cfg->iface.ipv4_netmask);
   PRINT_CFG("%d", cfg->iface.mtu);
-
-  (void)cfg;
 }
 
-#endif /* #ifndef TEAVPN2__SERVER__CONFIG_H */
+bool
+tsrv_argv_parser(int argc, char *argv[], srv_cfg *cfg);
+
+bool
+tsrv_cfg_load(const char *cfg_file, srv_cfg *cfg);
+
+#endif
