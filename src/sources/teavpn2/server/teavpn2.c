@@ -3,7 +3,7 @@
 #include <teavpn2/server/common.h>
 
 #if defined(__linux__)
-#  include <teavpn2/server/vpn/inline_contracts.h>
+#  include <teavpn2/server/vpn/linux_inline_contracts.h>
 #  include "vpn/tcp/linux.h"
 #  include "vpn/udp/linux.h"
 #  include "vpn/iface/linux.h"
