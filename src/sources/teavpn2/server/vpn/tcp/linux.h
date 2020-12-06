@@ -6,17 +6,10 @@
 #include <unistd.h>
 #include <string.h>
 
-typedef struct _tcp_state
-{
-  int       net_fd;
-  int       pipe_fd[2];
-  srv_cfg   *cfg;
-
-} tcp_state;
+#include <teavpn2/server/vpn/tcp.h>
 
 #include "sock/linux.h"
 #include "clean_up/linux.h"
-
 
 /**
  * @param srv_cfg *cfg
@@ -39,6 +32,10 @@ tsrv_run_tcp(srv_cfg *cfg)
 
   if (!tsrv_init_pipe(&state)) {
     goto ret;
+  }
+
+  if (!tsrv_init_tun_fd(&state)) {
+    
   }
 
 ret:

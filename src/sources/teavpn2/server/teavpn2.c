@@ -3,8 +3,10 @@
 #include <teavpn2/server/common.h>
 
 #if defined(__linux__)
-#  include "teavpn2/tcp/linux.h"
-#  include "teavpn2/udp/linux.h"
+#  include <teavpn2/server/vpn/inline_contracts.h>
+#  include "vpn/tcp/linux.h"
+#  include "vpn/udp/linux.h"
+#  include "vpn/iface/linux.h"
 #else
 #  error Compiler is not supported!
 #endif
@@ -34,6 +36,8 @@ tsrv_run(srv_cfg *cfg)
       break;
 
     case SOCK_UDP:
+      // retval = tsrv_run_udp(cfg);
+      printf("UDP socket is not supported yet!\n");
       break;
 
     default:
