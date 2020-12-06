@@ -42,6 +42,11 @@ typedef uint16_t __be16;
 #define err_printf(FMT, ...) printf(FMT "\n", ##__VA_ARGS__)
 #define dbg_printf(TYPE, FMT, ...) printf(FMT "\n", ##__VA_ARGS__)
 #define log_printf(VERBOSE_LVL, FMT, ...) printf(FMT "\n", ##__VA_ARGS__)
+#define err_cfg_pr(FMT, ...)                             \
+do {                                                     \
+  err_printf("%s" FMT, "Config error: ", ##__VA_ARGS__); \
+} while (0)
+
 
 typedef enum __attribute__((packed))
 {
@@ -55,4 +60,4 @@ STATIC_ASSERT(sizeof(char)      == 1, "sizeof(char) must be 1");
 STATIC_ASSERT(sizeof(short)     == 2, "sizeof(short) must be 2");
 STATIC_ASSERT(sizeof(sock_type) == 1, "sizeof(sock_type) must be 1");
 
-#endif
+#endif /* #ifndef TEAVPN2__GLOBAL__COMMON_H */

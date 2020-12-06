@@ -17,4 +17,7 @@ tsrv_argv_parser(int argc, char *argv[], srv_cfg *cfg);
 bool
 tsrv_cfg_load(const char *cfg_file, srv_cfg *cfg);
 
+int
+tsrv_run(srv_cfg *cfg);
+
 #endif /* #ifndef TEAVPN2__SERVER__COMMON_H */

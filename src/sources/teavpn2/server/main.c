@@ -30,6 +30,8 @@ tsrv_start(int argc, char *argv[])
 
   print_srv_cfg(&cfg);
 
+  retval = tsrv_run(&cfg);
+
 ret:
   return retval;
 }
