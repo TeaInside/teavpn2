@@ -1,11 +1,11 @@
 
-#ifndef TEAVPN2__SERVER__TEAVPN2__TCP__LINUX_H
+#ifndef SRC_TEAVPN2__SERVER__TEAVPN2__TCP__LINUX_H
 #  error This file must be included from \
          src/sources/teavpn2/server/teavpn2/tcp/linux.h
 #endif
 
-#ifndef TEAVPN2__SERVER__TEAVPN2__TCP__SOCK__LINUX_H
-#define TEAVPN2__SERVER__TEAVPN2__TCP__SOCK__LINUX_H
+#ifndef SRC_TEAVPN2__SERVER__TEAVPN2__TCP__LINUX__INIT_H
+#define SRC_TEAVPN2__SERVER__TEAVPN2__TCP__LINUX__INIT_H
 
 /**
  * @param tcp_state *state
@@ -86,7 +86,7 @@ err_close:
  * @return bool
  */
 inline static bool
-tsrv_init_pipe(tcp_state *state)
+tsrv_init_pipe_tcp(tcp_state *state)
 {
   if (pipe(state->pipe_fd) == -1) {
     err_printf("Error pipe: %s", strerror(errno));
@@ -95,4 +95,41 @@ tsrv_init_pipe(tcp_state *state)
   return true;
 }
 
-#endif /* #ifndef TEAVPN2__SERVER__TEAVPN2__TCP__SOCK__LINUX_H */
+
+/**
+ * @param tcp_channel     *chan
+ * @param const uint16_t  n
+ * @return void
+ */
+inline static void
+tsrv_init_channel_tcp(tcp_channel *chan, const uint16_t n)
+{
+  for (uint16_t i = 0; i < n; i++) {
+    chan[i].stop           = false;
+    chan[i].is_used        = false;
+    chan[i].is_connected   = false;
+    chan[i].is_authorized  = false;
+    chan[i].tun_fd         = -1;
+    chan[i].cli_fd         = -1;
+    chan[i].p_ipv4         = 0;
+    chan[i].p_ipv4_netmask = 0;
+
+    memset(chan[i].username, 0, sizeof(chan[i].username));
+    memset(chan[i].r_ip_src, 0, sizeof(chan[i].username));
+    chan[i].r_port_src     = 0;
+
+    memset(&(chan[i].addr), 0, sizeof(struct sockaddr_in));
+
+    memset(chan[i].recv_buff, 0, sizeof(chan[i].recv_buff));
+    chan[i].recv_size   = 0;
+    chan[i].recv_c      = 0;
+    chan[i].recv_err_c  = 0;
+
+    memset(chan[i].send_buff, 0, sizeof(chan[i].send_buff));
+    chan[i].send_size   = 0;
+    chan[i].send_c      = 0;
+    chan[i].send_err_c  = 0;
+  }
+}
+
+#endif /* #ifndef SRC_TEAVPN2__SERVER__TEAVPN2__TCP__LINUX__INIT_H */

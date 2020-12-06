@@ -1,8 +1,10 @@
 
 
 #include <teavpn2/server/common.h>
+#include <teavpn2/server/helpers.h>
 
 #if defined(__linux__)
+#  include <teavpn2/server/vpn/tcp/linux.h>
 #  include <teavpn2/server/vpn/linux_inline_contracts.h>
 #  include "vpn/tcp/linux.h"
 #  include "vpn/udp/linux.h"

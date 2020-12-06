@@ -33,10 +33,10 @@ main(int argc, char *argv[])
 
     app_name = argv[0];
 
-    if (strcmp(argv[1], "server") == 0) {
+    if (!strcmp(argv[1], "server")) {
       return tsrv_start(argc - 1, &(argv[1]));
     } else
-    if (strcmp(argv[1], "client") == 0) {
+    if (!strcmp(argv[1], "client")) {
       return tcli_start(argc - 1, &(argv[1]));
     } else {
       printf("Invalid action: \"%s\"\n", argv[1]);

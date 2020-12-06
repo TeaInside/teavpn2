@@ -1,12 +1,20 @@
 <?php
 
 gen_linux(
-  [
-    __DIR__."/src/sources/teavpn2/server/vpn/tcp/sock/linux.h",
-    __DIR__."/src/sources/teavpn2/server/vpn/tcp/clean_up/linux.h",
-    __DIR__."/src/sources/teavpn2/server/vpn/tcp/linux.h",
-    __DIR__."/src/sources/teavpn2/server/vpn/iface/linux.h",
-  ],
+  (function () {
+    $ret = [
+      __DIR__."/src/sources/teavpn2/server/vpn/iface/linux.h",
+      __DIR__."/src/sources/teavpn2/server/vpn/tcp/linux.h",
+      __DIR__."/src/sources/teavpn2/server/vpn/udp/linux.h",
+    ];
+    
+    $ret = array_merge(
+      $ret,
+      glob(__DIR__."/src/sources/teavpn2/server/vpn/tcp/linux/*.h")
+    );
+
+    return $ret;
+  })(),
   __DIR__."/src/include/teavpn2/server/vpn/linux_inline_contracts.h"
 );
 

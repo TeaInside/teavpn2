@@ -35,14 +35,16 @@ ifeq ($(RELEASE_MODE),1)
     CCXXFLAGS   :=  -O3                         \
                     -DNDEBUG
 
-    LDFLAGS     :=  -O3
+    LDFLAGS     :=  $(LDFLAGS)                  \
+                    -O3
 else
     CCXXFLAGS   :=  $(DEFAULT_OPTIMIZATION)     \
                     -ggdb3                      \
                     -grecord-gcc-switches       \
                     -DTEAVPN_DEBUG
 
-    LDFLAGS     :=  $(DEFAULT_OPTIMIZATION)
+    LDFLAGS     :=  $(LDFLAGS)                  \
+                    $(DEFAULT_OPTIMIZATION)
 endif
 
 
@@ -190,3 +192,5 @@ $(TARGET_BIN): $(GLOBAL_OBJ) $(SERVER_OBJ) $(CLIENT_OBJ) $(MAIN_OBJ)
 	$(LD) $(LDFLAGS) $(GLOBAL_OBJ) $(SERVER_OBJ) $(CLIENT_OBJ) $(MAIN_OBJ) \
 	-o $(@) $(LIB_LDFLAGS)
 
+server_run: $(TARGET_BIN)
+	sudo $(VALGRIND) $(VALGRIND_FLAGS) $(TARGET_BIN) server
