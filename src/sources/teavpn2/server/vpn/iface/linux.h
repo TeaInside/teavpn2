@@ -26,7 +26,7 @@ tsrv_init_tun_fd_tcp(tcp_state *state)
     log_printf(5, "Allocating tun_fd, (seq:%d)...", i);
 
     fd = tun_alloc(iface->dev, IFF_TUN | IFF_MULTI_QUEUE);
-                                                                                                                                                                                                                                                                                                                                       
+
     if (fd < 0) {
       log_printf(0, "Cannot allocate network interface: i = %d", i);
       goto err;
