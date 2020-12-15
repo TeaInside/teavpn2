@@ -4,54 +4,20 @@
 
 #include <teavpn2/global/common.h>
 
-typedef struct _server_iface_cfg {
+#define DO_INCLUDE_CONFIG_H
+#include <teavpn2/server/config.h>
+#undef DO_INCLUDE_CONFIG_H
 
-  char                  *dev;           /* Interface name. */
+int
+tsrv_start(int argc, char *argv[]);
 
-  char                  *ipv4;          /* IPv4. */
-  char                  *ipv4_bcmask;   /* IPv4 broadcast mask. */
-  uint16_t              mtu;            /* MTU. */
+bool
+tsrv_argv_parser(int argc, char *argv[], srv_cfg *cfg);
 
-#if 0
-  char                  *ipv6;          /* IPv6. */
-  char                  *ipv6_bcmask;   /* IPv6 broadcast mask. */
-#endif
+bool
+tsrv_cfg_load(const char *cfg_file, srv_cfg *cfg);
 
-} server_iface_cfg;
+int
+tsrv_run(srv_cfg *cfg);
 
-
-
-typedef struct _server_socket_cfg {
-  char                  *bind_addr;     /* Socket server bind address. */
-  int                   backlog;        /* Socket listen backlog. */
-  uint16_t              bind_port;      /* Socket server bind port. */
-  socket_type           type;           /* Socket type, TCP/UDP. */
-} server_socket_cfg;
-
-
-typedef struct _server_cfg {
-
-  char                  *config_file;   /* Config file. */
-  char                  *data_dir;      /* Data directory. */
-  server_iface_cfg      iface;          /* Virtual interface configuration. */
-  server_socket_cfg     sock;           /* Socket configuration. */
-
-} server_cfg;
-
-
-
-/* argv_parser */
-bool tvpn_server_argv_parse(
-  int argc,
-  char *argv[],
-  char *envp[],
-  server_cfg *config
-);
-/* End of argv_parser */
-
-
-/* config */
-bool tvpn_server_load_config_file(char *file, server_cfg *config);
-/* End of config */
-
-#endif
+#endif /* #ifndef TEAVPN2__SERVER__COMMON_H */

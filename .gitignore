@@ -10,6 +10,6 @@
 *.gcda
 *.gcov
 /.deps/
-/teavpn_server
-/teavpn_client
+/teavpn2
 /test_fw_lib
+/.phpintel/

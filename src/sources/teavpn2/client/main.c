@@ -1,29 +1,35 @@
 
 #include <stdio.h>
+#include <string.h>
 
 #include <teavpn2/client/common.h>
 
-#ifndef ARENA_SIZE
-#define ARENA_SIZE 4096
-#endif
 
-
-int main(int argc, char *argv[], char *envp[])
+/**
+ * @param int  argc
+ * @param char *argv
+ * @return int
+ */
+int
+tcli_start(int argc, char *argv[])
 {
-  char arena[ARENA_SIZE];
-  client_cfg config;
+  int retval = 1;
+  cli_cfg cfg;
 
-  t_ar_init(arena, sizeof(arena));
 
-  if (!tvpn_client_argv_parse(argc, argv, envp, &config)) {
-    return 1;
+  if (!tcli_argv_parser(argc, argv, &cfg)) {
+    goto ret;
   }
 
-  if (config.config_file) {
-    if (!tvpn_client_load_config_file(config.config_file, &config)) {
-      return 1;
+
+  if (cfg.cfg_file != NULL) {
+    if (!tcli_cfg_load(cfg.cfg_file, &cfg)) {
+      goto ret;
     }
   }
 
-  return 0;
+  print_cli_cfg(&cfg);
+
+ret:
+  return retval;
 }
