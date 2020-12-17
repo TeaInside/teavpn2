@@ -43,5 +43,10 @@ ar_strdup(const char *str);
 char *
 ar_strndup(const char *str, size_t maxlen);
 
+void *
+ar_malloc32(size_t n);
+
+void
+ar_free32(void *ptr);
 
 #endif /* #ifndef TEAVPN2__GLOBAL__HELPERS__MEMORY_H */

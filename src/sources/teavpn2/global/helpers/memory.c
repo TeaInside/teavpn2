@@ -1,4 +1,6 @@
 
+#include <stdint.h>
+#include <stdlib.h>
 #include <assert.h>
 #include <teavpn2/global/helpers/memory.h>
 
@@ -91,4 +93,36 @@ ar_strndup(const char *str, size_t maxlen)
   ret[len] = '\0';
 
   return ret;
+}
+
+/**
+ * @param size_t n
+ * return void *
+ */
+void *
+ar_malloc32(size_t n)
+{
+  size_t add_siz = 31 + sizeof(void *);
+  void   *heap   = malloc(n + add_siz);
+  if (NULL == heap) {
+    return NULL;
+  }
+
+  void *user_ptr = (void *)(
+    (((uintptr_t)heap) + add_siz) & (~(uintptr_t)0b11111ul)
+  );
+  ((void **)user_ptr)[-1] = heap;
+
+  return user_ptr;
+}
+
+/**
+ * @param void *ptr
+ * return void
+ */
+void
+ar_free32(void *ptr)
+{
+  if (!ptr) return;
+  free(((void **)ptr)[-1]);
 }
