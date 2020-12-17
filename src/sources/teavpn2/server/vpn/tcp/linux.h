@@ -29,8 +29,9 @@ tsrv_run_tcp(srv_cfg *cfg)
     .stop    = false
   };
 
-  state.chan = (tcp_channel *)malloc(sizeof(tcp_channel) * max_conn);
-  tsrv_init_channel_tcp(state.chan, max_conn);
+  if (!tsrv_init_channel_tcp(&(state.chan), max_conn)) {
+    goto ret;
+  }
 
   /*
    * [Note]

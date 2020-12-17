@@ -97,13 +97,20 @@ tsrv_init_pipe_tcp(tcp_state *state)
 
 
 /**
- * @param tcp_channel     *chan
+ * @param tcp_channel     **chan_p
  * @param const uint16_t  n
- * @return void
+ * @return bool
  */
-inline static void
-tsrv_init_channel_tcp(tcp_channel *chan, const uint16_t n)
+inline static bool
+tsrv_init_channel_tcp(tcp_channel **chan_p, const uint16_t n)
 {
+  tcp_channel *chan = (tcp_channel *)malloc(sizeof(tcp_channel) * n);
+
+  if (NULL == chan) {
+    err_printf("Error: malloc()");
+    return false;
+  }
+
   for (uint16_t i = 0; i < n; i++) {
     chan[i].stop           = false;
     chan[i].is_used        = false;
@@ -114,22 +121,25 @@ tsrv_init_channel_tcp(tcp_channel *chan, const uint16_t n)
     chan[i].p_ipv4         = 0;
     chan[i].p_ipv4_netmask = 0;
 
-    memset(chan[i].username, 0, sizeof(chan[i].username));
-    memset(chan[i].r_ip_src, 0, sizeof(chan[i].username));
+    memset(&(chan[i].username), 0, sizeof(chan[i].username));
+    memset(&(chan[i].r_ip_src), 0, sizeof(chan[i].r_ip_src));
     chan[i].r_port_src     = 0;
 
     memset(&(chan[i].addr), 0, sizeof(struct sockaddr_in));
 
-    memset(chan[i].recv_buff, 0, sizeof(chan[i].recv_buff));
+    memset(&(chan[i].recv_buff), 0, sizeof(chan[i].recv_buff));
     chan[i].recv_size   = 0;
     chan[i].recv_c      = 0;
     chan[i].recv_err_c  = 0;
 
-    memset(chan[i].send_buff, 0, sizeof(chan[i].send_buff));
+    memset(&(chan[i].send_buff), 0, sizeof(chan[i].send_buff));
     chan[i].send_size   = 0;
     chan[i].send_c      = 0;
     chan[i].send_err_c  = 0;
   }
+
+  *chan_p = chan;
+  return true;
 }
 
 #endif /* #ifndef SRC_TEAVPN2__SERVER__TEAVPN2__TCP__LINUX__INIT_H */
