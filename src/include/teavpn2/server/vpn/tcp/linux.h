@@ -30,12 +30,16 @@ typedef struct _tcp_channel
 
   struct sockaddr_in  addr;               /* Remote address and port info.  */
 
-  char                recv_buff[RECV_SIZ];
+  union {
+    char                recv_buff[RECV_SIZ];
+  };
   size_t              recv_size;
   uint64_t            recv_c;             /* Recv count.  */
   uint8_t             recv_err_c;         /* Error count. */
 
-  char                send_buff[SEND_SIZ];
+  union {
+    char                send_buff[SEND_SIZ];
+  };
   size_t              send_size;
   uint64_t            send_c;             /* Send count.  */
   uint8_t             send_err_c;         /* Error count. */
