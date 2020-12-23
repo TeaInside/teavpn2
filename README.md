@@ -26,16 +26,15 @@ It is acceptable to put **header files** in source directory.
 
 
 # Pull Requests
-We welcome [pull requests](https://github.com/TeaInside/teavpn2/pulls) through GitHub repository. Please read the CONTRIBUTING.md file for detailed information.
+We welcome [pull requests](https://github.com/TeaInside/teavpn2/pulls) through GitHub repository. Please read the [CONTRIBUTING.md](https://github.com/TeaInside/teavpn2/blob/master/CONTRIBUTING.md) file for detailed information.
 
 
 # Issues (bugs, features, questions)
 We welcome bug reports, feature requests and questions through GitHub repository [issues](https://github.com/TeaInside/teavpn2/issues).
 
 
-# Support
-You can ask a question on Telegram group chat too
-[https://t.me/TeaInside](https://t.me/TeaInside)
+# Contact Support
+Telegram group [@TeaInside](https://t.me/TeaInside)
 
 
 # License
