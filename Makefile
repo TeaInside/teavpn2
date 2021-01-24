@@ -158,7 +158,7 @@ CXXFLAGS	:= $(strip $(CXXFLAGS) $(CCXXFLAGS))
 
 all: $(TARGET_BIN)
 
-clean: clean_server clean_client clean_global clean_main clean_target clean_deps
+clean: clean_server clean_client clean_global clean_main clean_target
 
 # -----------------------------------------------------------------
 $(TARGET_BIN): $(GLOBAL_OBJ) $(SERVER_OBJ) $(CLIENT_OBJ) $(MAIN_OBJ)
@@ -181,15 +181,15 @@ $(GLOBAL_DEP_DIRS):
 	@mkdir -pv $(@)
 
 $(GLOBAL_OBJ_CC): $(MAKEFILE_LIST) | $(GLOBAL_DEP_DIRS)
-	@echo "   CC	" $(@)
+	@echo "   CC	" $(@:$(BASE_DIR)/%=%)
 	@$(CC) $(GLOBAL_DEP_FLAGS) $(CFLAGS) -c "$(@:%.o=%)" -o "$(@)"
 
 $(GLOBAL_OBJ_CXX): $(MAKEFILE_LIST) | $(GLOBAL_DEP_DIRS)
-	@echo "   CXX	" $(@)
+	@echo "   CXX	" $(@:$(BASE_DIR)/%=%)
 	@$(CXX) $(GLOBAL_DEP_FLAGS) $(CXXFLAGS) -c "$(@:%.o=%)" -o "$(@)"
 
 clean_global:
-	@rm -rfv $(GLOBAL_OBJ) $(GLOBAL_DEP_DIRS)
+	@rm -rfv $(GLOBAL_OBJ) $(GLOBAL_DEP_FILES)
 
 -include $(GLOBAL_DEP_FILES)
 # -----------------------------------------------------------------
@@ -200,15 +200,15 @@ $(SERVER_DEP_DIRS):
 	@mkdir -pv $(@)
 
 $(SERVER_OBJ_CC): $(MAKEFILE_LIST) | $(SERVER_DEP_DIRS)
-	@echo "   CC	" $(@)
+	@echo "   CC	" $(@:$(BASE_DIR)/%=%)
 	@$(CC) $(SERVER_DEP_FLAGS) $(CFLAGS) -c "$(@:%.o=%)" -o "$(@)"
 
 $(SERVER_OBJ_CXX): $(MAKEFILE_LIST) | $(SERVER_DEP_DIRS)
-	@@echo "   CXX	" $(@)
+	@@echo "   CXX	" $(@:$(BASE_DIR)/%=%)
 	@$(CXX) $(SERVER_DEP_FLAGS) $(CXXFLAGS) -c "$(@:%.o=%)" -o "$(@)"
 
 clean_server:
-	@rm -rfv $(SERVER_OBJ) $(SERVER_DEP_DIRS)
+	@rm -rfv $(SERVER_OBJ) $(SERVER_DEP_FILES)
 
 -include $(SERVER_DEP_FILES)
 # -----------------------------------------------------------------
@@ -219,15 +219,15 @@ $(CLIENT_DEP_DIRS):
 	@mkdir -pv $(@)
 
 $(CLIENT_OBJ_CC): $(MAKEFILE_LIST) | $(CLIENT_DEP_DIRS)
-	@echo "   CC	" $(@)
+	@echo "   CC	" $(@:$(BASE_DIR)/%=%)
 	@$(CC) $(CLIENT_DEP_FLAGS) $(CFLAGS) -c "$(@:%.o=%)" -o "$(@)"
 
 $(CLIENT_OBJ_CXX): $(MAKEFILE_LIST) | $(CLIENT_DEP_DIRS)
-	@echo "   CXX	" $(@)
+	@echo "   CXX	" $(@:$(BASE_DIR)/%=%)
 	@$(CXX) $(CLIENT_DEP_FLAGS) $(CXXFLAGS) -c "$(@:%.o=%)" -o "$(@)"
 
 clean_client:
-	@rm -rfv $(CLIENT_OBJ) $(CLIENT_DEP_DIRS)
+	@rm -rfv $(CLIENT_OBJ) $(CLIENT_DEP_FILES)
 
 -include $(CLIENT_DEP_FILES)
 # -----------------------------------------------------------------
@@ -238,8 +238,7 @@ $(MAIN_DEP_DIRS):
 	@mkdir -pv "$(@)"
 
 $(MAIN_OBJ): $(MAIN_FILE) | $(MAIN_DEP_DIRS)
-	@echo ${MAIN_DEP_DIRS}
-	@echo "   CC	" $(@)
+	@echo "   CC	" $(@:$(BASE_DIR)/%=%)
 	@$(CC) -MT "$(@)" -MMD -MP -MF "$(DEP_DIR)/$(@:$(BASE_DIR)/%.o=%.d)" \
 	$(CFLAGS) -c "$(@:%.o=%)" -o "$(@)"
 
