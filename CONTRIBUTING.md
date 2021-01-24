@@ -8,10 +8,13 @@ interactions with the project.
 
 ## Pull Request
 
+- We follow Linux Kernel Coding Style, see here:
+https://www.kernel.org/doc/html/v5.10/process/coding-style.html
+
 - Commits in pull request MUST contain real person with a real email
 address.
 
-- Commits in pull request MUST be signed with GPG and has verified sign.
+- Commits in pull request MUST be signed with GPG.
 See https://docs.gitlab.com/ee/user/project/repository/gpg_signed_commits/
 for details.
 
@@ -29,7 +32,7 @@ Date:   Thu Dec 17 09:06:44 2020 +0700
 
 ```
 
-- Commit messages SHOULD be word-wrapped 72 chars per line and has a
+- Commit messages SHOULD be word-wrapped 80 chars per line and has a
 newline between paragraphs. Except for message that has its own format
 like compiler error messages, valgrind output, long URL, etc.
 
