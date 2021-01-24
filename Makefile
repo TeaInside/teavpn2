@@ -5,7 +5,7 @@
 #
 
 CC			:= cc
-CXX			:= cxx
+CXX			:= c++
 LD			:= $(CXX)
 VG			:= valgrind
 
@@ -86,12 +86,14 @@ else
 	endif
 endif
 
-
-MAIN_FILE		:= $(SRC_DIR)/sources/teavpn2/main.c
-MAIN_OBJ		:= $(SRC_DIR)/sources/teavpn2/main.o
 GLOBAL_SRC_DIR	:= $(SRC_DIR)/sources/teavpn2/global
 CLIENT_SRC_DIR	:= $(SRC_DIR)/sources/teavpn2/client
 SERVER_SRC_DIR	:= $(SRC_DIR)/sources/teavpn2/server
+
+MAIN_FILE		:= $(SRC_DIR)/sources/teavpn2/main.c
+MAIN_OBJ		:= $(SRC_DIR)/sources/teavpn2/main.c.o
+MAIN_DEP_DIRS	:= $(SRC_DIR:$(BASE_DIR)/%=$(DEP_DIR)/src/sources/teavpn2/%)
+
 
 #
 # Global module sources and objects.
@@ -156,10 +158,98 @@ CXXFLAGS	:= $(strip $(CXXFLAGS) $(CCXXFLAGS))
 
 all: $(TARGET_BIN)
 
+clean: clean_server clean_client clean_global clean_main clean_target clean_deps
+
+# -----------------------------------------------------------------
 $(TARGET_BIN): $(GLOBAL_OBJ) $(SERVER_OBJ) $(CLIENT_OBJ) $(MAIN_OBJ)
-	@echo " LD  " $(@)
-	@$(LD) $(GLOBAL_OBJ) $(SERVER_OBJ) $(CLIENT_OBJ) $(MAIN_OBJ) -o $(@) $(LIB_LDFLAGS)
+	@echo "   LD	" $(@)
+	@$(LD) $(GLOBAL_OBJ) $(SERVER_OBJ) $(CLIENT_OBJ) $(MAIN_OBJ) \
+	-o "$(@)" $(LIB_LDFLAGS)
 
-clean:
+clean_target:
+	@rm -vf $(TARGET_BIN)
+# -----------------------------------------------------------------
 
 
+# -----------------------------------------------------------------
+$(DEP_DIR):
+	@mkdir -pv "$(@)"
+# -----------------------------------------------------------------
+
+# -----------------------------------------------------------------
+$(GLOBAL_DEP_DIRS):
+	@mkdir -pv $(@)
+
+$(GLOBAL_OBJ_CC): $(MAKEFILE_LIST) | $(GLOBAL_DEP_DIRS)
+	@echo "   CC	" $(@)
+	@$(CC) $(GLOBAL_DEP_FLAGS) $(CFLAGS) -c "$(@:%.o=%)" -o "$(@)"
+
+$(GLOBAL_OBJ_CXX): $(MAKEFILE_LIST) | $(GLOBAL_DEP_DIRS)
+	@echo "   CXX	" $(@)
+	@$(CXX) $(GLOBAL_DEP_FLAGS) $(CXXFLAGS) -c "$(@:%.o=%)" -o "$(@)"
+
+clean_global:
+	@rm -rfv $(GLOBAL_OBJ) $(GLOBAL_DEP_DIRS)
+
+-include $(GLOBAL_DEP_FILES)
+# -----------------------------------------------------------------
+
+
+# -----------------------------------------------------------------
+$(SERVER_DEP_DIRS):
+	@mkdir -pv $(@)
+
+$(SERVER_OBJ_CC): $(MAKEFILE_LIST) | $(SERVER_DEP_DIRS)
+	@echo "   CC	" $(@)
+	@$(CC) $(SERVER_DEP_FLAGS) $(CFLAGS) -c "$(@:%.o=%)" -o "$(@)"
+
+$(SERVER_OBJ_CXX): $(MAKEFILE_LIST) | $(SERVER_DEP_DIRS)
+	@@echo "   CXX	" $(@)
+	@$(CXX) $(SERVER_DEP_FLAGS) $(CXXFLAGS) -c "$(@:%.o=%)" -o "$(@)"
+
+clean_server:
+	@rm -rfv $(SERVER_OBJ) $(SERVER_DEP_DIRS)
+
+-include $(SERVER_DEP_FILES)
+# -----------------------------------------------------------------
+
+
+# -----------------------------------------------------------------
+$(CLIENT_DEP_DIRS):
+	@mkdir -pv $(@)
+
+$(CLIENT_OBJ_CC): $(MAKEFILE_LIST) | $(CLIENT_DEP_DIRS)
+	@echo "   CC	" $(@)
+	@$(CC) $(CLIENT_DEP_FLAGS) $(CFLAGS) -c "$(@:%.o=%)" -o "$(@)"
+
+$(CLIENT_OBJ_CXX): $(MAKEFILE_LIST) | $(CLIENT_DEP_DIRS)
+	@echo "   CXX	" $(@)
+	@$(CXX) $(CLIENT_DEP_FLAGS) $(CXXFLAGS) -c "$(@:%.o=%)" -o "$(@)"
+
+clean_client:
+	@rm -rfv $(CLIENT_OBJ) $(CLIENT_DEP_DIRS)
+
+-include $(CLIENT_DEP_FILES)
+# -----------------------------------------------------------------
+
+
+# -----------------------------------------------------------------
+$(MAIN_DEP_DIRS):
+	@mkdir -pv "$(@)"
+
+$(MAIN_OBJ): $(MAIN_FILE) | $(MAIN_DEP_DIRS)
+	@echo ${MAIN_DEP_DIRS}
+	@echo "   CC	" $(@)
+	@$(CC) -MT "$(@)" -MMD -MP -MF "$(DEP_DIR)/$(@:$(BASE_DIR)/%.o=%.d)" \
+	$(CFLAGS) -c "$(@:%.o=%)" -o "$(@)"
+
+clean_main:
+	@rm -vf $(MAIN_OBJ) $(DEP_DIR)/$(MAIN_FILE:$(BASE_DIR)/%.o=%.d)
+
+-include $(DEP_DIR)/$(MAIN_FILE:$(BASE_DIR)/%.o=%.d)
+# -----------------------------------------------------------------
+
+# -----------------------------------------------------------------
+clean_deps:
+	@rm -rfv .deps
+# -----------------------------------------------------------------
