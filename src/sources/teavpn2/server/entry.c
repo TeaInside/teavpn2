@@ -3,9 +3,14 @@
 #include <teavpn2/server/entry.h>
 #include <teavpn2/server/config.h>
 
+#if defined(__linux__)
+# include <teavpn2/server/plat/linux/tcp.h>
+#else
+# error This compiler is not supported at the moment
+#endif
+
 int teavpn_server_entry(int argc, char *argv[])
 {
-	int tmp;
 	struct srv_cfg cfg;
 
 
@@ -30,4 +35,3 @@ int teavpn_server_entry(int argc, char *argv[])
 		return -EINVAL;
 	}
 }
-
