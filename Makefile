@@ -51,7 +51,7 @@ else
 					$(DEFAULT_OPTIMIZATION)
 endif
 
-CCXXFLAGS	:= $(CCXXFLAGS) -fstack-protector-strong -pedantic-errors
+CCXXFLAGS	:= $(CCXXFLAGS) -fstack-protector-strong -pedantic-errors -D_GNU_SOURCE
 
 ifeq ($(OS),Windows_NT)
 	CCXXFLAGS += -D WIN32
