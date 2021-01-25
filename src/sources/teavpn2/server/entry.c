@@ -6,7 +6,6 @@
 int teavpn_server_entry(int argc, char *argv[])
 {
 	int tmp;
-	int retval = 0;
 	struct srv_cfg cfg;
 
 
@@ -17,6 +16,18 @@ int teavpn_server_entry(int argc, char *argv[])
 	if (server_cfg_parse(&cfg) < 0)
 		return 1;
 
-	return retval;
+
+	switch (cfg.sock.type) {
+	case SOCK_TCP:
+		break;
+
+	case SOCK_UDP:
+		pr_error("UDP socket is not supported at the moment");
+		return -ESOCKTNOSUPPORT;
+
+	default:
+		pr_error("Invalid socket type: %d", cfg.sock.type);
+		return -EINVAL;
+	}
 }
 

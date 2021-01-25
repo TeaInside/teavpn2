@@ -3,6 +3,7 @@
 #ifndef __TEAVPN2__GLOBAL__COMMON_H
 #define __TEAVPN2__GLOBAL__COMMON_H
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
