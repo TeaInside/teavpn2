@@ -33,7 +33,10 @@ int server_cfg_parse(struct srv_cfg *cfg)
 	if (ini_parse(cfg_file, parser_handler, &cx) < 0)
 		return strcmp(cfg_file, def_cfg_file) ? -ENOENT : 0;
 
-
+	if (!cx.exec) {
+		pr_error("Error loading config file!");
+		return -EINVAL;
+	}
 
 	return 0;
 }
@@ -69,12 +72,48 @@ static int parser_handler(void *user, const char *section, const char *name,
 		}
 	} else
 	RMATCH_S("socket") {
+		RMATCH_N("sock_type") {
+			union {
+				char 		targ[4];
+				uint32_t 	int_rep;
+			} tmp;
 
+			tmp.int_rep = 0;
+			strncpy(tmp.targ, value, sizeof(tmp.targ) - 1);
+
+			tmp.int_rep |= 0x20202020u; /* tolower */
+			tmp.targ[3]  = '\0';
+
+			if (!memcmp(tmp.targ, "tcp", 4)) {
+				cfg->sock.type = SOCK_TCP;
+			} else
+			if (!memcmp(tmp.targ, "udp", 4)) {
+				cfg->sock.type = SOCK_UDP;
+			} else {
+				pr_error("Invalid socket type \"%s\"", value);
+				goto out_err;
+			}
+		} else
+		RMATCH_N("bind_addr") {
+			cfg->sock.bind_addr = ar_strndup(value, 255);
+		} else
+		RMATCH_N("bind_port") {
+			cfg->sock.bind_port = (uint16_t)atoi(value);
+		} else
+		RMATCH_N("backlog") {
+			cfg->sock.backlog = atoi(value);
+		} else {
+			goto out_inv_name;
+		}
 	} else
 	RMATCH_S("other") {
-
+		RMATCH_N("data_dir") {
+			cfg->data_dir = ar_strndup(value, 255);
+		} else {
+			goto out_inv_name;
+		}
 	} else {
-		pr_error("Invalid section \"%s\" on line %d\n", section,
+		pr_error("Invalid section \"%s\" on line %d", section,
 			 lineno);
 		goto out_err;
 	}
@@ -82,9 +121,6 @@ static int parser_handler(void *user, const char *section, const char *name,
 
 	#undef RMATCH_N
 	#undef RMATCH_S
-
-
-
 
 	return true;
 

@@ -136,10 +136,11 @@ static int server_getopt(int argc, char *argv[], struct parse_struct *cx)
 					uint32_t 	int_rep;
 				} tmp;
 
+				tmp.int_rep = 0;
 				strncpy(tmp.targ, optarg, sizeof(tmp.targ) - 1);
 
+				tmp.int_rep |= 0x20202020u; /* tolower */
 				tmp.targ[3]  = '\0';
-				tmp.int_rep |= 0x20202020u;
 
 				if (!memcmp(tmp.targ, "tcp", 4)) {
 					cfg->sock.type = SOCK_TCP;

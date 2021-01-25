@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <stdbool.h>
 
 #define likely(EXPR)   __builtin_expect((EXPR), 1)
@@ -27,7 +28,17 @@
 #  define IPV6LEN (INET6_ADDRSTRLEN)
 #endif
 
-#define pr_error(...) printf(__VA_ARGS__)
+inline static void __pr_error(const char *fmt, ...)
+{
+	va_list vl;
+	va_start(vl, fmt);
+	printf("Error: ");
+	vprintf(fmt, vl);
+	va_end(vl);
+	putchar(10);
+}
+
+#define pr_error __pr_error
 
 typedef enum {
 	SOCK_TCP = 1,
