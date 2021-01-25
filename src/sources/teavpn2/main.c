@@ -20,6 +20,7 @@ int main(int argc, char *argv[])
 		goto out;
 	}
 
+	memset(arena_buffer, 0, sizeof(arena_buffer));
 	ar_init(arena_buffer, sizeof(arena_buffer));
 
 	if (strncmp(argv[1], "client", 6) == 0) {
