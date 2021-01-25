@@ -245,7 +245,7 @@ $(MAIN_OBJ): $(MAIN_FILE) | $(MAIN_DEP_DIRS)
 clean_main:
 	@rm -vf $(MAIN_OBJ) $(DEP_DIR)/$(MAIN_FILE:$(BASE_DIR)/%.o=%.d)
 
--include $(DEP_DIR)/$(MAIN_FILE:$(BASE_DIR)/%.o=%.d)
+-include $(DEP_DIR)/$(MAIN_OBJ:$(BASE_DIR)/%.o=%.d)
 # -----------------------------------------------------------------
 
 # -----------------------------------------------------------------
