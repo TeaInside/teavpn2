@@ -5,16 +5,17 @@
 
 #include <teavpn2/global/common.h>
 
+#define TEAVPN_SERVER_VERSION "0.2.0"
 
 struct srv_iface_cfg {
 	uint16_t	mtu;			/* Virtual interface MTU     */
 	char		*dev;			/* Virtual interface name    */
-	char		ipv4_c[IPV4LEN];	/* IPv4 to be used by server */
-	char		ipv4_sb_c[IPV4LEN];	/* IPv4 subnet mask          */
+	char		ipv4[IPV4LEN];		/* IPv4 to be used by server */
+	char		ipv4_netmask[IPV4LEN];	/* IPv4 netmask              */
 
 #ifdef TEAVPN_IPV6_SUPPORT
-	char		ipv6_c[IPV6LEN];	/* IPv6 to be used by server */
-	char		ipv4_sb_c[IPV6LEN];	/* IPv6 subnet mask          */
+	char		ipv6[IPV6LEN];		/* IPv6 to be used by server */
+	char		ipv4_netmask[IPV6LEN];	/* IPv6 netmask              */
 #endif
 };
 
@@ -29,7 +30,8 @@ struct srv_sock_cfg {
 
 
 struct srv_cfg {
-	char			*cfg_file;  /* Config file. */
+	char			*cfg_file;  /* Config file     */
+	char			*data_dir;  /* Data directory  */
 	struct srv_iface_cfg	iface;
 	struct srv_sock_cfg 	sock;
 };

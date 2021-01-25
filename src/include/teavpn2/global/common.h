@@ -3,6 +3,7 @@
 #ifndef __TEAVPN2__GLOBAL__COMMON_H
 #define __TEAVPN2__GLOBAL__COMMON_H
 
+#include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -25,6 +26,8 @@
 #else
 #  define IPV6LEN (INET6_ADDRSTRLEN)
 #endif
+
+#define pr_error(...) printf(__VA_ARGS__)
 
 typedef enum {
 	SOCK_TCP = 1,
