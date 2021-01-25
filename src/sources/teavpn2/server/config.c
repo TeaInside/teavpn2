@@ -16,32 +16,6 @@ struct parse_struct {
 extern char def_cfg_file[];
 
 static int parser_handler(void *user, const char *section, const char *name,
-			  const char *value, int lineno);
-
-int server_cfg_parse(struct srv_cfg *cfg)
-{
-	struct parse_struct cx;
-	char *cfg_file = cfg->cfg_file;
-
-	cx.exec = true;
-	cx.cfg = cfg;
-
-	if (cfg_file == NULL)
-		return 0;
-
-	if (ini_parse(cfg_file, parser_handler, &cx) < 0)
-		return strcmp(cfg_file, def_cfg_file) ? -ENOENT : 0;
-
-	if (!cx.exec) {
-		pr_error("Error loading config file!");
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-
-static int parser_handler(void *user, const char *section, const char *name,
 			  const char *value, int lineno)
 {
 	struct parse_struct *cx = (struct parse_struct *)user;
@@ -130,4 +104,27 @@ out_inv_name:
 out_err:
 	cx->exec = false;
 	return false;
+}
+
+
+int server_cfg_parse(struct srv_cfg *cfg)
+{
+	struct parse_struct cx;
+	char *cfg_file = cfg->cfg_file;
+
+	cx.exec = true;
+	cx.cfg = cfg;
+
+	if (cfg_file == NULL)
+		return 0;
+
+	if (ini_parse(cfg_file, parser_handler, &cx) < 0)
+		return strcmp(cfg_file, def_cfg_file) ? -ENOENT : 0;
+
+	if (!cx.exec) {
+		pr_error("Error loading config file!");
+		return -EINVAL;
+	}
+
+	return 0;
 }

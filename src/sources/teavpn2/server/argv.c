@@ -80,7 +80,7 @@ static const char short_opt[] = "hvc:D:d:4:b:m:s:H:P:M:B:";
 inline static void show_version(void);
 inline static void show_help(const char *app);
 
-static int server_getopt(int argc, char *argv[], struct parse_struct *cx)
+inline static int server_getopt(int argc, char *argv[], struct parse_struct *cx)
 {
 	int c;
 	struct srv_cfg *cfg = cx->cfg;
