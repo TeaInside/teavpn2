@@ -157,28 +157,29 @@ static int server_getopt(int argc, char *argv[], struct parse_struct *cx)
 				}
 			}
 			break;
+
+			case 'H':
+				cfg->sock.bind_addr = optarg;
+				break;
+
+			case 'P':
+				cfg->sock.bind_port = (uint16_t)atoi(optarg);
+				break;
+
+			case 'M':
+				cfg->sock.max_conn = (uint16_t)atoi(optarg);
+				break;
+
+			case 'B':
+				cfg->sock.backlog = atoi(optarg);
+				break;
+
+
+			case '?':
+			default:
+				return -1;
 		}
 	}
-
-	return 0;
-}
-
-
-int server_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
-{
-	struct parse_struct cx;
-
-	cx.app  = argv[0];
-	cx.exec = true;
-	cx.cfg  = cfg;
-
-	init_default_cfg(cfg);
-
-	if (server_getopt(argc - 1, &argv[1], &cx) < 0)
-		return -1;
-
-	if (!cx.exec)
-		return -1;
 
 	return 0;
 }
@@ -235,4 +236,25 @@ inline static void show_version(void)
 {
 	puts("TeaVPN Server " TEAVPN_SERVER_VERSION);
 	exit(0);
+}
+
+
+
+int server_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
+{
+	struct parse_struct cx;
+
+	cx.app  = argv[0];
+	cx.exec = true;
+	cx.cfg  = cfg;
+
+	init_default_cfg(cfg);
+
+	if (server_getopt(argc - 1, &argv[1], &cx) < 0)
+		return -1;
+
+	if (!cx.exec)
+		return -1;
+
+	return 0;
 }
