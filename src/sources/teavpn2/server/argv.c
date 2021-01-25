@@ -224,7 +224,7 @@ inline static void show_help(const char *app)
 	       "\n");
 	printf("GitHub repository: https://github.com/TeaInside/teavpn2\n");
 	printf("\n");
-	printf("This software is licensed under the MIT license.\n");
+	printf("This software is licensed under the GPL-v3 license.\n");
 	exit(0);
 }
 
