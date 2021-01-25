@@ -4,12 +4,14 @@
 
 #include <teavpn2/server/entry.h>
 #include <teavpn2/client/entry.h>
+#include <teavpn2/global/helpers/arena.h>
 
 static void usage(const char *app);
 
 int main(int argc, char *argv[])
 {
 	int retval;
+	char arena_buffer[4096];
 
 	retval = 1;
 
@@ -18,6 +20,7 @@ int main(int argc, char *argv[])
 		goto out;
 	}
 
+	arena_init(arena_buffer, sizeof(arena_buffer));
 
 	if (strncmp(argv[1], "client", 6) == 0) {
 		retval = teavpn_client_entry(argc - 1, &(argv[1]));

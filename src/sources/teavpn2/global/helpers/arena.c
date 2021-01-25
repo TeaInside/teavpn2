@@ -17,7 +17,7 @@ static size_t arena_size  = 0;
 static size_t arena_pos   = 0;
 
 
-void init_arena(char *arena, size_t arena_size)
+void arena_init(char *arena, size_t arena_size)
 {
 	arena_addr = arena;
 	arena_size = arena_size;
