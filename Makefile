@@ -14,10 +14,19 @@ BASE_DIR	:= $(strip $(patsubst %/, %, $(BASE_DIR)))
 
 DEP_DIR		:= $(BASE_DIR)/.deps
 SRC_DIR		:= $(BASE_DIR)/src
-INCLUDE_DIR	:=	-I$(SRC_DIR)/include				\
-				-I$(SRC_DIR)/include/third_party
+INCLUDE_DIR	:= -I$(SRC_DIR)/include \
+			   -I$(SRC_DIR)/include/third_party
 
-WARN_FLAGS	:= -Wall -Wextra -Wstrict-aliasing=3 -W
+WARN_FLAGS	:= -Wall -Wextra -Wstrict-aliasing=3 \
+				-Wformat \
+				-Wformat-security \
+				-Wformat-signedness \
+				-Wsequence-point \
+				-Wduplicated-cond \
+				-Wduplicated-branches \
+				-Wunsafe-loop-optimizations \
+				-Wstack-usage=2097152
+
 LIB_LDFLAGS	:= -lpthread
 
 LD_FLAGS	:= -fPIE -fpie $(WARN_FLAGS)
@@ -51,7 +60,7 @@ else
 					$(DEFAULT_OPTIMIZATION)
 endif
 
-CCXXFLAGS	:= $(CCXXFLAGS) -fstack-protector-strong -pedantic-errors -D_GNU_SOURCE
+CCXXFLAGS	:= $(CCXXFLAGS) -fstrict-aliasing -fstack-protector-strong -pedantic-errors -D_GNU_SOURCE
 
 ifeq ($(OS),Windows_NT)
 	CCXXFLAGS += -D WIN32
