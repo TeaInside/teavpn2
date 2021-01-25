@@ -12,60 +12,60 @@
  * YOU HAVE BEEN WARNED!
  */
 
-static char   *arena_addr = NULL;
-static size_t arena_size  = 0;
-static size_t arena_pos   = 0;
+static char   *ar_addr = NULL;
+static size_t ar_size  = 0;
+static size_t ar_pos   = 0;
 
 
-void arena_init(char *arena, size_t arena_size)
+void ar_init(char *ar, size_t ar_size)
 {
-	arena_addr = arena;
-	arena_size = arena_size;
-	arena_pos = 0;
+	ar_addr = ar;
+	ar_size = ar_size;
+	ar_pos = 0;
 }
 
 
-size_t arena_unused_size()
+size_t ar_unused_size()
 {
-	return arena_size - arena_pos;
+	return ar_size - ar_pos;
 }
 
 
-inline static void *internal_arena_alloc(size_t len)
+inline static void *internal_ar_alloc(size_t len)
 {
-	char *ret = &arena_addr[arena_pos];
-	arena_pos += len;
+	char *ret = &ar_addr[ar_pos];
+	ar_pos += len;
 
-	assert(arena_size > arena_pos);
+	assert(ar_size > ar_pos);
 
 	return (void *)ret;
 }
 
 
-void *arena_alloc(size_t len)
+void *ar_alloc(size_t len)
 {
-	return internal_arena_alloc(len);
+	return internal_ar_alloc(len);
 }
 
 
-void *arena_strdup(const char *str)
+void *ar_strdup(const char *str)
 {
 	char   *ret;
 	size_t len = strlen(str);
 
-	ret = internal_arena_alloc(len + 1);
+	ret = internal_ar_alloc(len + 1);
 	ret[len] = '\0';
 
 	return memcpy(ret, str, len);
 }
 
 
-void *arena_strndup(const char *str, size_t inlen)
+void *ar_strndup(const char *str, size_t inlen)
 {
 	char   *ret;
 	size_t len = strnlen(str, inlen);
 
-	ret = internal_arena_alloc(len + 1);
+	ret = internal_ar_alloc(len + 1);
 	ret[len] = '\0';
 
 	return memcpy(ret, str, len);

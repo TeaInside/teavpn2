@@ -15,9 +15,9 @@ struct parse_struct {
 
 
 #ifdef SERVER_DEFAULT_CONFIG
-static char def_cfg_file[] = SERVER_DEFAULT_CONFIG;
+char def_cfg_file[] = SERVER_DEFAULT_CONFIG;
 #else
-static char def_cfg_file[] = "/etc/teavpn2/server.ini";
+char def_cfg_file[] = "/etc/teavpn2/server.ini";
 #endif
 
 /* Default config for virtual network interface */
