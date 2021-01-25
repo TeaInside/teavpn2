@@ -30,16 +30,6 @@
 
 #include <teavpn2/global/helpers/debug.h>
 
-#define pr_error  __pr_error
-#define pr_debug  __pr_debug
-#define pr_notice __pr_notice
-#define prl_notice(LEVEL, ...) 			\
-	do {					\
-		if (__notice_level >= LEVEL) {	\
-			pr_notice(__VA_ARGS__);	\
-		}				\
-	} while (0)
-
 typedef enum {
 	SOCK_TCP = 1,
 	SOCK_UDP = 2

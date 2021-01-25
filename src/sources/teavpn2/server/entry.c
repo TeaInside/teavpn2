@@ -21,7 +21,6 @@ int teavpn_server_entry(int argc, char *argv[])
 	if (server_cfg_parse(&cfg) < 0)
 		return 1;
 
-
 	switch (cfg.sock.type) {
 	case SOCK_TCP:
 		return teavpn_tcp_server(&cfg);

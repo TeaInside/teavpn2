@@ -15,7 +15,7 @@ pthread_mutex_t pr_notice_mt = PTHREAD_MUTEX_INITIALIZER;
 #define pthread_mutex_unlock(MUT) /* Do nothing */
 #endif
 
-uint8_t __notice_level = 0;
+uint8_t __notice_level = 5;
 
 
 inline static char *get_time(char *buf)
