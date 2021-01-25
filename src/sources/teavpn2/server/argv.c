@@ -42,9 +42,8 @@ static void init_default_cfg(struct srv_cfg *cfg)
 	/* Virtual network interface. */
 	cfg->iface.mtu = 1500;
 	cfg->iface.dev = def_dev;
-	memcpy(cfg->iface.ipv4, def_ipv4, sizeof(def_ipv4));
-	memcpy(cfg->iface.ipv4_netmask, def_ipv4_netmask,
-	       sizeof(def_ipv4_netmask));
+	cfg->iface.ipv4 = def_ipv4;
+	cfg->iface.ipv4_netmask = def_ipv4_netmask;
 
 	/* Socket config. */
 	cfg->sock.type = def_sock_type;
@@ -119,13 +118,11 @@ static int server_getopt(int argc, char *argv[], struct parse_struct *cx)
 			break;
 
 		case '4':
-			strncpy(cfg->iface.ipv4, optarg,
-				sizeof(cfg->iface.ipv4));
+			cfg->iface.ipv4 = optarg;
 			break;
 
 		case 'n':
-			strncpy(cfg->iface.ipv4_netmask, optarg,
-				sizeof(cfg->iface.ipv4_netmask));
+			cfg->iface.ipv4_netmask = optarg;
 			break;
 
 		case 'm':
@@ -140,10 +137,10 @@ static int server_getopt(int argc, char *argv[], struct parse_struct *cx)
 					uint32_t 	int_rep;
 				} tmp;
 
-				strncpy(tmp.targ, optarg, sizeof(tmp.targ));
+				strncpy(tmp.targ, optarg, sizeof(tmp.targ) - 1);
 
-				tmp.int_rep |= 0x20202020u;
 				tmp.targ[3]  = '\0';
+				tmp.int_rep |= 0x20202020u;
 
 				if (!memcmp(tmp.targ, "tcp", 4)) {
 					cfg->sock.type = SOCK_TCP;
@@ -158,26 +155,26 @@ static int server_getopt(int argc, char *argv[], struct parse_struct *cx)
 			}
 			break;
 
-			case 'H':
-				cfg->sock.bind_addr = optarg;
-				break;
+		case 'H':
+			cfg->sock.bind_addr = optarg;
+			break;
 
-			case 'P':
-				cfg->sock.bind_port = (uint16_t)atoi(optarg);
-				break;
+		case 'P':
+			cfg->sock.bind_port = (uint16_t)atoi(optarg);
+			break;
 
-			case 'M':
-				cfg->sock.max_conn = (uint16_t)atoi(optarg);
-				break;
+		case 'M':
+			cfg->sock.max_conn = (uint16_t)atoi(optarg);
+			break;
 
-			case 'B':
-				cfg->sock.backlog = atoi(optarg);
-				break;
+		case 'B':
+			cfg->sock.backlog = atoi(optarg);
+			break;
 
 
-			case '?':
-			default:
-				return -1;
+		case '?':
+		default:
+			return -1;
 		}
 	}
 

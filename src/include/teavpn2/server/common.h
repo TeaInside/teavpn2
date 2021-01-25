@@ -10,12 +10,12 @@
 struct srv_iface_cfg {
 	uint16_t	mtu;			/* Virtual interface MTU     */
 	char		*dev;			/* Virtual interface name    */
-	char		ipv4[IPV4LEN];		/* IPv4 to be used by server */
-	char		ipv4_netmask[IPV4LEN];	/* IPv4 netmask              */
+	char		*ipv4;			/* IPv4 to be used by server */
+	char		*ipv4_netmask;		/* IPv4 netmask              */
 
 #ifdef TEAVPN_IPV6_SUPPORT
-	char		ipv6[IPV6LEN];		/* IPv6 to be used by server */
-	char		ipv4_netmask[IPV6LEN];	/* IPv6 netmask              */
+	char		*ipv6;			/* IPv6 to be used by server */
+	char		*ipv4_netmask;		/* IPv6 netmask              */
 #endif
 };
 
