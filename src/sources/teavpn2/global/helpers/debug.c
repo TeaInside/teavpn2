@@ -61,7 +61,7 @@ void __pr_notice(const char *fmt, ...)
 	va_list vl;
 	char buf[32];
 
-	pthread_mutex_lock(&pr_error_mt);
+	pthread_mutex_lock(&pr_notice_mt);
 
 	va_start(vl, fmt);
 	printf("[%s] ", get_time(buf));
@@ -69,5 +69,5 @@ void __pr_notice(const char *fmt, ...)
 	va_end(vl);
 	putchar(10);
 
-	pthread_mutex_unlock(&pr_error_mt);
+	pthread_mutex_unlock(&pr_notice_mt);
 }
