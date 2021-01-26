@@ -6,6 +6,7 @@
 #ifndef __TEAVPN2__SERVER__PLAT__LINUX__TCP_H
 #define __TEAVPN2__SERVER__PLAT__LINUX__TCP_H
 
+#include <poll.h>
 #include <pthread.h>
 #include <arpa/inet.h>
 #include <linux/types.h>
@@ -53,7 +54,10 @@ struct tcp_client {
 struct srv_tcp_state {
 	bool			stop;
 	int			net_fd;	/* Main TCP socket fd */
+
+	nfds_t			nfds;
 	struct srv_cfg		*cfg;
+	struct pollfd 		*fds;
 
 	uint16_t		n_online; /* Number of active clients */
 	uint16_t		n_free_p; /* Index of unused client slot */

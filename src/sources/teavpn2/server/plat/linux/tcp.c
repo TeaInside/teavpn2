@@ -212,11 +212,16 @@ static void tcp_accept_event(struct srv_tcp_state *state)
 
 	rv = accept(net_fd, &cli_addr, &addrlen);
 	if (unlikely(rv < 0)) {
-		pr_error("accept(): %s", strerror(errno));
+		int tmp = errno;
+
+		if (tmp == EAGAIN)
+			return;
+
+		pr_error("accept(): %s", strerror(tmp));
 		return;
 	}
 
-
+	/* TODO: Handle client accept */
 }
 
 
@@ -225,8 +230,8 @@ static int handle_tcp_event_loop(struct srv_tcp_state *state)
 {
 	int retval = 0;
 	int timeout;
-	nfds_t nfds;
 	struct pollfd *fds = NULL;
+	struct pollfd *clfds = NULL; /* fds slot for client */
 	struct srv_cfg *cfg = state->cfg;
 	uint16_t max_conn = cfg->sock.max_conn;
 
@@ -237,18 +242,20 @@ static int handle_tcp_event_loop(struct srv_tcp_state *state)
 		return -ENOMEM;
 	}
 
-	nfds = 1;
-	timeout = 15000;
+	timeout = 3000;
+	state->fds = fds;
+	state->nfds = 1;
 
 	fds[0].fd = state->net_fd;
 	fds[0].events = POLLIN;
+
+	clfds = &fds[1];
 
 	prl_notice(0, "Initialization Sequence Completed");
 
 	while (true) {
 		int rv;
-
-		rv = poll(fds, nfds, timeout);
+		rv = poll(fds, state->nfds, timeout);
 
 		if (unlikely(rv == 0)) {
 			/* Timeout */
@@ -270,14 +277,20 @@ static int handle_tcp_event_loop(struct srv_tcp_state *state)
 		}
 
 
-		if (unlikely((fds[0].revents & POLLIN) != 0))
+		if (unlikely((fds[0].revents & POLLIN) != 0)) {
 			tcp_accept_event(state);
+			rv--;
+		}
 
+
+		/* TODO: Handle client event loop */
+		(void)clfds;
 	}
 
 
 out:
 	free(fds);
+	state->fds = NULL;
 	return retval;
 }
 
