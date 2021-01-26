@@ -126,6 +126,8 @@ DEPFLAGS	 = -MT "$@" -MMD -MP -MF "$(@:$(BASE_DIR)/%.o=$(DEP_DIR)/%.d)"
 
 all: $(TARGET_BIN)
 
+clean_all: clean clean_deps
+
 clean: clean_target clean_main clean_global clean_server
 
 
@@ -237,6 +239,10 @@ $(TARGET_BIN): $(MAIN_OBJ) $(GLOBAL_OBJ) $(SERVER_OBJ) $(CLIENT_OBJ)
 clean_target:
 	rm -vf $(TARGET_BIN)
 # ================================================================
+
+
+clean_deps:
+	@rm -rfv .deps
 
 
 server_run: $(TARGET_BIN)
