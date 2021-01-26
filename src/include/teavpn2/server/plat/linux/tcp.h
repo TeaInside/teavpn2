@@ -21,6 +21,7 @@ struct tcp_client {
 	uint8_t		is_used : 1;
 	uint8_t		is_connected : 1;
 	uint8_t		is_authorized : 1;
+	uint8_t		ht_mutex_active : 1; /* Should ht_mutex be destroyed? */
 
 	int		tun_fd; /* FD for read/write from/to TUN/TAP queue */
 	int		cli_fd; /* FD for data transfer with socket client */

@@ -36,6 +36,7 @@ static int init_tcp_state(struct srv_tcp_state *state)
 			pr_error("pthread_mutex_init: %s", strerror(tmp_err));
 			goto out_err;
 		}
+		clients[i].ht_mutex_active = true;
 	}
 
 	state->stop = false;
@@ -77,7 +78,11 @@ static void destroy_tcp_state(struct srv_tcp_state *state)
 
 	for (uint16_t i = 0; i < max_conn; i++) {
 		client_close_fd(&clients[i], i);
-		pthread_mutex_destroy(&(clients[i].ht_mutex));
+
+		if (clients[i].ht_mutex_active) {
+			pthread_mutex_destroy(&(clients[i].ht_mutex));
+			clients[i].ht_mutex_active = false;
+		}
 	}
 
 
@@ -102,6 +107,11 @@ int teavpn_tcp_server(struct srv_cfg *cfg)
 	retval = init_iface_tcp_server(&state);
 	if (unlikely(retval < 0))
 		goto out;
+
+
+	// retval = init_socket_tcp_server(&state);
+	// if (unlikely(retval < 0))
+	// 	goto out;
 
 out:
 	destroy_tcp_state(&state);
