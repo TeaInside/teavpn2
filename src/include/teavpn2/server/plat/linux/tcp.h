@@ -11,8 +11,8 @@
 #include <linux/types.h>
 #include <teavpn2/server/common.h>
 
-#define RECV_BUF (4096ul)
-#define SEND_BUF (4096ul)
+#define RECVBUFSIZ (1024ul * 7ul)
+#define SENDBUFSIZ (1024ul * 7ul)
 
 int teavpn_tcp_server(struct srv_cfg *cfg);
 
@@ -36,14 +36,14 @@ struct tcp_client {
 	uint16_t	err_c;	/* Error count */
 
 	union {
-		char send_buf[SEND_BUF];
+		char send_buf[SENDBUFSIZ];
 	};
 	uint64_t	send_s; /* Valid bytes in recv_buf */
 	uint64_t	send_c; /* Send count */
 
 
 	union {
-		char recv_buf[RECV_BUF];
+		char recv_buf[RECVBUFSIZ];
 	};
 	uint64_t	recv_s; /* Valid bytes in recv_buf */
 	uint64_t	recv_c;	/* Recv count */

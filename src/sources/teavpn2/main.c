@@ -6,7 +6,7 @@
 #include <teavpn2/client/entry.h>
 #include <teavpn2/global/helpers/arena.h>
 
-static void usage(const char *app)
+static __always_inline void usage(const char *app)
 {
 	printf("Usage: %s [client|server] [options]\n\n", app);
 	printf("See:\n");

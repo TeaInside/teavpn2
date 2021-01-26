@@ -30,7 +30,10 @@ static int init_tcp_state(struct srv_tcp_state *state)
 		/* See: http://git.savannah.gnu.org/cgit/hurd/libpthread.git/tree/sysdeps/generic/pt-mutex-init.c */
 		tmp = pthread_mutex_init(&(clients[i].ht_mutex), NULL);
 		if (tmp != 0) {
-			retval = -tmp;
+			int tmp_err;
+			tmp_err = tmp > 0 ? tmp : -tmp;
+			retval  = -tmp_err;
+			pr_error("pthread_mutex_init: %s", strerror(tmp_err));
 			goto out_err;
 		}
 	}

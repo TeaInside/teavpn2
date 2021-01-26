@@ -8,6 +8,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include <teavpn2/global/helpers/debug.h>
+
 #define likely(EXPR)   __builtin_expect((EXPR), 1)
 #define unlikely(EXPR) __builtin_expect((EXPR), 0)
 #define STATIC_ASSERT(EXPR, ASSERT) _Static_assert((EXPR), ASSERT)
@@ -28,7 +30,18 @@
 #  define IPV6LEN (INET6_ADDRSTRLEN)
 #endif
 
-#include <teavpn2/global/helpers/debug.h>
+#ifndef __inline
+#define __inline inline
+#endif
+
+#ifndef __always_inline
+#define __always_inline __inline __attribute__((always_inline))
+#endif
+
+#ifndef __no_inline
+#define __no_inline __attribute__((noinline))
+#endif
+
 
 typedef enum {
 	SOCK_TCP = 1,
