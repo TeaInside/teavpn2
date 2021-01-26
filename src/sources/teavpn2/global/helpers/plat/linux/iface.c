@@ -22,6 +22,8 @@ int tun_alloc(const char *dev, int flags)
 {
 	int fd, retval;
 	struct ifreq ifr;
+	static bool retried = false;
+	static const char *tun_dev = "/dev/net/tun";
 
 	if ((!dev) || (!*dev)) {
 		pr_error("Error tun_alloc(): dev cannot be empty");
@@ -33,9 +35,23 @@ int tun_alloc(const char *dev, int flags)
 	strncpy(ifr.ifr_name, dev, IFNAMSIZ - 1);
 	ifr.ifr_flags = flags;
 
-	fd = open("/dev/net/tun", O_RDWR);
+
+	fd = open(tun_dev, O_RDWR);
 	if (fd < 0) {
-		pr_error("open(/dev/net/tun): %s", strerror(errno));
+		int tmp_err = errno;
+
+		if ((!retried) && (tmp_err == ENOENT)) {
+			prl_notice(3, "open(\"%s\"): %s", tun_dev,
+				   strerror(tmp_err));
+
+			retried = !retried;
+			tun_dev = "/dev/tun";
+
+			prl_notice(3, "Set fallback to %s", tun_dev);
+			return tun_alloc(dev, flags);
+		}
+
+		pr_error("open(\"%s\"): %s", tun_dev, strerror(tmp_err));
 		return fd;
 	}
 
