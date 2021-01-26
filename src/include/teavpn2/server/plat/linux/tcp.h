@@ -50,11 +50,13 @@ struct tcp_client {
 };
 
 struct srv_tcp_state {
-	struct srv_cfg 		*cfg;
+	bool			stop;
+	int			net_fd;	/* Main TCP socket fd */
+	struct srv_cfg		*cfg;
 
-
-	size_t			n_client;
-	struct tcp_client	*clients;
+	uint16_t		n_online; /* Number of active clients */
+	uint16_t		n_free_p; /* Index of unused client slot */
+	struct tcp_client	*clients; /* Client slot array */
 };
 
 #endif /* #ifndef __TEAVPN2__SERVER__PLAT__LINUX__TCP_H */

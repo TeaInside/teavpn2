@@ -38,8 +38,11 @@ static int init_tcp_state(struct srv_tcp_state *state)
 		}
 	}
 
-
+	state->stop = false;
+	state->n_online = 0;
+	state->n_free_p = 0;
 	state->clients = clients;
+
 	return retval;
 
 out_err:
