@@ -135,10 +135,11 @@ clean: clean_target clean_main clean_global clean_server
 # Main file for entry point
 # ================================================================
 $(MAIN_DEP_DIRS):
-	@mkdir -pv "$@"
+	@echo "   MKDIR	" "$(@:$(BASE_DIR)/%=%)"
+	@mkdir -p $(@)
 
 $(MAIN_OBJ): $(MAIN_FILE) | $(MAIN_DEP_DIRS)
-	@echo "   CC	" "$(@:$(BASE_DIR)/%=%)"
+	@echo "   CC		" "$(@:$(BASE_DIR)/%=%)"
 	@$(CC) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)
 
 clean_main:
@@ -153,19 +154,20 @@ GLOBAL_SRC_CC	:= $(shell find "${GLOBAL_SRC_DIR}" -name '*.c')
 GLOBAL_SRC_CXX	:= $(shell find "${GLOBAL_SRC_DIR}" -name '*.cpp')
 GLOBAL_OBJ_CC	:= $(GLOBAL_SRC_CC:.c=.o)
 GLOBAL_OBJ_CXX	:= $(GLOBAL_SRC_CXX:.cpp=.o)
-GLOBAL_OBJ	:= $(strip $(GLOBAL_OBJ_CC) $(GLOBAL_OBJ_CXX))
+GLOBAL_OBJ		:= $(strip $(GLOBAL_OBJ_CC) $(GLOBAL_OBJ_CXX))
 GLOBAL_DEP_DIRS	:= $(shell find "${GLOBAL_SRC_DIR}" -type d)
 GLOBAL_DEP_DIRS := $(GLOBAL_DEP_DIRS:$(BASE_DIR)/%=$(DEP_DIR)/%)
 
 $(GLOBAL_DEP_DIRS):
-	@mkdir -pv $(GLOBAL_DEP_DIRS)
+	@echo "   MKDIR	" "$(@:$(BASE_DIR)/%=%)"
+	@mkdir -p $(@)
 
 $(GLOBAL_OBJ_CC): $(GLOBAL_SRC_CC) | $(GLOBAL_DEP_DIRS)
-	@echo "   CC	" "$(@:$(BASE_DIR)/%=%)"
+	@echo "   CC		" "$(@:$(BASE_DIR)/%=%)"
 	@$(CC) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)
 
 $(GLOBAL_OBJ_CXX): $(GLOBAL_SRC_CXX) | $(GLOBAL_DEP_DIRS)
-	@echo "   CC	" "$(@:$(BASE_DIR)/%=%)"
+	@echo "   CXX		" "$(@:$(BASE_DIR)/%=%)"
 	@$(CXX) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)
 
 clean_global:
@@ -180,19 +182,20 @@ SERVER_SRC_CC	:= $(shell find "${SERVER_SRC_DIR}" -name '*.c')
 SERVER_SRC_CXX	:= $(shell find "${SERVER_SRC_DIR}" -name '*.cpp')
 SERVER_OBJ_CC	:= $(SERVER_SRC_CC:.c=.o)
 SERVER_OBJ_CXX	:= $(SERVER_SRC_CXX:.cpp=.o)
-SERVER_OBJ	:= $(strip $(SERVER_OBJ_CC) $(SERVER_OBJ_CXX))
+SERVER_OBJ		:= $(strip $(SERVER_OBJ_CC) $(SERVER_OBJ_CXX))
 SERVER_DEP_DIRS	:= $(shell find "${SERVER_SRC_DIR}" -type d)
 SERVER_DEP_DIRS := $(SERVER_DEP_DIRS:$(BASE_DIR)/%=$(DEP_DIR)/%)
 
 $(SERVER_DEP_DIRS):
-	@mkdir -pv $(SERVER_DEP_DIRS)
+	@echo "   MKDIR	" "$(@:$(BASE_DIR)/%=%)"
+	@mkdir -p $(@)
 
 $(SERVER_OBJ_CC): $(SERVER_SRC_CC) | $(SERVER_DEP_DIRS)
-	@echo "   CC	" "$(@:$(BASE_DIR)/%=%)"
+	@echo "   CC		" "$(@:$(BASE_DIR)/%=%)"
 	@$(CC) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)
 
 $(SERVER_OBJ_CXX): $(SERVER_SRC_CXX) | $(SERVER_DEP_DIRS)
-	@echo "   CC	" "$(@:$(BASE_DIR)/%=%)"
+	@echo "   CXX		" "$(@:$(BASE_DIR)/%=%)"
 	@$(CXX) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)
 
 clean_server:
@@ -207,19 +210,20 @@ CLIENT_SRC_CC	:= $(shell find "${CLIENT_SRC_DIR}" -name '*.c')
 CLIENT_SRC_CXX	:= $(shell find "${CLIENT_SRC_DIR}" -name '*.cpp')
 CLIENT_OBJ_CC	:= $(CLIENT_SRC_CC:.c=.o)
 CLIENT_OBJ_CXX	:= $(CLIENT_SRC_CXX:.cpp=.o)
-CLIENT_OBJ	:= $(strip $(CLIENT_OBJ_CC) $(CLIENT_OBJ_CXX))
+CLIENT_OBJ		:= $(strip $(CLIENT_OBJ_CC) $(CLIENT_OBJ_CXX))
 CLIENT_DEP_DIRS	:= $(shell find "${CLIENT_SRC_DIR}" -type d)
 CLIENT_DEP_DIRS := $(CLIENT_DEP_DIRS:$(BASE_DIR)/%=$(DEP_DIR)/%)
 
 $(CLIENT_DEP_DIRS):
-	@mkdir -pv $(CLIENT_DEP_DIRS)
+	@echo "   MKDIR	" "$(@:$(BASE_DIR)/%=%)"
+	@mkdir -p $(@)
 
 $(CLIENT_OBJ_CC): $(CLIENT_SRC_CC) | $(CLIENT_DEP_DIRS)
-	@echo "   CC	" "$(@:$(BASE_DIR)/%=%)"
+	@echo "   CC		" "$(@:$(BASE_DIR)/%=%)"
 	@$(CC) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)
 
 $(CLIENT_OBJ_CXX): $(CLIENT_SRC_CXX) | $(CLIENT_DEP_DIRS)
-	@echo "   CC	" "$(@:$(BASE_DIR)/%=%)"
+	@echo "   CXX		" "$(@:$(BASE_DIR)/%=%)"
 	@$(CXX) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)
 
 clean_client:
@@ -231,7 +235,7 @@ clean_client:
 # Link the binary
 # ================================================================
 $(TARGET_BIN): $(MAIN_OBJ) $(GLOBAL_OBJ) $(SERVER_OBJ) $(CLIENT_OBJ)
-	@echo "   LD	" "$(@)"
+	@echo "   LD		" "$(@)"
 	@$(LD) $(LDFLAGS) "$(MAIN_OBJ)" \
 	$(GLOBAL_OBJ) $(SERVER_OBJ) $(CLIENT_OBJ) -o "$@" $(LIB_LDFLAGS)
 
@@ -248,3 +252,10 @@ clean_deps:
 server_run: $(TARGET_BIN)
 	sudo $(VG) $(VGFLAGS) ./$(TARGET_BIN) server
 
+
+test: $(TARGET_BIN)
+	@$(MAKE) -C $(BASE_DIR)/tests
+
+
+strip:
+	strip -R .comment -sx $(TARGET_BIN)
