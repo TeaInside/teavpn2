@@ -26,7 +26,7 @@ struct tcp_client {
 	int		cli_fd; /* FD for data transfer with socket client */
 
 
-	pthread_t	thread; /* Thread that handles the client */	
+	pthread_t	thread; /* Thread that handles the client */
 	pthread_mutex_t	ht_mutex; /* Main thread waits before exits */
 
 	char		username[255];

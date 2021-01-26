@@ -4,7 +4,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <teavpn2/global/common.h>
-
+#include <teavpn2/global/helpers/shell.h>
+#include <teavpn2/global/helpers/string.h>
 
 char *shell_exec(const char *cmd, char *buf, size_t buflen, size_t *outlen)
 {
@@ -30,8 +31,11 @@ char *shell_exec(const char *cmd, char *buf, size_t buflen, size_t *outlen)
 		goto out_err;
 	}
 
+	memset(buf, 0, buflen);
 	fread_len = fread(buf, sizeof(char), buflen, handle);
 	pclose(handle);
+
+	trim_cpy(buf);
 
 	if (outlen)
 		*outlen = fread_len;
