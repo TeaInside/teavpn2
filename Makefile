@@ -237,3 +237,8 @@ $(TARGET_BIN): $(MAIN_OBJ) $(GLOBAL_OBJ) $(SERVER_OBJ) $(CLIENT_OBJ)
 clean_target:
 	rm -vf $(TARGET_BIN)
 # ================================================================
+
+
+server_run: $(TARGET_BIN)
+	sudo $(VG) $(VGFLAGS) ./$(TARGET_BIN) server
+
