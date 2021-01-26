@@ -146,7 +146,7 @@ static int init_socket_tcp_server(struct srv_tcp_state *state)
 	uint16_t bind_port = sock_cfg->bind_port;
 
 	prl_notice(2, "Creating TCP socket...");
-	fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+	fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
 	if (fd < 0) {
 		int tmp = errno;
 		pr_error("socket(): %s", strerror(tmp));
