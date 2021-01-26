@@ -45,18 +45,18 @@ endif
 
 ## CCXXFLAGS is a group of flags that applies to CC and CXX.
 ifeq ($(RELEASE_MODE),1)
-	CCXXFLAGS	:=	-O3							\
+	CCXXFLAGS	:=	-O3 \
 					-DNDEBUG
 
-	LDFLAGS		:=	$(LDFLAGS)					\
+	LDFLAGS		:=	$(LDFLAGS) \
 					-O3
 else
-	CCXXFLAGS	:=	$(DEFAULT_OPTIMIZATION)		\
-					-ggdb3						\
-					-grecord-gcc-switches		\
+	CCXXFLAGS	:=	$(DEFAULT_OPTIMIZATION) \
+					-ggdb3 \
+					-grecord-gcc-switches \
 					-DTEAVPN_DEBUG
 
-	LDFLAGS		:=	$(LDFLAGS)					\
+	LDFLAGS		:=	$(LDFLAGS) \
 					$(DEFAULT_OPTIMIZATION)
 endif
 
