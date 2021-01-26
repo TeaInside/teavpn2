@@ -30,7 +30,7 @@ static int parser_handler(void *user, const char *section, const char *name,
 
 	RMATCH_S("iface") {
 		RMATCH_N("dev") {
-			cfg->iface.dev  = ar_strndup(value, 255);
+			cfg->iface.dev  = ar_strndup(value, 16);
 		} else
 		RMATCH_N("ipv4") {
 			cfg->iface.ipv4 = ar_strndup(value, IPV4LEN);
@@ -68,7 +68,7 @@ static int parser_handler(void *user, const char *section, const char *name,
 			}
 		} else
 		RMATCH_N("bind_addr") {
-			cfg->sock.bind_addr = ar_strndup(value, 255);
+			cfg->sock.bind_addr = ar_strndup(value, 32);
 		} else
 		RMATCH_N("bind_port") {
 			cfg->sock.bind_port = (uint16_t)atoi(value);

@@ -6,6 +6,7 @@
 #include <teavpn2/server/argv.h>
 #include <teavpn2/server/common.h>
 #include <teavpn2/global/helpers/arena.h>
+#include <teavpn2/global/helpers/string.h>
 
 
 struct parse_struct {
@@ -104,24 +105,24 @@ inline static int server_getopt(int argc, char *argv[], struct parse_struct *cx)
 			break;
 
 		case 'c':
-			cfg->cfg_file = optarg;
+			cfg->cfg_file = trunc_str(optarg, 255);
 			break;
 
 		case 'D':
-			cfg->data_dir = optarg;
+			cfg->data_dir = trunc_str(optarg, 255);
 			break;
 
 		/* Virtual network interface. */
 		case 'd':
-			cfg->iface.dev = optarg;
+			cfg->iface.dev = trunc_str(optarg, 16);
 			break;
 
 		case '4':
-			cfg->iface.ipv4 = optarg;
+			cfg->iface.ipv4 = trunc_str(optarg, IPV4LEN);
 			break;
 
 		case 'n':
-			cfg->iface.ipv4_netmask = optarg;
+			cfg->iface.ipv4_netmask = trunc_str(optarg, IPV4LEN);
 			break;
 
 		case 'm':
@@ -156,7 +157,7 @@ inline static int server_getopt(int argc, char *argv[], struct parse_struct *cx)
 			break;
 
 		case 'H':
-			cfg->sock.bind_addr = optarg;
+			cfg->sock.bind_addr = trunc_str(optarg, 255);
 			break;
 
 		case 'P':

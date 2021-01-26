@@ -6,12 +6,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <teavpn2/global/common.h>
 
 /**
  * @param char x
  * @return char
  */
-inline static char my_tolower(char x)
+inline static __always_inline char my_tolower(char x)
 {
 	return ('A' <= x && x <= 'Z') ? x + 32 : x;
 }
@@ -21,7 +22,7 @@ inline static char my_tolower(char x)
  * @param char x
  * @return char
  */
-inline static char my_toupper(char x)
+inline static __always_inline char my_toupper(char x)
 {
 	return ('a' <= x && x <= 'z') ? x - 32 : x;
 }
@@ -35,7 +36,8 @@ inline static char my_toupper(char x)
  * @param size_t *res_ken
  * @return char *
  */
-inline static char *trim_len(char *head, size_t len, size_t *res_len)
+inline static __always_inline char *trim_len(char *head, size_t len,
+					     size_t *res_len)
 {
 	char *tail  = &(head[len - 1]);
 	bool move_t = false;
@@ -67,7 +69,8 @@ inline static char *trim_len(char *head, size_t len, size_t *res_len)
  * @param size_t *res_ken
  * @return char *
  */
-inline static char *trim_len_cpy(char *head, size_t len, size_t *res_len)
+inline static __always_inline char *trim_len_cpy(char *head, size_t len,
+						 size_t *res_len)
 {
 	char *start = head;
 	char *tail  = &(head[len - 1]);
@@ -101,7 +104,7 @@ inline static char *trim_len_cpy(char *head, size_t len, size_t *res_len)
 /**
  * @param char *str
  */
-inline static char *trim(char *str)
+inline static __always_inline char *trim(char *str)
 {
 	return trim_len(str, strlen(str), NULL);
 }
@@ -111,9 +114,26 @@ inline static char *trim(char *str)
  * @param char *str
  * @return char *
  */
-inline static char *trim_cpy(char *str)
+inline static __always_inline char *trim_cpy(char *str)
 {
 	return trim_len_cpy(str, strlen(str), NULL);
 }
+
+/**
+ * @param char *str
+ * @return char *
+ */
+inline static __always_inline char *trunc_str(char *str, size_t n)
+{
+	size_t len = strnlen(str, n);
+
+	if (len < n)
+		return str;
+
+	str[n] = '\0';
+	return str;
+}
+
+char *escapeshellarg(char *alloc, const char *str, size_t len, size_t *res_len);
 
 #endif /* #ifndef __TEAVPN2__GLOBAL__HELPERS__STRING_H */
