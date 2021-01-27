@@ -93,6 +93,7 @@ inline static bool raise_up_interface(struct srv_iface_cfg *iface)
 			 strerror(errno));
 		return false;
 	}
+
 	/* Add CIDR to IPv4 */
 	sprintf(u_ipv4 + strlen(u_ipv4), "/%d", cidr);
 
@@ -111,11 +112,11 @@ inline static bool raise_up_interface(struct srv_iface_cfg *iface)
 	/* Convert network address from big endian integer to chars */
 	if (!inet_ntop(AF_INET, &b_ipv4_network, u_ipv4_network,
 		       sizeof(u_ipv4_network))) {
-
 		pr_error("inet_ntop(%x): u_ipv4_network: %s", b_ipv4_network,
 			 strerror(errno));
 		return false;
 	}
+
 	/* Add CIDR to network address */
 	sprintf(u_ipv4_network + strlen(u_ipv4_network), "/%d", cidr);
 
@@ -148,21 +149,20 @@ inline static bool raise_up_interface(struct srv_iface_cfg *iface)
 
 int init_iface_tcp_server(struct srv_tcp_state *state)
 {
+	int fd;
 	uint16_t i;
 	struct srv_cfg *cfg = state->cfg;
-	struct srv_iface_cfg *iface = &(cfg->iface);
 	uint16_t max_conn = cfg->sock.max_conn;
+	struct srv_iface_cfg *iface = &(cfg->iface);
 	struct tcp_client *clients = state->clients;
 
 	prl_notice(3, "Allocating virtual network interface...");
 
 	for (i = 0; i < max_conn; i++) {
-		int fd;
 
 		prl_notice(3, "Allocating TUN fd (seq:%u)...", i);
 
 		fd = tun_alloc(iface->dev, IFF_TUN | IFF_MULTI_QUEUE);
-
 		if (fd < 0) {
 			pr_error("Cannot allocate network interface: i = %u",
 				 i);
@@ -171,21 +171,26 @@ int init_iface_tcp_server(struct srv_tcp_state *state)
 
 		if (fd_set_nonblock(fd) < 0) {
 			pr_error("fd_set_nonblock(): %s", strerror(errno));
-			close(fd);
-			goto out_err;
+			goto out_close_fd_err;
 		}
 
 
 		if (tun_set_queue(fd, false) < 0) {
 			pr_error("Error tun_set_queue(): %s", strerror(errno));
-			close(fd);
-			goto out_err;
+			goto out_close_fd_err;
 		}
 
 		prl_notice(3, "TUN fd allocated successfully (fd:%d) (seq:%u)",
 			   fd, i);
 
+
 		clients[i].tun_fd = fd;
+
+		continue;
+
+	out_close_fd_err:
+		close(fd);
+		goto out_err;
 	}
 
 	if (!raise_up_interface(iface))

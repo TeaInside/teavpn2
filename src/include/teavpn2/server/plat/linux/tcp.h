@@ -18,7 +18,6 @@
 int teavpn_tcp_server(struct srv_cfg *cfg);
 
 struct tcp_client {
-	uint8_t		stop : 1;
 	uint8_t		is_used : 1;
 	uint8_t		is_connected : 1;
 	uint8_t		is_authorized : 1;
@@ -32,8 +31,12 @@ struct tcp_client {
 	pthread_mutex_t	ht_mutex; /* Main thread waits before exits */
 
 	char		username[255];
+	char		r_src_ip[IPV4LEN]; /* Human readable IP */
+	uint16_t	r_src_port; /* Human readable port */
 
 	struct sockaddr_in src_ip; /* Client source IP */
+
+	uint16_t	arr_pos;
 
 	uint16_t	err_c;	/* Error count */
 
@@ -51,6 +54,12 @@ struct tcp_client {
 	uint64_t	recv_c;	/* Recv count */
 };
 
+struct srv_client_stack {
+	uint16_t		sp;
+	uint16_t		max_sp;
+	uint16_t		*block;
+};
+
 struct srv_tcp_state {
 	bool			stop;
 	int			net_fd;	/* Main TCP socket fd */
@@ -60,8 +69,8 @@ struct srv_tcp_state {
 	struct pollfd 		*fds;
 
 	uint16_t		n_online; /* Number of active clients */
-	uint16_t		n_free_p; /* Index of unused client slot */
 	struct tcp_client	*clients; /* Client slot array */
+	struct srv_client_stack stack;
 };
 
 #endif /* #ifndef __TEAVPN2__SERVER__PLAT__LINUX__TCP_H */

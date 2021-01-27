@@ -1,10 +1,12 @@
 
 #include <poll.h>
+#include <assert.h>
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <arpa/inet.h>
 #include <netinet/tcp.h>
 
 #include <teavpn2/server/plat/linux/tcp.h>
@@ -13,23 +15,93 @@
 static struct srv_tcp_state *state_g = NULL;
 
 
+static int32_t push_client_stack(struct srv_client_stack *stack, uint16_t i)
+{
+	uint16_t sp = stack->sp;
+
+	assert(sp != 0);
+
+	stack->block[--sp] = i;
+	stack->sp = sp;
+
+	return (int32_t)i;
+}
+
+
+static int32_t pop_client_stack(struct srv_client_stack *stack)
+{
+	int32_t ret;
+	uint16_t sp = stack->sp;
+
+	/* sp must never be higher than max_sp */
+	assert(sp <= stack->max_sp);
+
+	if (sp == stack->max_sp)
+		return -1;
+
+	ret = (int32_t)stack->block[sp];
+	stack->sp = ++sp;
+	return ret;
+}
+
+
 static void intr_handler(int sig)
 {
 	struct srv_tcp_state *state = state_g;
 
 	state->stop = true;
-
 	putchar(10);
 	(void)sig;
+}
+
+
+static int client_init(struct tcp_client *client)
+{
+	int tmp;
+
+	client->is_used = false;
+	client->is_connected = false;
+	client->is_authorized = false;
+	client->tun_fd = -1;
+	client->cli_fd = -1;
+
+	if (client->ht_mutex_active)
+		pthread_mutex_destroy(&(client->ht_mutex));
+
+	/* See: http://git.savannah.gnu.org/cgit/hurd/libpthread.git/tree/sysdeps/generic/pt-mutex-init.c */
+	tmp = pthread_mutex_init(&(client->ht_mutex), NULL);
+	if (tmp != 0) {
+		int tmp_err;
+		tmp_err = tmp > 0 ? tmp : -tmp;
+		pr_error("pthread_mutex_init: %s", strerror(tmp_err));
+		return -tmp_err;
+	}
+
+	client->ht_mutex_active = true;
+
+	memset(&client->username, 0, sizeof(client->username));
+	memset(&client->src_ip, 0, sizeof(client->src_ip));
+	memset(&client->send_buf, 0, sizeof(client->send_buf));
+	memset(&client->recv_buf, 0, sizeof(client->recv_buf));
+
+	client->err_c = 0;
+	client->send_s = 0;
+	client->send_c = 0;
+	client->recv_s = 0;
+	client->recv_c = 0;
+
+	return 0;
 }
 
 
 static int init_tcp_state(struct srv_tcp_state *state)
 {
 	int retval = 0;
-	struct srv_cfg *cfg = state->cfg;
+	uint16_t *stack_block;
 	struct tcp_client *clients;
+	struct srv_cfg *cfg = state->cfg;
 	uint16_t max_conn = cfg->sock.max_conn;
+	uint16_t tmp_dec = max_conn;
 
 	clients = calloc(max_conn, sizeof(*clients));
 	if (clients == NULL) {
@@ -38,26 +110,26 @@ static int init_tcp_state(struct srv_tcp_state *state)
 	}
 
 	for (uint16_t i = 0; i < max_conn; i++) {
-		int tmp;
-
-		clients[i].tun_fd = -1;
-		clients[i].cli_fd = -1;
-
-		/* See: http://git.savannah.gnu.org/cgit/hurd/libpthread.git/tree/sysdeps/generic/pt-mutex-init.c */
-		tmp = pthread_mutex_init(&(clients[i].ht_mutex), NULL);
-		if (tmp != 0) {
-			int tmp_err;
-			tmp_err = tmp > 0 ? tmp : -tmp;
-			retval  = -tmp_err;
-			pr_error("pthread_mutex_init: %s", strerror(tmp_err));
+		retval = client_init(&clients[i]);
+		if (retval != 0)
 			goto out_err;
-		}
-		clients[i].ht_mutex_active = true;
 	}
+
+	stack_block = calloc(max_conn, sizeof(*stack_block));
+	if (stack_block == NULL) {
+		pr_error("calloc: %s", strerror(errno));
+		return -ENOMEM;
+	}
+
+	state->stack.sp = max_conn;
+	state->stack.max_sp = max_conn;
+	state->stack.block = stack_block;
+
+	while (tmp_dec--)
+		push_client_stack(&state->stack, tmp_dec);
 
 	state->stop = false;
 	state->n_online = 0;
-	state->n_free_p = 0;
 	state->clients = clients;
 
 	return retval;
@@ -80,10 +152,10 @@ inline static void client_close_fd(struct tcp_client *client, uint16_t i)
 
 	fd = client->cli_fd;
 	if (fd != -1) {
-		pthread_mutex_lock(&(client->ht_mutex));
+		pthread_mutex_lock(&client->ht_mutex);
 		prl_notice(3, "Closing clients[%d].cli_fd (%d)...", i, fd);
 		close(fd);
-		pthread_mutex_unlock(&(client->ht_mutex));
+		pthread_mutex_unlock(&client->ht_mutex);
 	}
 }
 
@@ -91,20 +163,21 @@ inline static void client_close_fd(struct tcp_client *client, uint16_t i)
 static void destroy_tcp_state(struct srv_tcp_state *state)
 {
 	struct srv_cfg *cfg = state->cfg;
-	struct tcp_client *clients = state->clients;
 	uint16_t max_conn = cfg->sock.max_conn;
+	struct tcp_client *clients = state->clients;
 
 	for (uint16_t i = 0; i < max_conn; i++) {
 		client_close_fd(&clients[i], i);
 
 		if (clients[i].ht_mutex_active) {
-			pthread_mutex_destroy(&(clients[i].ht_mutex));
+			pthread_mutex_destroy(&clients[i].ht_mutex);
 			clients[i].ht_mutex_active = false;
 		}
 	}
 
 
 	free(clients);
+	free(state->stack.block);
 
 	if (state->net_fd != -1) {
 		prl_notice(3, "Closing socket fd (%d)...", state->net_fd);
@@ -119,6 +192,7 @@ static int setup_socket_tcp_server(int fd)
 	int y = 1;
 	socklen_t len = sizeof(y);
 
+
 	rv = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (void *)&y, len);
 	if (rv < 0)
 		goto out_err;
@@ -127,6 +201,7 @@ static int setup_socket_tcp_server(int fd)
 	rv = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (void *)&y, len);
 	if (rv < 0)
 		goto out_err;
+
 
 	return 0;
 
@@ -142,15 +217,17 @@ static int init_socket_tcp_server(struct srv_tcp_state *state)
 	int retval = 0;
 	struct sockaddr_in srv_addr;
 	struct srv_sock_cfg *sock_cfg = &(state->cfg->sock);
+
 	const char *bind_addr = sock_cfg->bind_addr;
 	uint16_t bind_port = sock_cfg->bind_port;
+
 
 	prl_notice(2, "Creating TCP socket...");
 	fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
 	if (fd < 0) {
 		int tmp = errno;
-		pr_error("socket(): %s", strerror(tmp));
 		retval = -tmp;
+		pr_error("socket(): %s", strerror(tmp));
 		goto out_err;
 	}
 
@@ -159,6 +236,7 @@ static int init_socket_tcp_server(struct srv_tcp_state *state)
 	retval = setup_socket_tcp_server(fd);
 	if (retval < 0)
 		goto out_err;
+
 
 	memset(&srv_addr, 0, sizeof(struct sockaddr_in));
 	srv_addr.sin_family = AF_INET;
@@ -169,8 +247,8 @@ static int init_socket_tcp_server(struct srv_tcp_state *state)
 	retval = bind(fd, (struct sockaddr *)&srv_addr, sizeof(srv_addr));
 	if (retval < 0) {
 		int tmp = errno;
-		pr_error("bind(): %s", strerror(tmp));
 		retval = -tmp;
+		pr_error("bind(): %s", strerror(tmp));
 		goto out_err;
 	}
 
@@ -178,16 +256,14 @@ static int init_socket_tcp_server(struct srv_tcp_state *state)
 	retval = listen(fd, sock_cfg->backlog);
 	if (retval < 0) {
 		int tmp = errno;
-		pr_error("listen(): %s", strerror(tmp));
 		retval = -tmp;
+		pr_error("listen(): %s", strerror(tmp));
 		goto out_err;
 	}
 
 
-	prl_notice(0, "Listening on %s:%d...", bind_addr, bind_port);
-
-
 	state->net_fd = fd;
+	prl_notice(0, "Listening on %s:%d...", bind_addr, bind_port);
 
 	return retval;
 
@@ -204,8 +280,13 @@ out_err:
 static void tcp_accept_event(struct srv_tcp_state *state)
 {
 	int rv;
-	struct sockaddr_in cli_addr;
+	int32_t n_index;
 	int net_fd = state->net_fd;
+	struct sockaddr_in cli_addr;
+	char r_src_ip[IPV4LEN];
+	uint16_t r_src_port;
+	struct tcp_client *client;
+	struct pollfd *clfds;
 	socklen_t addrlen = sizeof(cli_addr);
 
 	memset(&cli_addr, 0, sizeof(cli_addr));
@@ -213,28 +294,64 @@ static void tcp_accept_event(struct srv_tcp_state *state)
 	rv = accept(net_fd, &cli_addr, &addrlen);
 	if (unlikely(rv < 0)) {
 		int tmp = errno;
-
 		if (tmp == EAGAIN)
 			return;
-
 		pr_error("accept(): %s", strerror(tmp));
 		return;
 	}
 
+
+	if (inet_ntop(AF_INET, &cli_addr.sin_addr, r_src_ip, IPV4LEN) == NULL) {
+		pr_error("tcp_accept_event: inet_ntop(%lx): %s",
+			 cli_addr.sin_addr.s_addr, strerror(errno));
+		goto out_close;
+	}
+
+	r_src_port = ntohs(cli_addr.sin_port);
+
+
+	n_index = pop_client_stack(&state->stack);
+	if (n_index == -1) {
+		prl_notice(1, "Client slot is full, dropping connection from "
+			   "%s:%d...", r_src_ip, r_src_port);
+		goto out_close;
+	}
+
+	clfds = &state->fds[1];
+	client = &state->clients[n_index];
+
+	client->is_used = true;
+	client->is_connected = true;
+	client->cli_fd = rv;
+
+	prl_notice(3, "n_index = %d", n_index);
+	clfds[n_index].fd = rv;
+	clfds[n_index].events = POLLIN;
+	state->nfds++;
+
 	/* TODO: Handle client accept */
+
+
+
+	return;
+
+out_close:
+	close(rv);
 }
 
 
 __attribute__((noinline))
 static int handle_tcp_event_loop(struct srv_tcp_state *state)
 {
-	int retval = 0;
+	int retval;
 	int timeout;
 	struct pollfd *fds = NULL;
 	struct pollfd *clfds = NULL; /* fds slot for client */
 	struct srv_cfg *cfg = state->cfg;
 	uint16_t max_conn = cfg->sock.max_conn;
 
+
+	retval = 0;
 
 	fds = calloc(max_conn + 1, sizeof(*fds));
 	if (fds == NULL) {
@@ -255,6 +372,10 @@ static int handle_tcp_event_loop(struct srv_tcp_state *state)
 
 	while (true) {
 		int rv;
+
+		prl_notice(3, "fds = %p, nfds = %d, timeout = %d",
+			   fds, state->nfds, timeout);
+
 		rv = poll(fds, state->nfds, timeout);
 
 		if (unlikely(rv == 0)) {
@@ -265,14 +386,14 @@ static int handle_tcp_event_loop(struct srv_tcp_state *state)
 		if (unlikely(rv < 0)) {
 			int tmp = errno;
 
-			if ((tmp == EINTR) && state->stop) {
+			if (tmp == EINTR && state->stop) {
 				retval = 0;
 				prl_notice(0, "Interrupted, closing...");
 				goto out;
 			}
 
-			pr_error("poll(): %s", strerror(tmp));
 			retval = -tmp;
+			pr_error("poll(): %s", strerror(tmp));
 			goto out;
 		}
 
@@ -285,6 +406,26 @@ static int handle_tcp_event_loop(struct srv_tcp_state *state)
 
 		/* TODO: Handle client event loop */
 		(void)clfds;
+
+		for (uint16_t i = 0; i < max_conn; i++) {
+			if (likely((fds[i].revents & POLLIN) != 0)) {
+				char buf[1024];
+				ssize_t nrecv;
+				nrecv = recv(fds[i].fd, buf, sizeof(buf), 0);
+				if (nrecv == 0) {
+					push_client_stack(&state->stack, i);
+					fds[i].fd = -1;
+					fds[i].events = 0;
+				}
+
+			}
+		}
+
+		prl_notice(3, "poll gt");
+
+
+		if (state->stop)
+			break;
 	}
 
 
@@ -303,11 +444,11 @@ int teavpn_tcp_server(struct srv_cfg *cfg)
 	memset(&state, 0, sizeof(state));
 
 	state.cfg = cfg;
-
 	state_g = &state; /* For interrupt signal */
 
 	signal(SIGINT, intr_handler);
 	signal(SIGHUP, intr_handler);
+	signal(SIGQUIT, intr_handler);
 	signal(SIGTERM, intr_handler);
 
 	retval = init_tcp_state(&state);
