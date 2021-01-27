@@ -1,12 +1,10 @@
-TeaVPN2
----------
+# TeaVPN2
 
 TeaVPN2 is an open source VPN software written in C/C++.
+------------------
 
 
-Build
----------
-
+# Build
 ```
 git clone https://github.com/TeaInside/teavpn2
 cd teavpn2
@@ -14,23 +12,19 @@ make RELEASE_MODE=1 -j$(nproc)
 ```
 
 
-Issues (Bugs, features, questions)
-----------------------------------
+# Issues (Bugs, features, questions)
+
 
 We welcome bug reports, feature requests and questions through GitHub
 repository.
+----------------------------------
 
-
-Community
----------
-
+# Community
 Telegram group https://t.me/TeaInside
 
 
-License
----------
-
+# License
 This software is licensed under the GNU GPL-v3 license.
-
+----------------------------------
 
 Tea Inside (2021)
