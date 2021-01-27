@@ -44,8 +44,9 @@ VGFLAGS		:= \
 	--leak-check=full \
 	--show-leak-kinds=all \
 	--track-origins=yes \
-	--track-fds=yes -s
-
+	--track-fds=yes \
+	--error-exitcode=99 \
+	--exit-on-first-error=yes -s
 
 ifndef DEFAULT_OPTIMIZATION
 	DEFAULT_OPTIMIZATION = -O0
