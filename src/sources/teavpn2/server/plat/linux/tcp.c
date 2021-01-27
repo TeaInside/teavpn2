@@ -322,16 +322,24 @@ static void tcp_accept_event(struct srv_tcp_state *state)
 
 	client->is_used = true;
 	client->is_connected = true;
-	client->cli_fd = rv;
+	client->is_authorized = false;
 
-	prl_notice(3, "n_index = %d", n_index);
+	client->cli_fd = rv;
+	client->ev_state = EV_FIRST_CONNECT;
+
+	client->src_ip = cli_addr;
+
+	/* Save human readable IP and port */
+	strncpy(client->r_src_ip, r_src_ip, sizeof(client->r_src_ip));
+	client->r_src_port = r_src_port;
+
+	/* Set fds for poll */
 	clfds[n_index].fd = rv;
 	clfds[n_index].events = POLLIN;
-	state->nfds++;
 
-	/* TODO: Handle client accept */
-
-
+	/* +1 since nfds also contains main TCP socket fd */
+	if (state->nfds < (state->cfg->sock.max_conn + 1u))
+		state->nfds++;
 
 	return;
 
@@ -340,7 +348,68 @@ out_close:
 }
 
 
-__attribute__((noinline))
+static void handle_ev_first_connect(struct srv_tcp_state *state,
+				    struct tcp_client *client)
+{
+	(void)state;
+	(void)client;
+}
+
+
+static void handle_ev_authorization(struct srv_tcp_state *state,
+				    struct tcp_client *client)
+{
+	(void)state;
+	(void)client;
+}
+
+
+static void handle_ev_established(struct srv_tcp_state *state,
+				  struct tcp_client *client)
+{
+	(void)state;
+	(void)client;
+}
+
+
+static void handle_ev_disconnected(struct srv_tcp_state *state,
+				   struct tcp_client *client)
+{
+	(void)state;
+	(void)client;
+}
+
+
+static void handle_client_event(struct srv_tcp_state *state, uint16_t idx)
+{
+	struct tcp_client *client = &state->clients[idx];
+
+	switch (client->ev_state) {
+	case EV_FIRST_CONNECT:
+		handle_ev_first_connect(state, client);
+		break;
+
+	case EV_AUTHORIZATION:
+		handle_ev_authorization(state, client);
+		break;
+
+	case EV_ESTABLISHED:
+		handle_ev_established(state, client);
+		break;
+
+	case EV_DISCONNECTED:
+		handle_ev_disconnected(state, client);
+		break;
+
+	default:
+		pr_error("Invalid state on handle_client_event: state = %d",
+			 client->ev_state);
+		abort();
+		break;
+	}
+}
+
+
 static int handle_tcp_event_loop(struct srv_tcp_state *state)
 {
 	int retval;
@@ -373,15 +442,19 @@ static int handle_tcp_event_loop(struct srv_tcp_state *state)
 	while (true) {
 		int rv;
 
-		prl_notice(3, "fds = %p, nfds = %d, timeout = %d",
-			   fds, state->nfds, timeout);
-
 		rv = poll(fds, state->nfds, timeout);
 
 		if (unlikely(rv == 0)) {
-			/* Timeout */
-			continue;
+
+			/* Poll reached timeout. */
+
+			/*
+			 * TODO: Rearrange fds and state->clients.
+			 * (Deal with dead descriptors)
+			 */
+			goto end_of_loop;
 		}
+
 
 		if (unlikely(rv < 0)) {
 			int tmp = errno;
@@ -404,26 +477,13 @@ static int handle_tcp_event_loop(struct srv_tcp_state *state)
 		}
 
 
-		/* TODO: Handle client event loop */
-		(void)clfds;
-
-		for (uint16_t i = 0; i < max_conn; i++) {
-			if (likely((fds[i].revents & POLLIN) != 0)) {
-				char buf[1024];
-				ssize_t nrecv;
-				nrecv = recv(fds[i].fd, buf, sizeof(buf), 0);
-				if (nrecv == 0) {
-					push_client_stack(&state->stack, i);
-					fds[i].fd = -1;
-					fds[i].events = 0;
-				}
-
-			}
+		for (uint16_t i = 0; likely((rv > 0) && (i < max_conn)); i++) {
+			if (likely((clfds[i].revents & POLLIN) != 0))
+				handle_client_event(state, i);
 		}
 
-		prl_notice(3, "poll gt");
 
-
+	end_of_loop:
 		if (state->stop)
 			break;
 	}
@@ -450,6 +510,7 @@ int teavpn_tcp_server(struct srv_cfg *cfg)
 	signal(SIGHUP, intr_handler);
 	signal(SIGQUIT, intr_handler);
 	signal(SIGTERM, intr_handler);
+
 
 	retval = init_tcp_state(&state);
 	if (unlikely(retval != 0))

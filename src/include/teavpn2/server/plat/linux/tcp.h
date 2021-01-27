@@ -12,10 +12,17 @@
 #include <linux/types.h>
 #include <teavpn2/server/common.h>
 
-#define RECVBUFSIZ (1024ul * 7ul)
-#define SENDBUFSIZ (1024ul * 7ul)
+#define RECVBUFSIZ (1024ul * 5ul)
+#define SENDBUFSIZ (1024ul * 5ul)
 
 int teavpn_tcp_server(struct srv_cfg *cfg);
+
+typedef enum {
+	EV_FIRST_CONNECT = 0, /* Wait for client to send first connect signal */
+	EV_AUTHORIZATION = 1, /* Wait for client to send auth data */
+	EV_ESTABLISHED   = 2, /* Data transfer is ready */
+	EV_DISCONNECTED  = 3  /* Client has been disconnected */
+} tcp_ev_state;
 
 struct tcp_client {
 	uint8_t		is_used : 1;
@@ -30,15 +37,13 @@ struct tcp_client {
 	pthread_t	thread; /* Thread that handles the client */
 	pthread_mutex_t	ht_mutex; /* Main thread waits before exits */
 
-	char		username[255];
-	char		r_src_ip[IPV4LEN]; /* Human readable IP */
-	uint16_t	r_src_port; /* Human readable port */
-
 	struct sockaddr_in src_ip; /* Client source IP */
 
-	uint16_t	arr_pos;
+	uint16_t	arr_pos; /* Index of array slot in TCP state */
 
 	uint16_t	err_c;	/* Error count */
+
+	tcp_ev_state	ev_state; /* Event state */
 
 	union {
 		char send_buf[SENDBUFSIZ];
@@ -52,6 +57,11 @@ struct tcp_client {
 	};
 	uint64_t	recv_s; /* Valid bytes in recv_buf */
 	uint64_t	recv_c;	/* Recv count */
+
+
+	char		username[255];
+	char		r_src_ip[IPV4LEN]; /* Human readable IP */
+	uint16_t	r_src_port; /* Human readable port */
 };
 
 struct srv_client_stack {
