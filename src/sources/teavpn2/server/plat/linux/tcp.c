@@ -79,10 +79,10 @@ static int client_init(struct tcp_client *client)
 
 	client->ht_mutex_active = true;
 
-	memset(&client->username, 0, sizeof(client->username));
-	memset(&client->src_ip, 0, sizeof(client->src_ip));
-	memset(&client->send_buf, 0, sizeof(client->send_buf));
-	memset(&client->recv_buf, 0, sizeof(client->recv_buf));
+	memset(client->username, 0, sizeof(client->username));
+	memset(client->src_ip, 0, sizeof(client->src_ip));
+	memset(client->send_buf, 0, sizeof(client->send_buf));
+	memset(client->recv_buf, 0, sizeof(client->recv_buf));
 
 	client->err_c = 0;
 	client->send_s = 0;
@@ -118,7 +118,8 @@ static int init_tcp_state(struct srv_tcp_state *state)
 	stack_block = calloc(max_conn, sizeof(*stack_block));
 	if (stack_block == NULL) {
 		pr_error("calloc: %s", strerror(errno));
-		return -ENOMEM;
+		retval = -ENOMEM;
+		goto out_err;
 	}
 
 	state->stack.sp = max_conn;
