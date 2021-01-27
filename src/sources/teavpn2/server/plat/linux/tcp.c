@@ -80,7 +80,7 @@ static int client_init(struct tcp_client *client, uint16_t idx)
 	client->ht_mutex_active = true;
 
 	memset(client->username, 0, sizeof(client->username));
-	memset(client->src_ip, 0, sizeof(client->src_ip));
+	memset(&client->src_ip, 0, sizeof(client->src_ip));
 	memset(client->send_buf, 0, sizeof(client->send_buf));
 	memset(client->recv_buf, 0, sizeof(client->recv_buf));
 
@@ -236,7 +236,7 @@ static int init_socket_tcp_server(struct srv_tcp_state *state)
 
 	prl_notice(2, "Setting up socket file descriptor...");
 	retval = setup_socket_tcp_server(fd);
-	if (unlikeky(retval < 0))
+	if (unlikely(retval < 0))
 		goto out_err;
 
 
@@ -282,8 +282,8 @@ out_err:
 static void tcp_accept_event(struct srv_tcp_state *state)
 {
 	int rv;
-	char *tmp;
 	int32_t n_index;
+	const char *chr_tmp;
 	int net_fd = state->net_fd;
 	struct sockaddr_in cli_addr;
 	char r_src_ip[IPV4LEN];
@@ -304,8 +304,8 @@ static void tcp_accept_event(struct srv_tcp_state *state)
 	}
 
 
-	tmp = inet_ntop(AF_INET, &cli_addr.sin_addr, r_src_ip, IPV4LEN);
-	if (unlikely(tmp == NULL)) {
+	chr_tmp = inet_ntop(AF_INET, &cli_addr.sin_addr, r_src_ip, IPV4LEN);
+	if (unlikely(chr_tmp == NULL)) {
 		pr_error("tcp_accept_event: inet_ntop(%lx): %s",
 			 cli_addr.sin_addr.s_addr, strerror(errno));
 		goto out_close;
