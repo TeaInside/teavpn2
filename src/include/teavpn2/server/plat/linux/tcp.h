@@ -12,8 +12,8 @@
 #include <linux/types.h>
 #include <teavpn2/server/common.h>
 
-#define RECVBUFSIZ (1024ul * 5ul)
-#define SENDBUFSIZ (1024ul * 5ul)
+#define RECVBUFSIZ ((1024ul * 4ul) + 512ul)
+#define SENDBUFSIZ ((1024ul * 4ul) + 512ul)
 
 int teavpn_tcp_server(struct srv_cfg *cfg);
 
@@ -39,7 +39,7 @@ struct tcp_client {
 
 	struct sockaddr_in src_ip; /* Client source IP */
 
-	uint16_t	arr_pos; /* Index of array slot in TCP state */
+	uint16_t	arr_idx; /* Index of element in array slot (tcp state)*/
 
 	uint16_t	err_c;	/* Error count */
 

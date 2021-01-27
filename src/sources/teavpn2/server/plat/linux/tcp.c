@@ -55,7 +55,7 @@ static void intr_handler(int sig)
 }
 
 
-static int client_init(struct tcp_client *client)
+static int client_init(struct tcp_client *client, uint16_t idx)
 {
 	int tmp;
 
@@ -84,6 +84,7 @@ static int client_init(struct tcp_client *client)
 	memset(client->send_buf, 0, sizeof(client->send_buf));
 	memset(client->recv_buf, 0, sizeof(client->recv_buf));
 
+	client->arr_idx = idx;
 	client->err_c = 0;
 	client->send_s = 0;
 	client->send_c = 0;
@@ -110,7 +111,7 @@ static int init_tcp_state(struct srv_tcp_state *state)
 	}
 
 	for (uint16_t i = 0; i < max_conn; i++) {
-		retval = client_init(&clients[i]);
+		retval = client_init(&clients[i], i);
 		if (retval != 0)
 			goto out_err;
 	}
@@ -195,12 +196,12 @@ static int setup_socket_tcp_server(int fd)
 
 
 	rv = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (void *)&y, len);
-	if (rv < 0)
+	if (unlikely(rv < 0))
 		goto out_err;
 
 
 	rv = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (void *)&y, len);
-	if (rv < 0)
+	if (unlikely(rv < 0))
 		goto out_err;
 
 
@@ -225,7 +226,7 @@ static int init_socket_tcp_server(struct srv_tcp_state *state)
 
 	prl_notice(2, "Creating TCP socket...");
 	fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
-	if (fd < 0) {
+	if (unlikely(fd < 0)) {
 		int tmp = errno;
 		retval = -tmp;
 		pr_error("socket(): %s", strerror(tmp));
@@ -235,7 +236,7 @@ static int init_socket_tcp_server(struct srv_tcp_state *state)
 
 	prl_notice(2, "Setting up socket file descriptor...");
 	retval = setup_socket_tcp_server(fd);
-	if (retval < 0)
+	if (unlikeky(retval < 0))
 		goto out_err;
 
 
@@ -246,7 +247,7 @@ static int init_socket_tcp_server(struct srv_tcp_state *state)
 
 
 	retval = bind(fd, (struct sockaddr *)&srv_addr, sizeof(srv_addr));
-	if (retval < 0) {
+	if (unlikely(retval < 0)) {
 		int tmp = errno;
 		retval = -tmp;
 		pr_error("bind(): %s", strerror(tmp));
@@ -255,7 +256,7 @@ static int init_socket_tcp_server(struct srv_tcp_state *state)
 
 
 	retval = listen(fd, sock_cfg->backlog);
-	if (retval < 0) {
+	if (unlikely(retval < 0)) {
 		int tmp = errno;
 		retval = -tmp;
 		pr_error("listen(): %s", strerror(tmp));
@@ -269,7 +270,7 @@ static int init_socket_tcp_server(struct srv_tcp_state *state)
 	return retval;
 
 out_err:
-	if (fd > 0) {
+	if (likely(fd > 0)) {
 		prl_notice(3, "Closing socket descriptor (%d)...", fd);
 		close(fd);
 	}
@@ -281,6 +282,7 @@ out_err:
 static void tcp_accept_event(struct srv_tcp_state *state)
 {
 	int rv;
+	char *tmp;
 	int32_t n_index;
 	int net_fd = state->net_fd;
 	struct sockaddr_in cli_addr;
@@ -302,7 +304,8 @@ static void tcp_accept_event(struct srv_tcp_state *state)
 	}
 
 
-	if (inet_ntop(AF_INET, &cli_addr.sin_addr, r_src_ip, IPV4LEN) == NULL) {
+	tmp = inet_ntop(AF_INET, &cli_addr.sin_addr, r_src_ip, IPV4LEN);
+	if (unlikely(tmp == NULL)) {
 		pr_error("tcp_accept_event: inet_ntop(%lx): %s",
 			 cli_addr.sin_addr.s_addr, strerror(errno));
 		goto out_close;
@@ -312,7 +315,7 @@ static void tcp_accept_event(struct srv_tcp_state *state)
 
 
 	n_index = pop_client_stack(&state->stack);
-	if (n_index == -1) {
+	if (unlikely(n_index == -1)) {
 		prl_notice(1, "Client slot is full, dropping connection from "
 			   "%s:%d...", r_src_ip, r_src_port);
 		goto out_close;
@@ -424,7 +427,7 @@ static int handle_tcp_event_loop(struct srv_tcp_state *state)
 	retval = 0;
 
 	fds = calloc(max_conn + 1, sizeof(*fds));
-	if (fds == NULL) {
+	if (unlikely(fds == NULL)) {
 		pr_error("calloc(): %s", strerror(errno));
 		return -ENOMEM;
 	}
@@ -485,7 +488,7 @@ static int handle_tcp_event_loop(struct srv_tcp_state *state)
 
 
 	end_of_loop:
-		if (state->stop)
+		if (unlikely(state->stop))
 			break;
 	}
 
