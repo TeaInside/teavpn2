@@ -1,23 +1,14 @@
 
-#ifndef TEAVPN2__GLOBAL__COMMON_H
-#define TEAVPN2__GLOBAL__COMMON_H
 
-#include <stddef.h>
+#ifndef __TEAVPN2__GLOBAL__COMMON_H
+#define __TEAVPN2__GLOBAL__COMMON_H
+
+#include <errno.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 
-#include <stdio.h>
-
-#if defined(__linux__)
-#  include <arpa/inet.h>
-#  include <linux/types.h>
-#else
-
-typedef uint64_t __be64;
-typedef uint32_t __be32;
-typedef uint16_t __be16;
-
-#endif
+#include <teavpn2/global/helpers/debug.h>
 
 #define likely(EXPR)   __builtin_expect((EXPR), 1)
 #define unlikely(EXPR) __builtin_expect((EXPR), 0)
@@ -28,36 +19,33 @@ typedef uint16_t __be16;
 #endif
 
 #ifndef INET_ADDRSTRLEN
-#  define IPV4L (sizeof("xxx.xxx.xxx.xxx"))
+#  define IPV4LEN (sizeof("xxx.xxx.xxx.xxx"))
 #else
-#  define IPV4L (INET_ADDRSTRLEN)
+#  define IPV4LEN (INET_ADDRSTRLEN)
 #endif
 
 #ifndef INET6_ADDRSTRLEN
-#  define IPV6L (sizeof("xxxx:xxxx:xxxx:xxxx:xxxx:xxxx:xxx.xxx.xxx.xxx"))
+#  define IPV6LEN (sizeof("xxxx:xxxx:xxxx:xxxx:xxxx:xxxx:xxx.xxx.xxx.xxx"))
 #else
-#  define IPV6L (INET6_ADDRSTRLEN)
+#  define IPV6LEN (INET6_ADDRSTRLEN)
 #endif
 
-#define err_printf(FMT, ...) printf(FMT "\n", ##__VA_ARGS__)
-#define dbg_printf(TYPE, FMT, ...) printf(FMT "\n", ##__VA_ARGS__)
-#define log_printf(VERBOSE_LVL, FMT, ...) printf(FMT "\n", ##__VA_ARGS__)
-#define err_cfg_pr(FMT, ...)                             \
-do {                                                     \
-  err_printf("%s" FMT, "Config error: ", ##__VA_ARGS__); \
-} while (0)
+#ifndef __inline
+#define __inline inline
+#endif
+
+#ifndef __always_inline
+#define __always_inline __inline __attribute__((always_inline))
+#endif
+
+#ifndef __no_inline
+#define __no_inline __attribute__((noinline))
+#endif
 
 
-typedef enum __attribute__((packed))
-{
-  SOCK_TCP = 1,
-  SOCK_UDP = 2
+typedef enum {
+	SOCK_TCP = 1,
+	SOCK_UDP = 2
 } sock_type;
 
-
-STATIC_ASSERT(sizeof(int)       == 4, "sizeof(int) must be 4");
-STATIC_ASSERT(sizeof(char)      == 1, "sizeof(char) must be 1");
-STATIC_ASSERT(sizeof(short)     == 2, "sizeof(short) must be 2");
-STATIC_ASSERT(sizeof(sock_type) == 1, "sizeof(sock_type) must be 1");
-
-#endif /* #ifndef TEAVPN2__GLOBAL__COMMON_H */
+#endif /* #ifndef __TEAVPN2__GLOBAL__COMMON_H */

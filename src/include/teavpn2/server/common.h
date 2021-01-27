@@ -1,23 +1,39 @@
 
-#ifndef TEAVPN2__SERVER__COMMON_H
-#define TEAVPN2__SERVER__COMMON_H
+
+#ifndef __TEAVPN2__SERVER__COMMON_H
+#define __TEAVPN2__SERVER__COMMON_H
 
 #include <teavpn2/global/common.h>
 
-#define DO_INCLUDE_CONFIG_H
-#include <teavpn2/server/config.h>
-#undef DO_INCLUDE_CONFIG_H
+#define TEAVPN_SERVER_VERSION "0.2.0"
 
-int
-tsrv_start(int argc, char *argv[]);
+struct srv_iface_cfg {
+	uint16_t	mtu;			/* Virtual interface MTU     */
+	char		*dev;			/* Virtual interface name    */
+	char		*ipv4;			/* IPv4 to be used by server */
+	char		*ipv4_netmask;		/* IPv4 netmask              */
 
-bool
-tsrv_argv_parser(int argc, char *argv[], srv_cfg *cfg);
+#ifdef TEAVPN_IPV6_SUPPORT
+	char		*ipv6;			/* IPv6 to be used by server */
+	char		*ipv4_netmask;		/* IPv6 netmask              */
+#endif
+};
 
-bool
-tsrv_cfg_load(const char *cfg_file, srv_cfg *cfg);
 
-int
-tsrv_run(srv_cfg *cfg);
+struct srv_sock_cfg {
+	sock_type	type;		/* Socket type (TCP/UDP) */
+	char		*bind_addr;	/* Bind address          */
+	uint16_t	bind_port;	/* Bind port             */
+	uint16_t	max_conn;	/* Max connections       */
+	int		backlog;	/* Socket backlog        */
+};
 
-#endif /* #ifndef TEAVPN2__SERVER__COMMON_H */
+
+struct srv_cfg {
+	char			*cfg_file;  /* Config file     */
+	char			*data_dir;  /* Data directory  */
+	struct srv_iface_cfg	iface;
+	struct srv_sock_cfg 	sock;
+};
+
+#endif /* #ifndef __TEAVPN2__SERVER__COMMON_H */
