@@ -11,6 +11,7 @@ VG	:= valgrind
 
 BASE_DIR := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
 BASE_DIR := $(strip $(patsubst %/, %, $(BASE_DIR)))
+MAKEFILE_FILE := $(lastword $(MAKEFILE_LIST))
 
 DEP_DIR := $(BASE_DIR)/.deps
 SRC_DIR := $(BASE_DIR)/src
@@ -173,6 +174,8 @@ $(GLOBAL_OBJ_CXX): $(GLOBAL_SRC_CXX) | $(GLOBAL_DEP_DIRS)
 
 clean_global:
 	rm -vf $(GLOBAL_OBJ)
+
+-include  $(GLOBAL_OBJ:$(BASE_DIR)/%.o=$(DEP_DIR)/%.d)
 # ================================================================
 
 
@@ -201,6 +204,8 @@ $(SERVER_OBJ_CXX): $(SERVER_SRC_CXX) | $(SERVER_DEP_DIRS)
 
 clean_server:
 	rm -vf $(SERVER_OBJ)
+
+-include  $(SERVER_OBJ:$(BASE_DIR)/%.o=$(DEP_DIR)/%.d)
 # ================================================================
 
 
@@ -229,12 +234,18 @@ $(CLIENT_OBJ_CXX): $(CLIENT_SRC_CXX) | $(CLIENT_DEP_DIRS)
 
 clean_client:
 	rm -vf $(CLIENT_OBJ)
+
+-include  $(CLIENT_OBJ:$(BASE_DIR)/%.o=$(DEP_DIR)/%.d)
 # ================================================================
 
 
 
 # Link the binary
 # ================================================================
+
+# All object must depend on Makefile change
+$(MAIN_OBJ) $(GLOBAL_OBJ) $(SERVER_OBJ) $(CLIENT_OBJ): $(MAKEFILE_FILE)
+
 $(TARGET_BIN): $(MAIN_OBJ) $(GLOBAL_OBJ) $(SERVER_OBJ) $(CLIENT_OBJ)
 	@echo "   LD		" "$(@)"
 	@$(LD) $(LDFLAGS) "$(MAIN_OBJ)" \

@@ -12,6 +12,10 @@
 #include <teavpn2/server/plat/linux/tcp.h>
 #include <teavpn2/server/plat/linux/iface.h>
 
+
+#define MAX_ERR_COUNT (15u)
+
+
 static struct srv_tcp_state *state_g = NULL;
 
 
@@ -130,6 +134,7 @@ static int init_tcp_state(struct srv_tcp_state *state)
 	while (tmp_dec--)
 		push_client_stack(&state->stack, tmp_dec);
 
+	state->net_fd = -1;
 	state->stop = false;
 	state->n_online = 0;
 	state->clients = clients;
@@ -388,6 +393,84 @@ static void handle_client_event(struct srv_tcp_state *state, uint16_t idx)
 {
 	struct tcp_client *client = &state->clients[idx];
 
+	ssize_t nread;
+	int cli_fd = client->cli_fd;
+	char *buf = client->recv_buf;
+	uint16_t recv_s = client->recv_s;
+	uint16_t host_cli_len;
+
+
+	nread = recv(cli_fd, buf + recv_s, RECVBUFSIZ, MSG_DONTWAIT);
+	if (likely(nread > 0))
+		goto recv_ok;
+
+
+	if (unlikely(nread < 0)) {
+		if (errno == EAGAIN)
+			return;
+
+		pr_error("recv() from (%s:%d): %s", client->r_src_ip,
+			 client->r_src_port, strerror(errno));
+
+		if (++client->err_c >= MAX_ERR_COUNT) {
+			/* TODO: Handle disconnect */
+		}
+		return;
+	}
+
+
+	if (unlikely(nread == 0)) {
+		prl_notice(3, "Client disconnected (%s:%d)", client->r_src_ip,
+			   client->r_src_port);
+
+		/* TODO: Handle disconnect */
+		return;
+	}
+
+
+	return;
+
+recv_ok:
+
+	recv_s += (uint16_t)nread;
+	client->recv_s = recv_s;
+
+
+	if (unlikely(MINRECVRECV < recv_s))
+		return; /* We haven't received the length of packet,
+		           must wait until we know it */
+
+	host_cli_len = ntohs(client->cli_pkt.len);
+
+
+	if (unlikely(host_cli_len > sizeof(client->recv_buf))) {
+
+		/*
+		 *	Client gives packet len which is greater than recv_buf.
+		 *
+		 *	Possibilities in this case:
+		 *	- There is a bug in client module.
+		 *	- The packet has been corrupted.
+		 *	- Client has been compromised to send malicious packet.
+		 */
+
+		/* Reset buffer ptr to avoid heap overflow. */
+		client->recv_s = 0;
+
+		pr_error("Client sends invalid packet len (%s:%d) "
+			 "(max_allowed_len = %u; cli_pkt->len = %u;"
+			 " recv_s = %u) POSSIBLE BUG!", client->r_src_ip,
+			 client->r_src_port, sizeof(client->recv_buf),
+			 client->cli_pkt.len, recv_s);
+		return;
+	}
+
+
+	if (unlikely(host_cli_len < recv_s))
+		return; /* We only have partial packet at this point,
+			   must wait until complete */
+
+
 	switch (client->ev_state) {
 	case EV_FIRST_CONNECT:
 		handle_ev_first_connect(state, client);
@@ -411,6 +494,7 @@ static void handle_client_event(struct srv_tcp_state *state, uint16_t idx)
 		abort();
 		break;
 	}
+
 }
 
 
