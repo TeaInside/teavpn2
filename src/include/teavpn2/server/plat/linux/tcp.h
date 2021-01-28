@@ -12,9 +12,6 @@
 #include <linux/types.h>
 #include <teavpn2/server/common.h>
 
-#define RECVBUFSIZ ((1024ul * 4ul) + 512ul)
-#define SENDBUFSIZ ((1024ul * 4ul) + 512ul)
-
 int teavpn_tcp_server(struct srv_cfg *cfg);
 
 typedef enum {
@@ -23,6 +20,31 @@ typedef enum {
 	EV_ESTABLISHED   = 2, /* Data transfer is ready */
 	EV_DISCONNECTED  = 3  /* Client has been disconnected */
 } tcp_ev_state;
+
+typedef enum __attribute__((packed)) {
+	PKT_GET_INFO = 0,
+	PKT_AUTH     = 1,
+	PKT_DATA     = 2,
+	PKT_CLOSE    = 3,
+} tcp_pkt_type;
+
+struct cli_tcp_pkt {
+	uint16_t	len;
+	tcp_pkt_type	type;
+	char		data[4096];
+} __attribute__((packed));
+
+#define RECVBUFSIZ (sizeof(struct cli_tcp_pkt))
+#define SENDBUFSIZ (sizeof(struct cli_tcp_pkt))
+
+
+STATIC_ASSERT(sizeof(tcp_pkt_type) == 1, "sizeof(tcp_pkt_type) must be 1");
+STATIC_ASSERT(offsetof(struct cli_tcp_pkt, len) == 0, "Bad alignment");
+STATIC_ASSERT(offsetof(struct cli_tcp_pkt, type) == 2, "Bad alignment");
+STATIC_ASSERT(offsetof(struct cli_tcp_pkt, data) == 3, "Bad alignment");
+STATIC_ASSERT(sizeof(struct cli_tcp_pkt) >=
+	      (sizeof(uint16_t) + sizeof(tcp_pkt_type) + sizeof(char [4096])),
+	      "Bad alignment");
 
 struct tcp_client {
 	uint8_t		is_used : 1;
@@ -41,21 +63,22 @@ struct tcp_client {
 
 	uint16_t	arr_idx; /* Index of element in array slot (tcp state)*/
 
-	uint16_t	err_c;	/* Error count */
+	uint8_t	err_c;	/* Error count */
 
 	tcp_ev_state	ev_state; /* Event state */
 
 	union {
 		char send_buf[SENDBUFSIZ];
 	};
-	uint64_t	send_s; /* Valid bytes in recv_buf */
+	uint16_t	send_s; /* Valid bytes in recv_buf */
 	uint64_t	send_c; /* Send count */
 
 
 	union {
 		char recv_buf[RECVBUFSIZ];
+		struct cli_tcp_pkt cli_pkt;
 	};
-	uint64_t	recv_s; /* Valid bytes in recv_buf */
+	uint16_t	recv_s; /* Valid bytes in recv_buf */
 	uint64_t	recv_c;	/* Recv count */
 
 

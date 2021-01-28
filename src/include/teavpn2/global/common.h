@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #include <teavpn2/global/helpers/debug.h>
 
@@ -14,8 +15,8 @@
 #define unlikely(EXPR) __builtin_expect((EXPR), 0)
 #define STATIC_ASSERT(EXPR, ASSERT) _Static_assert((EXPR), ASSERT)
 
-#ifndef OFFSETOF
-#  define OFFSETOF(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT))
+#ifndef offsetof
+#  define offsetof(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT))
 #endif
 
 #ifndef INET_ADDRSTRLEN
