@@ -433,15 +433,16 @@ static void handle_client_event(struct srv_tcp_state *state, uint16_t idx)
 recv_ok:
 
 	recv_s += (uint16_t)nread;
-	client->recv_s = recv_s;
 
 
-	if (unlikely(MINRECVRECV < recv_s))
-		return; /* We haven't received the length of packet,
-		           must wait until we know it */
+	if (unlikely(offsetof(struct cli_tcp_pkt, data) < recv_s)) {
+		/* We haven't received the length and type of packet,
+		   must wait until we know them */
+		goto out_save_recv_s;
+	}
+
 
 	host_cli_len = ntohs(client->cli_pkt.len);
-
 
 	if (unlikely(host_cli_len > sizeof(client->recv_buf))) {
 
@@ -466,9 +467,11 @@ recv_ok:
 	}
 
 
-	if (unlikely(host_cli_len < recv_s))
-		return; /* We only have partial packet at this point,
-			   must wait until complete */
+	if (unlikely(host_cli_len < recv_s)) {
+		/* We only have partial packet at this point,
+		   must wait until complete */
+		goto out_save_recv_s;
+	}
 
 
 	switch (client->ev_state) {
@@ -495,6 +498,12 @@ recv_ok:
 		break;
 	}
 
+	/* Reset buffer pointer */
+	client->recv_s = 0u;
+
+	return;
+out_save_recv_s:
+	client->recv_s = recv_s;
 }
 
 

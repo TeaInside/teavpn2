@@ -32,13 +32,19 @@ struct cli_tcp_pkt {
 	uint16_t	len;
 	tcp_pkt_type	type;
 	char		data[4096];
-};
+} __attribute__((packed));
 
 #define RECVBUFSIZ (sizeof(struct cli_tcp_pkt))
 #define SENDBUFSIZ (sizeof(struct cli_tcp_pkt))
-#define MINRECVRECV (OFFSETOF(struct cli_tcp_pkt, data))
 
-STATIC_ASSERT(sizeof(tcp_pkt_type), "sizeof(tcp_pkt_type) must be 1");
+
+STATIC_ASSERT(sizeof(tcp_pkt_type) == 1, "sizeof(tcp_pkt_type) must be 1");
+STATIC_ASSERT(offsetof(struct cli_tcp_pkt, len) == 0, "Bad alignment");
+STATIC_ASSERT(offsetof(struct cli_tcp_pkt, type) == 2, "Bad alignment");
+STATIC_ASSERT(offsetof(struct cli_tcp_pkt, data) == 3, "Bad alignment");
+STATIC_ASSERT(sizeof(struct cli_tcp_pkt) >=
+	      (sizeof(uint16_t) + sizeof(tcp_pkt_type) + sizeof(char [4096])),
+	      "Bad alignment");
 
 struct tcp_client {
 	uint8_t		is_used : 1;
