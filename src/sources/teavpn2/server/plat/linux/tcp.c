@@ -357,33 +357,41 @@ out_close:
 }
 
 
-static void handle_ev_first_connect(struct srv_tcp_state *state,
+static void handle_ev_first_connect(uint16_t hlen,
+				    struct srv_tcp_state *state,
 				    struct tcp_client *client)
 {
+	(void)hlen;
 	(void)state;
 	(void)client;
 }
 
 
-static void handle_ev_authorization(struct srv_tcp_state *state,
+static void handle_ev_authorization(uint16_t hlen,
+				    struct srv_tcp_state *state,
 				    struct tcp_client *client)
 {
+	(void)hlen;
 	(void)state;
 	(void)client;
 }
 
 
-static void handle_ev_established(struct srv_tcp_state *state,
+static void handle_ev_established(uint16_t hlen,
+				  struct srv_tcp_state *state,
 				  struct tcp_client *client)
 {
+	(void)hlen;
 	(void)state;
 	(void)client;
 }
 
 
-static void handle_ev_disconnected(struct srv_tcp_state *state,
+static void handle_ev_disconnected(uint16_t hlen,
+				   struct srv_tcp_state *state,
 				   struct tcp_client *client)
 {
+	(void)hlen;
 	(void)state;
 	(void)client;
 }
@@ -397,7 +405,7 @@ static void handle_client_event(struct srv_tcp_state *state, uint16_t idx)
 	int cli_fd = client->cli_fd;
 	char *buf = client->recv_buf;
 	uint16_t recv_s = client->recv_s;
-	uint16_t host_cli_len;
+	uint16_t hlen;
 
 
 	nread = recv(cli_fd, buf + recv_s, RECVBUFSIZ, MSG_DONTWAIT);
@@ -442,9 +450,9 @@ recv_ok:
 	}
 
 
-	host_cli_len = ntohs(client->cli_pkt.len);
+	hlen = ntohs(client->cli_pkt.len);
 
-	if (unlikely(host_cli_len > sizeof(client->recv_buf))) {
+	if (unlikely(hlen > sizeof(client->recv_buf))) {
 
 		/*
 		 *	Client gives packet len which is greater than recv_buf.
@@ -455,19 +463,18 @@ recv_ok:
 		 *	- Client has been compromised to send malicious packet.
 		 */
 
-		/* Reset buffer ptr to avoid heap overflow. */
-		client->recv_s = 0;
-
 		pr_error("Client sends invalid packet len (%s:%d) "
 			 "(max_allowed_len = %u; cli_pkt->len = %u;"
 			 " recv_s = %u) POSSIBLE BUG!", client->r_src_ip,
-			 client->r_src_port, sizeof(client->recv_buf),
-			 client->cli_pkt.len, recv_s);
-		return;
+			 client->r_src_port, sizeof(client->recv_buf), hlen,
+			 recv_s);
+
+		/* Reset buffer ptr to avoid heap overflow */
+		goto out;
 	}
 
 
-	if (unlikely(host_cli_len < recv_s)) {
+	if (unlikely(hlen < recv_s)) {
 		/* We only have partial packet at this point,
 		   must wait until complete */
 		goto out_save_recv_s;
@@ -476,19 +483,19 @@ recv_ok:
 
 	switch (client->ev_state) {
 	case EV_FIRST_CONNECT:
-		handle_ev_first_connect(state, client);
+		handle_ev_first_connect(hlen, state, client);
 		break;
 
 	case EV_AUTHORIZATION:
-		handle_ev_authorization(state, client);
+		handle_ev_authorization(hlen, state, client);
 		break;
 
 	case EV_ESTABLISHED:
-		handle_ev_established(state, client);
+		handle_ev_established(hlen, state, client);
 		break;
 
 	case EV_DISCONNECTED:
-		handle_ev_disconnected(state, client);
+		handle_ev_disconnected(hlen, state, client);
 		break;
 
 	default:
@@ -498,10 +505,12 @@ recv_ok:
 		break;
 	}
 
+
+out:
 	/* Reset buffer pointer */
 	client->recv_s = 0u;
-
 	return;
+
 out_save_recv_s:
 	client->recv_s = recv_s;
 }
