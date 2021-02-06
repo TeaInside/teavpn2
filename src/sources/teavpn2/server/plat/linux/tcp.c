@@ -19,7 +19,8 @@
 static struct srv_tcp_state *state_g = NULL;
 
 
-static int32_t push_client_stack(struct srv_client_stack *stack, uint16_t i)
+inline static int32_t push_client_stack(struct srv_client_stack *stack,
+					uint16_t i)
 {
 	uint16_t sp = stack->sp;
 
@@ -32,7 +33,7 @@ static int32_t push_client_stack(struct srv_client_stack *stack, uint16_t i)
 }
 
 
-static int32_t pop_client_stack(struct srv_client_stack *stack)
+inline static int32_t pop_client_stack(struct srv_client_stack *stack)
 {
 	int32_t ret;
 	uint16_t sp = stack->sp;

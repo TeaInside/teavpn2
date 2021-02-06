@@ -30,7 +30,6 @@ inline static char *simple_esc_arg(char *buf, const char *str)
 }
 
 
-__always_inline
 inline static bool raise_up_interface(struct srv_iface_cfg *iface)
 {
 	/* User data */
