@@ -73,7 +73,7 @@ static int client_init(struct tcp_client *client, uint16_t idx)
 	if (client->ht_mutex_active)
 		pthread_mutex_destroy(&(client->ht_mutex));
 
-	/* See: http://git.savannah.gnu.org/cgit/hurd/libpthread.git/tree/sysdeps/generic/pt-mutex-init.c */
+
 	tmp = pthread_mutex_init(&(client->ht_mutex), NULL);
 	if (tmp != 0) {
 		int tmp_err;

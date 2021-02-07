@@ -1,8 +1,16 @@
 
 # TeaVPN2
-TeaVPN2 is an open source VPN software written in C.
-Supported platform is only Linux at the moment.
+TeaVPN2 is a free VPN software written in C. Currently supported platform is
+only Linux x86-64. We plan to expand to other plaforms and architectures too.
 
+## Requirements
+- GNU Make 4.3
+- gcc 9.3.0 or gcc 10.2.1 (other versions are not tested yet).
+
+#### Tested on Ubuntu 20.04
+```
+sudo apt-get install gcc make -y;
+```
 
 ## Build
 ```
@@ -13,20 +21,21 @@ make RELEASE_MODE=1 -j$(nproc)
 
 ## Issues
 We welcome bug reports, feature requests and questions through GitHub
-repository.
-
-
-## Community
-Telegram group https://t.me/TeaInside
-
-
-## Contributing
-We welcome pull request through GitHub repository.
-See: [CONTRIBUTING.md](https://github.com/TeaInside/teavpn2/blob/master/CONTRIBUTING.md)
+repository https://github.com/TeaInside/teavpn2.
 
 
 ## Project Maintainer
 - Ammar Faizi ([@ammarfaizi2](https://github.com/ammarfaizi2))
+- Louvian Lyndal ([@louvian](https://github.com/louvian))
+
+
+## Community
+We are usually online on Telegram, see: https://t.me/TeaInside
+
+
+## Contributing
+We welcome contributor through GitHub pull request. Please read the
+`CONTRIBUTING.md` file for detailed information.
 
 
 ## License

@@ -7,7 +7,7 @@
 #if defined(__linux__)
 # include <teavpn2/server/plat/linux/tcp.h>
 #else
-# error This compiler is not supported at the moment
+# error Target environment is not supported at the moment.
 #endif
 
 int teavpn_server_entry(int argc, char *argv[])
@@ -18,7 +18,6 @@ int teavpn_server_entry(int argc, char *argv[])
 
 	if (server_argv_parse(argc, argv, &cfg) < 0)
 		return 1;
-
 
 	if (server_cfg_parse(&cfg) < 0)
 		return 1;
