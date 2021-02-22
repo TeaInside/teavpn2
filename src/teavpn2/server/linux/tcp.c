@@ -201,12 +201,12 @@ static int setup_socket_tcp_server(int fd)
 	socklen_t len = sizeof(y);
 
 
-	rv = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (void *)&y, len);
+	rv = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const void *)&y, len);
 	if (unlikely(rv < 0))
 		goto out_err;
 
 
-	rv = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (void *)&y, len);
+	rv = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (const void *)&y, len);
 	if (unlikely(rv < 0))
 		goto out_err;
 
