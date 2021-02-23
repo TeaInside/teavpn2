@@ -1,6 +1,15 @@
 
 INCLUDE_DIR	+= -I$(BASE_DIR)/src/teavpn2/include
 
+DEP_DIRS	+= $(BASE_DEP_DIR)/src/teavpn2
+
+OBJ_CC		+= \
+	$(BASE_DIR)/src/teavpn2/arena.o \
+	$(BASE_DIR)/src/teavpn2/debug.o \
+	$(BASE_DIR)/src/teavpn2/main.o
+
+include $(BASE_DIR)/src/teavpn2/helpers/Makefile
+
 ifeq ($(USE_SERVER),1)
 	include $(BASE_DIR)/src/teavpn2/server/Makefile
 endif
@@ -8,10 +17,3 @@ endif
 ifeq ($(USE_CLIENT),1)
 	include $(BASE_DIR)/src/teavpn2/client/Makefile
 endif
-
-DEP_DIRS	+= $(BASE_DEP_DIR)/src/teavpn2
-
-OBJ_CC		+= $(BASE_DIR)/src/teavpn2/arena.o
-OBJ_CC		+= $(BASE_DIR)/src/teavpn2/debug.o
-OBJ_CC		+= $(BASE_DIR)/src/teavpn2/main.o
-

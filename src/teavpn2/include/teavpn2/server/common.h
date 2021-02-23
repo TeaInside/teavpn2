@@ -36,4 +36,9 @@ struct srv_cfg {
 	struct srv_sock_cfg 	sock;
 };
 
+
+int teavpn_server_entry(int argc, char *argv[]);
+int teavpn_server_cfg_parse(struct srv_cfg *cfg);
+int teavpn_server_argv_parse(int argc, char *argv[], struct srv_cfg *cfg);
+
 #endif /* #ifndef __TEAVPN2__SERVER__COMMON_H */

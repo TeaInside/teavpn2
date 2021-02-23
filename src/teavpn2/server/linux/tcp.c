@@ -9,8 +9,8 @@
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 
-#include <teavpn2/server/plat/linux/tcp.h>
-#include <teavpn2/server/plat/linux/iface.h>
+#include <teavpn2/server/linux/tcp.h>
+#include <teavpn2/server/linux/iface.h>
 
 
 #define MAX_ERR_COUNT (15u)
@@ -19,8 +19,8 @@
 static struct srv_tcp_state *state_g = NULL;
 
 
-inline static int32_t push_client_stack(struct srv_client_stack *stack,
-					uint16_t i)
+static __always_inline int32_t push_client_stack(struct srv_client_stack *stack,
+						 uint16_t i)
 {
 	uint16_t sp = stack->sp;
 
@@ -33,7 +33,7 @@ inline static int32_t push_client_stack(struct srv_client_stack *stack,
 }
 
 
-inline static int32_t pop_client_stack(struct srv_client_stack *stack)
+static __always_inline int32_t pop_client_stack(struct srv_client_stack *stack)
 {
 	int32_t ret;
 	uint16_t sp = stack->sp;
@@ -148,7 +148,7 @@ out_err:
 }
 
 
-inline static void client_close_fd(struct tcp_client *client, uint16_t i)
+static inline void client_close_fd(struct tcp_client *client, uint16_t i)
 {
 	int fd;
 

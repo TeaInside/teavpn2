@@ -12,7 +12,7 @@
  * @param char x
  * @return char
  */
-inline static __always_inline char my_tolower(char x)
+static __always_inline char my_tolower(char x)
 {
 	return ('A' <= x && x <= 'Z') ? x + 32 : x;
 }
@@ -22,7 +22,7 @@ inline static __always_inline char my_tolower(char x)
  * @param char x
  * @return char
  */
-inline static __always_inline char my_toupper(char x)
+static __always_inline char my_toupper(char x)
 {
 	return ('a' <= x && x <= 'z') ? x - 32 : x;
 }
@@ -36,8 +36,7 @@ inline static __always_inline char my_toupper(char x)
  * @param size_t *res_ken
  * @return char *
  */
-inline static __always_inline char *trim_len(char *head, size_t len,
-					     size_t *res_len)
+static __always_inline char *trim_len(char *head, size_t len, size_t *res_len)
 {
 	char *tail  = &(head[len - 1]);
 	bool move_t = false;
@@ -69,8 +68,8 @@ inline static __always_inline char *trim_len(char *head, size_t len,
  * @param size_t *res_ken
  * @return char *
  */
-inline static __always_inline char *trim_len_cpy(char *head, size_t len,
-						 size_t *res_len)
+static __always_inline char *trim_len_cpy(char *head, size_t len,
+					  size_t *res_len)
 {
 	char *start = head;
 	char *tail  = &(head[len - 1]);
@@ -104,7 +103,7 @@ inline static __always_inline char *trim_len_cpy(char *head, size_t len,
 /**
  * @param char *str
  */
-inline static __always_inline char *trim(char *str)
+static __always_inline char *trim(char *str)
 {
 	return trim_len(str, strlen(str), NULL);
 }
@@ -114,7 +113,7 @@ inline static __always_inline char *trim(char *str)
  * @param char *str
  * @return char *
  */
-inline static __always_inline char *trim_cpy(char *str)
+static __always_inline char *trim_cpy(char *str)
 {
 	return trim_len_cpy(str, strlen(str), NULL);
 }
@@ -123,7 +122,7 @@ inline static __always_inline char *trim_cpy(char *str)
  * @param char *str
  * @return char *
  */
-inline static __always_inline char *trunc_str(char *str, size_t n)
+static __always_inline char *trunc_str(char *str, size_t n)
 {
 	size_t len = strnlen(str, n);
 

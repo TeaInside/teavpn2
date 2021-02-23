@@ -27,4 +27,8 @@ struct cli_cfg {
 	struct cli_sock_cfg 	sock;
 };
 
+int teavpn_client_entry(int argc, char *argv[]);
+int teavpn_client_cfg_parse(struct cli_cfg *cfg);
+int teavpn_client_argv_parse(int argc, char *argv[], struct cli_cfg *cfg);
+
 #endif /* #ifndef __TEAVPN2__CLIENT__COMMON_H */

@@ -3,17 +3,14 @@
 #include <getopt.h>
 #include <string.h>
 
-#include <teavpn2/server/argv.h>
 #include <teavpn2/server/common.h>
 #include <teavpn2/global/helpers/arena.h>
 #include <teavpn2/global/helpers/string.h>
-
 
 struct parse_struct {
 	char		*app;
 	struct srv_cfg  *cfg;
 };
-
 
 #ifdef SERVER_DEFAULT_CONFIG
 char def_cfg_file[] = SERVER_DEFAULT_CONFIG;
@@ -238,7 +235,7 @@ inline static void show_version(void)
 
 
 
-int server_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
+int teavpn_server_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 {
 	struct parse_struct cx;
 

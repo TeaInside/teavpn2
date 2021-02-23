@@ -3,9 +3,7 @@
 #include <stdlib.h>
 
 #include <inih/inih.h>
-#include <teavpn2/server/argv.h>
-#include <teavpn2/server/entry.h>
-#include <teavpn2/server/config.h>
+#include <teavpn2/server/common.h>
 #include <teavpn2/global/helpers/arena.h>
 
 struct parse_struct {
@@ -107,7 +105,7 @@ out_err:
 }
 
 
-int server_cfg_parse(struct srv_cfg *cfg)
+int teavpn_server_cfg_parse(struct srv_cfg *cfg)
 {
 	struct parse_struct cx;
 	char *cfg_file = cfg->cfg_file;

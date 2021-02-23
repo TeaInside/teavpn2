@@ -13,8 +13,8 @@ VG	:= valgrind
 
 BASE_DIR := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
 BASE_DIR := $(strip $(patsubst %/, %, $(BASE_DIR)))
-MAKEFILE_FILE := $(lastword $(MAKEFILE_LIST))
 BASE_DEP_DIR := $(BASE_DIR)/.deps
+MAKEFILE_FILE := $(lastword $(MAKEFILE_LIST))
 
 WARN_FLAGS	:= \
 	-Wall \
@@ -105,14 +105,13 @@ else
 endif
 
 
+all: $(TARGET_BIN)
+
 include $(BASE_DIR)/src/teavpn2/Makefile
 include $(BASE_DIR)/src/ext/Makefile
 
 CFLAGS		:= $(INCLUDE_DIR) $(CFLAGS) $(CCXXFLAGS)
 CXXFLAGS	:= $(INCLUDE_DIR) $(CXXFLAGS) $(CCXXFLAGS)
-OBJ_CC		:= $(OBJ_CC:.c=.o)
-
-all: $(TARGET_BIN)
 
 $(TARGET_BIN): $(OBJ_CC)
 	@echo "   LD		" "$(@)"
@@ -122,9 +121,11 @@ $(DEP_DIRS):
 	@echo "   MKDIR	" "$(@:$(BASE_DIR)/%=%)"
 	@mkdir -p $(@)
 
-$(OBJ_CC): | $(DEP_DIRS)
+$(OBJ_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
 	@echo "   CC		" "$(@:$(BASE_DIR)/%=%)"
 	@$(CC) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)
 
+-include $(OBJ_CC:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)
+
 clean:
-	@rm -rfv $(DEP_DIRS) $(OBJ_CC) $(TARGET_BIN)
+	rm -rfv $(DEP_DIRS) $(OBJ_CC) $(TARGET_BIN)

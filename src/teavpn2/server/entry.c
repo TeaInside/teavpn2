@@ -1,11 +1,9 @@
 
 #include <string.h>
-#include <teavpn2/server/argv.h>
-#include <teavpn2/server/entry.h>
-#include <teavpn2/server/config.h>
+#include <teavpn2/server/common.h>
 
 #if defined(__linux__)
-# include <teavpn2/server/plat/linux/tcp.h>
+# include <teavpn2/server/linux/tcp.h>
 #else
 # error Target environment is not supported at the moment.
 #endif
@@ -16,10 +14,10 @@ int teavpn_server_entry(int argc, char *argv[])
 
 	memset(&cfg, 0, sizeof(cfg));
 
-	if (server_argv_parse(argc, argv, &cfg) < 0)
+	if (teavpn_server_argv_parse(argc, argv, &cfg) < 0)
 		return 1;
 
-	if (server_cfg_parse(&cfg) < 0)
+	if (teavpn_server_cfg_parse(&cfg) < 0)
 		return 1;
 
 	switch (cfg.sock.type) {

@@ -7,7 +7,7 @@
 #include <linux/if_tun.h>
 #include <teavpn2/global/common.h>
 
-#include <teavpn2/global/helpers/plat/linux/iface.h>
+#include <teavpn2/global/helpers/linux/iface.h>
 
 /* https://www.kernel.org/doc/Documentation/networking/tuntap.txt
  *

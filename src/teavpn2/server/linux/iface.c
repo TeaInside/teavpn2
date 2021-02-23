@@ -6,11 +6,11 @@
 #include <arpa/inet.h>
 #include <linux/if_tun.h>
 
-#include <teavpn2/server/plat/linux/tcp.h>
+#include <teavpn2/server/linux/tcp.h>
 #include <teavpn2/global/helpers/shell.h>
 #include <teavpn2/global/helpers/string.h>
-#include <teavpn2/global/helpers/plat/linux/fd.h>
-#include <teavpn2/global/helpers/plat/linux/iface.h>
+#include <teavpn2/global/helpers/linux/fd.h>
+#include <teavpn2/global/helpers/linux/iface.h>
 
 
 #define EXEC_CMD(OUT, BUF, CMD, ...)				\

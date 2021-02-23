@@ -2,8 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <teavpn2/server/entry.h>
-#include <teavpn2/client/entry.h>
+#include <teavpn2/server/common.h>
+#include <teavpn2/client/common.h>
 #include <teavpn2/global/helpers/arena.h>
 
 static __always_inline void usage(const char *app)
