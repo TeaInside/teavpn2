@@ -14,10 +14,8 @@ int teavpn_client_entry(int argc, char *argv[])
 
 	memset(&cfg, 0, sizeof(cfg));
 
-	(void)argc;
-	(void)argv;
-	// if (teavpn_client_argv_parse(argc, argv, &cfg) < 0)
-	// 	return 1;
+	if (teavpn_client_argv_parse(argc, argv, &cfg) < 0)
+		return 1;
 
 	return 0;
 }

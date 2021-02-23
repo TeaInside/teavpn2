@@ -6,6 +6,9 @@
 # TeaVPN2
 #
 
+TEAVPN_SERVER_VERSION = 0.0.1
+TEAVPN_CLIENT_VERSION = 0.0.1
+
 CC	:= cc
 CXX	:= c++
 LD	:= $(CXX)
@@ -57,7 +60,9 @@ CCXXFLAGS := \
 	-fstrict-aliasing \
 	-fstack-protector-strong \
 	-pedantic-errors \
-	-D_GNU_SOURCE
+	-D_GNU_SOURCE \
+	-DTEAVPN_SERVER_VERSION="\"$(TEAVPN_SERVER_VERSION)\"" \
+	-DTEAVPN_CLIENT_VERSION="\"$(TEAVPN_CLIENT_VERSION)\""
 
 ifeq ($(RELEASE_MODE),1)
 	LDFLAGS		+= $(LDFLAGS) -O3
@@ -104,6 +109,11 @@ else
 	endif
 endif
 
+#######################################
+# Force these to be a simple variable
+OBJ_CC		:=
+OBJ_PRE_CC	:=
+#######################################
 
 all: $(TARGET_BIN)
 
@@ -113,9 +123,9 @@ include $(BASE_DIR)/src/ext/Makefile
 CFLAGS		:= $(INCLUDE_DIR) $(CFLAGS) $(CCXXFLAGS)
 CXXFLAGS	:= $(INCLUDE_DIR) $(CXXFLAGS) $(CCXXFLAGS)
 
-$(TARGET_BIN): $(OBJ_CC)
+$(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC)
 	@echo "   LD		" "$(@)"
-	@$(LD) $(LDFLAGS) $(OBJ_CC) -o "$@" $(LIB_LDFLAGS)
+	@$(LD) $(LDFLAGS) $(OBJ_CC) $(OBJ_PRE_CC) -o "$@" $(LIB_LDFLAGS)
 
 $(DEP_DIRS):
 	@echo "   MKDIR	" "$(@:$(BASE_DIR)/%=%)"
@@ -125,7 +135,10 @@ $(OBJ_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
 	@echo "   CC		" "$(@:$(BASE_DIR)/%=%)"
 	@$(CC) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)
 
+$(OBJ_PRE_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
+
 -include $(OBJ_CC:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)
+-include $(OBJ_PRE_CC:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)
 
 clean:
-	@rm -rfv $(DEP_DIRS) $(OBJ_CC) $(TARGET_BIN)
+	@rm -rfv $(DEP_DIRS) $(OBJ_CC) $(OBJ_PRE_CC) $(TARGET_BIN)

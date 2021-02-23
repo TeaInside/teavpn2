@@ -5,11 +5,10 @@
 
 #include <teavpn2/global/common.h>
 
-#define TEAVPN_CLIENT_VERSION "0.2.0"
 
 struct cli_iface_cfg {
-	uint16_t	mtu;			/* Virtual interface MTU     */
-	char		*dev;			/* Virtual interface name    */
+	uint16_t	mtu;		/* Virtual interface MTU     */
+	char		*dev;		/* Virtual interface name    */
 };
 
 

@@ -5,8 +5,6 @@
 
 #include <teavpn2/global/common.h>
 
-#define TEAVPN_SERVER_VERSION "0.2.0"
-
 struct srv_iface_cfg {
 	uint16_t	mtu;			/* Virtual interface MTU     */
 	char		*dev;			/* Virtual interface name    */
