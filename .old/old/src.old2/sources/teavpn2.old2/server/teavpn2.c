@@ -3,7 +3,7 @@
 #include <teavpn2/server/iface.h>
 #include <teavpn2/server/sock/tcp.h>
 
-inline static bool
+static inline bool
 tsrv_validate_cfg(srv_cfg *cfg);
 
 static int
@@ -68,7 +68,7 @@ do {                                                     \
  * @param srv_cfg *cfg
  * @return bool
  */
-inline static bool
+static inline bool
 tsrv_validate_cfg(srv_cfg *cfg)
 {
   srv_iface_cfg *iface = &(cfg->iface);

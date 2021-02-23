@@ -27,7 +27,7 @@ t_ar_init(void *ptr, size_t len)
  * @param size_t len
  * @return void *
  */
-inline static void *
+static inline void *
 _internal_t_ar_alloc(size_t len)
 {
   char *ret    = &(((char *)t_arena)[t_arena_pos]);

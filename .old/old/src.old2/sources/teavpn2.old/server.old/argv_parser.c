@@ -19,13 +19,13 @@
 #  define PRINT_CONFIG(CONFIG_NAME, VAL_LT, VAL)
 #endif
 
-inline static
+static inline
 void show_help(char *app);
 
-inline static
+static inline
 void set_default_config(server_cfg *config);
 
-inline static
+static inline
 bool getopt_handler(int argc, char **argv, server_cfg *config);
 
 static bool           just_check_version = false;
@@ -67,7 +67,7 @@ tvpn_server_argv_parse(int argc, char *argv[], char *envp[],
 /**
  * Initialize default config values.
  */
-inline static void
+static inline void
 set_default_config(server_cfg *config)
 {
   config->config_file = NULL;
@@ -114,7 +114,7 @@ static const struct option long_options[] = {
 /**
  * Parse the arguments and plug it to config.
  */
-inline static bool
+static inline bool
 getopt_handler(int argc, char **argv, server_cfg *config)
 {
   int c;
@@ -233,7 +233,7 @@ getopt_handler(int argc, char **argv, server_cfg *config)
   return true;
 }
 
-inline static void
+static inline void
 show_help(char *app)
 {
   printf("Usage: %s [options]\n", app);

@@ -10,7 +10,7 @@
 #  define ARENA_SIZE (4096)
 #endif
 
-inline static void
+static inline void
 show_usage(const char *app);
 
 const char *app_name = NULL;
@@ -52,7 +52,7 @@ ret:
  * @param const char *app
  * @return void
  */
-inline static void
+static inline void
 show_usage(const char *app)
 {
   printf("Usage: %s [client|server] [options]\n", app);

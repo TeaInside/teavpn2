@@ -3,7 +3,7 @@
 #include <teavpn2/server/common.h>
 #include <teavpn2/server/sock/tcp.h>
 
-inline static bool
+static inline bool
 tvpn_server_config_validate(server_cfg *config);
 
 
@@ -43,7 +43,7 @@ tvpn_server_run(server_cfg *config)
  * @param server_cfg *config
  * @return int
  */
-inline static bool
+static inline bool
 tvpn_server_config_validate(server_cfg *config)
 {
   debug_log(4, "Validating server config...");

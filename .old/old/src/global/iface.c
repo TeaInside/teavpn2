@@ -13,7 +13,7 @@
 #include <teavpn2/global/iface.h>
 #include <teavpn2/global/common.h>
 
-inline static int tun_alloc(char *dev, int flags);
+static inline int tun_alloc(char *dev, int flags);
 
 /**
  * @param char *dev
@@ -36,7 +36,7 @@ int teavpn_iface_allocate(char *dev)
  * @param int flags
  * @return int
  */
-inline static int tun_alloc(char *dev, int flags)
+static inline int tun_alloc(char *dev, int flags)
 {
   int fd, err;
   struct ifreq ifr;

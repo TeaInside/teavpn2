@@ -4,7 +4,7 @@
 #include <teavpn2/server/teavpn2.h>
 #include <teavpn2/server/tcp.h>
 
-inline static bool
+static inline bool
 tvpn_srv_config_validate(srv_cfg *cfg);
 
 /**
@@ -42,7 +42,7 @@ ret:
  * @param srv_cfg *cfg
  * @return bool
  */
-inline static bool
+static inline bool
 tvpn_srv_config_validate(srv_cfg *cfg)
 {
   debug_log(4, "Validating server config...");

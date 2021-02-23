@@ -31,7 +31,7 @@ size_t ar_unused_size()
 }
 
 
-inline static void *internal_ar_alloc(size_t len)
+static inline void *internal_ar_alloc(size_t len)
 {
 	char *ret = &ar_addr[ar_pos];
 	ar_pos += len;

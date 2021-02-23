@@ -6,7 +6,7 @@
 #include <teavpn2/server/common.h>
 
 
-inline static int
+static inline int
 parser_handler(void *user, const char *section, const char *name,
                const char *value, int lineno);
 
@@ -54,7 +54,7 @@ tvpn_srv_load_cfg_file(char *file, srv_cfg *cfg)
  * @param int        lineno
  * @return int
  */
-inline static int
+static inline int
 parser_handler(void *user, const char *section, const char *name,
                const char *value, int lineno)
 {

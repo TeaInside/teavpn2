@@ -41,7 +41,7 @@ static char     def_cfg_file[]     = "config/server.ini";
  * @param srv_cfg *cfg
  * @return void
  */
-inline static void
+static inline void
 set_default_cfg(srv_cfg *cfg)
 {
   cfg->cfg_file       = def_cfg_file;
@@ -83,7 +83,7 @@ static const struct option long_opt[] = {
   {0, 0, 0, 0}
 };
 
-inline static void
+static inline void
 show_help(const char *app);
 
 
@@ -93,7 +93,7 @@ show_help(const char *app);
  * @param struct parse_struct *cx
  * @return bool
  */
-inline static bool
+static inline bool
 getopt_handler(int argc, char *argv[], struct parse_struct *cx)
 {
   int c;
@@ -226,7 +226,7 @@ tsrv_argv_parser(int argc, char *argv[], srv_cfg *cfg)
 }
 
 
-inline static int
+static inline int
 parser_handler(void *user, const char *section, const char *name,
                const char *value, int lineno);
 
@@ -268,7 +268,7 @@ tsrv_cfg_load(const char *cfg_file, srv_cfg *cfg)
  * @param int        lineno
  * @return int
  */
-inline static int
+static inline int
 parser_handler(void *user, const char *section, const char *name,
                const char *value, int lineno)
 {
@@ -361,7 +361,7 @@ err:
  * @param const char *app
  * @return void
  */
-inline static void
+static inline void
 show_help(const char *app)
 {
   printf("Usage: %s %s [options]\n", app_name, app);

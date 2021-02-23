@@ -1,7 +1,7 @@
 
 #include <stdio.h>
 
-inline static void
+static inline void
 show_usage();
 
 
@@ -22,7 +22,7 @@ main(int argc, char *argv[])
  * @param const char *app
  * @return void
  */
-inline static void
+static inline void
 show_usage(const char *app)
 {
   printf("Usage: %s [client|server] <options>\n", app);

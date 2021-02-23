@@ -24,13 +24,13 @@ do {								\
 #define IPV4SAFE (IPV4LEN + 16)
 
 
-inline static char *simple_esc_arg(char *buf, const char *str)
+static inline char *simple_esc_arg(char *buf, const char *str)
 {
 	return escapeshellarg(buf, str, strlen(str), NULL);
 }
 
 
-inline static bool raise_up_interface(struct srv_iface_cfg *iface)
+static inline bool raise_up_interface(struct srv_iface_cfg *iface)
 {
 	/* User data */
 	char u_ipv4[IPV4SAFE];

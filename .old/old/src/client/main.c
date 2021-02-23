@@ -6,7 +6,7 @@
 
 #define ARENA_SIZE (1024 * 30)
 
-inline static void teavpn_sig_handler(int sig);
+static inline void teavpn_sig_handler(int sig);
 static teavpn_client_config *config_p;
 
 /**
@@ -47,7 +47,7 @@ int main(int argc, char *argv[], char *envp[])
  * @param int sig
  * @return void
  */
-inline static void teavpn_sig_handler(int sig)
+static inline void teavpn_sig_handler(int sig)
 {
   client_tcp_mstate *mstate = (client_tcp_mstate *)config_p->mstate;
   teavpn_iface_clean_up(&(config_p->iface));

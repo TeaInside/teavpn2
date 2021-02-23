@@ -19,9 +19,9 @@
   #define PRINT_CONFIG(CONFIG_NAME, VAL_LT, VAL)
 #endif
 
-inline static void show_help(char *app);
-inline static void set_default_config(client_cfg *config);
-inline static bool getopt_handler(int argc, char **argv, client_cfg *config);
+static inline void show_help(char *app);
+static inline void set_default_config(client_cfg *config);
+static inline bool getopt_handler(int argc, char **argv, client_cfg *config);
 
 static const uint16_t default_mtu = 1500;
 static const uint16_t default_server_port = 55555;
@@ -45,7 +45,7 @@ tvpn_client_argv_parse(int argc, char *argv[], char *envp[],
 /**
  * Initialize default config values.
  */
-inline static void
+static inline void
 set_default_config(client_cfg *config)
 {
   FILE *handle = fopen(default_config_file, "r");
@@ -102,7 +102,7 @@ static const struct option long_options[] = {
 /**
  * Parse the arguments and plug it to config.
  */
-inline static bool
+static inline bool
 getopt_handler(int argc, char **argv, client_cfg *config)
 {
   int c;
@@ -219,7 +219,7 @@ getopt_handler(int argc, char **argv, client_cfg *config)
   return true;
 }
 
-inline static
+static inline
 void show_help(char *app)
 {
   printf("Usage: %s [options]\n", app);

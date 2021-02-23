@@ -3,7 +3,7 @@
 #include <teavpn2/client/sock/tcp.h>
 
 
-inline static bool
+static inline bool
 tvpn_client_config_validate(client_cfg *config);
 
 
@@ -37,7 +37,7 @@ tvpn_client_run(client_cfg *config)
 }
 
 
-inline static bool
+static inline bool
 tvpn_client_config_validate(client_cfg *config)
 {
   {

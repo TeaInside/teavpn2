@@ -46,12 +46,12 @@
   }
 
 static void teavpn_server_tcp_stop_all(server_tcp_mstate *mstate);
-inline static bool teavpn_server_tcp_init(server_tcp_mstate *mstate);
-inline static bool teavpn_server_tcp_socket_setup(int net_fd);
-inline static void teavpn_server_tcp_accept(server_tcp_mstate *mstate);
+static inline bool teavpn_server_tcp_init(server_tcp_mstate *mstate);
+static inline bool teavpn_server_tcp_socket_setup(int net_fd);
+static inline void teavpn_server_tcp_accept(server_tcp_mstate *mstate);
 static int16_t teavpn_server_tcp_free_chan_observe(server_tcp_mstate *mstate);
-inline static void teavpn_server_tcp_full_chan_act(server_tcp_mstate *mstate);
-inline static void teavpn_server_tcp_handle_iface_data(server_tcp_mstate *mstate);
+static inline void teavpn_server_tcp_full_chan_act(server_tcp_mstate *mstate);
+static inline void teavpn_server_tcp_handle_iface_data(server_tcp_mstate *mstate);
 
 /**
  * @param iface_info *iinfo
@@ -208,7 +208,7 @@ static void teavpn_server_tcp_stop_all(server_tcp_mstate *mstate)
  * @param server_tcp_mstate *mstate
  * @return bool
  */
-inline static bool teavpn_server_tcp_init(server_tcp_mstate *mstate)
+static inline bool teavpn_server_tcp_init(server_tcp_mstate *mstate)
 {
   /**
    * Create TCP socket (SOCK_STREAM).
@@ -277,7 +277,7 @@ inline static bool teavpn_server_tcp_init(server_tcp_mstate *mstate)
  * @param int net_fd
  * @return bool
  */
-inline static bool teavpn_server_tcp_socket_setup(int net_fd)
+static inline bool teavpn_server_tcp_socket_setup(int net_fd)
 {
   int opt_1 = 1;
 
@@ -301,7 +301,7 @@ inline static bool teavpn_server_tcp_socket_setup(int net_fd)
  * @param server_tcp_mstate *mstate
  * @return void
  */
-inline static void teavpn_server_tcp_accept(server_tcp_mstate *mstate)
+static inline void teavpn_server_tcp_accept(server_tcp_mstate *mstate)
 {
   register tcp_channel *chan;
   register tcp_channel *channels = mstate->channels;
@@ -357,7 +357,7 @@ static int16_t teavpn_server_tcp_free_chan_observe(server_tcp_mstate *mstate)
  * @param server_tcp_mstate *mstate
  * @return void
  */
-inline static void teavpn_server_tcp_full_chan_act(server_tcp_mstate *mstate)
+static inline void teavpn_server_tcp_full_chan_act(server_tcp_mstate *mstate)
 {
   teavpn_srv_pkt srv_pkt;
   int client_fd, send_ret;
@@ -394,7 +394,7 @@ inline static void teavpn_server_tcp_full_chan_act(server_tcp_mstate *mstate)
  * @param server_tcp_mstate *mstate
  * @return void
  */
-inline static void teavpn_server_tcp_handle_iface_data(server_tcp_mstate *mstate)
+static inline void teavpn_server_tcp_handle_iface_data(server_tcp_mstate *mstate)
 {
   int read_ret;
   char srv_pkt_arena[PKT_ARENA_SIZE];

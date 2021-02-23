@@ -21,8 +21,8 @@
 #include <teavpn2/client/common.h>
 #include <teavpn2/client/socket/tcp.h>
 
-inline static bool teavpn_client_tcp_init(client_tcp_mstate *mstate);
-inline static bool teavpn_client_tcp_socket_setup(int net_fd);
+static inline bool teavpn_client_tcp_init(client_tcp_mstate *mstate);
+static inline bool teavpn_client_tcp_socket_setup(int net_fd);
 
 /**
  * @param teavpn_client_config *config
@@ -63,7 +63,7 @@ close_conn:
  * @param client_tcp_mstate *mstate
  * @return bool
  */
-inline static bool teavpn_client_tcp_init(client_tcp_mstate *mstate)
+static inline bool teavpn_client_tcp_init(client_tcp_mstate *mstate)
 {
   /**
    * Create TCP socket (SOCK_STREAM).
@@ -141,7 +141,7 @@ poll_t:
  * @param int net_fd
  * @return bool
  */
-inline static bool teavpn_client_tcp_socket_setup(int net_fd)
+static inline bool teavpn_client_tcp_socket_setup(int net_fd)
 {
   int opt_1 = 1;
 

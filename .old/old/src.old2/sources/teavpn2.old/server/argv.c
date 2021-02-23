@@ -31,10 +31,10 @@ static const uint16_t default_mtu         = 1500;
 static const uint16_t default_bind_port   = 55555;
 static const uint16_t default_max_conn    = 10;
 
-inline static void
+static inline void
 set_default_cfg(srv_cfg *cfg);
 
-inline static bool
+static inline bool
 getopt_handler(int argc, char *argv[], srv_cfg *cfg);
 
 
@@ -68,7 +68,7 @@ tvpn_srv_argv_parse(int argc, char *argv[], srv_cfg *cfg)
  *
  * @param server_c
  */
-inline static void
+static inline void
 set_default_cfg(srv_cfg *cfg)
 {
   cfg->config_file = NULL;
@@ -122,7 +122,7 @@ static const struct option long_options[]      = {
  * @param srv_cfg *cfg
  * @return bool
  */
-inline static bool
+static inline bool
 getopt_handler(int argc, char *argv[], srv_cfg *cfg)
 {
   int c;

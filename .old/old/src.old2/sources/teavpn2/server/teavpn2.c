@@ -14,7 +14,7 @@
 #endif
 
 
-inline static bool
+static inline bool
 tsrv_validate_cfg(srv_cfg *cfg);
 
 
@@ -57,7 +57,7 @@ ret:
  * @param srv_cfg *cfg
  * @return bool
  */
-inline static bool
+static inline bool
 tsrv_validate_cfg(srv_cfg *cfg)
 {
   srv_iface_cfg *iface = &(cfg->iface);

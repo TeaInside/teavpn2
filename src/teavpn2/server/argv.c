@@ -75,10 +75,10 @@ static const struct option long_opt[] = {
 
 static const char short_opt[] = "hvc:D:d:4:b:m:s:H:P:M:B:";
 
-inline static void show_version(void);
-inline static void show_help(const char *app);
+static inline void show_version(void);
+static inline void show_help(const char *app);
 
-inline static int server_getopt(int argc, char *argv[], struct parse_struct *cx)
+static inline int server_getopt(int argc, char *argv[], struct parse_struct *cx)
 {
 	int c;
 	struct srv_cfg *cfg = cx->cfg;
@@ -180,7 +180,7 @@ inline static int server_getopt(int argc, char *argv[], struct parse_struct *cx)
 }
 
 
-inline static void show_help(const char *app)
+static inline void show_help(const char *app)
 {
 	printf("Usage: %s server [options]\n", app);
 
@@ -227,7 +227,7 @@ inline static void show_help(const char *app)
 }
 
 
-inline static void show_version(void)
+static inline void show_version(void)
 {
 	puts("TeaVPN Server " TEAVPN_SERVER_VERSION);
 	exit(0);

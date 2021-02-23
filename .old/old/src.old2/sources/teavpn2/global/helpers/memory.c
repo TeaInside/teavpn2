@@ -26,7 +26,7 @@ ar_init(void *_arena_ptr, size_t _arena_size)
  * @param size_t len
  * @return void *
  */
-inline static void *
+static inline void *
 _internal_ar_alloc(size_t len)
 {
   char   *ret;

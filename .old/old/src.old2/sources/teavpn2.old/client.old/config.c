@@ -8,7 +8,7 @@
 
 static bool failed = false;
 
-inline static int
+static inline int
 client_parser_handler(void *user, const char *section, const char *name,
                       const char *value, int lineno);
 
@@ -32,7 +32,7 @@ tvpn_client_load_config_file(char *file, client_cfg *config)
 }
 
 
-inline static int
+static inline int
 client_parser_handler(void *user, const char *section, const char *name,
                       const char *value, int lineno)
 {

@@ -128,4 +128,4 @@ $(OBJ_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
 -include $(OBJ_CC:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)
 
 clean:
-	rm -rfv $(DEP_DIRS) $(OBJ_CC) $(TARGET_BIN)
+	@rm -rfv $(DEP_DIRS) $(OBJ_CC) $(TARGET_BIN)
