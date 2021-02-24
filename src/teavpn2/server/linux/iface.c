@@ -33,28 +33,28 @@ static inline char *simple_esc_arg(char *buf, const char *str)
 static inline bool raise_up_interface(struct srv_iface_cfg *iface)
 {
 	/* User data */
-	char u_ipv4[IPV4SAFE];
-	char u_ipv4_netmask[IPV4SAFE];
-	char u_ipv4_network[IPV4SAFE];
-	char u_ipv4_broadcast[IPV4SAFE];
+	char u_ipv4[IPV4SAFE] = {0};
+	char u_ipv4_netmask[IPV4SAFE] = {0};
+	char u_ipv4_network[IPV4SAFE] = {0};
+	char u_ipv4_broadcast[IPV4SAFE] = {0};
 
 	/* Escaped data */
-	char e_dev[32];
-	char e_ipv4[IPV4SAFE];
+	char e_dev[32] = {0};
+	char e_ipv4[IPV4SAFE] = {0};
 	// char e_ipv4_netmask[IPV4SAFE];
-	char e_ipv4_network[IPV4SAFE];
-	char e_ipv4_broadcast[IPV4SAFE];
+	char e_ipv4_network[IPV4SAFE] = {0};
+	char e_ipv4_broadcast[IPV4SAFE] = {0};
 
 	/* Big endian data */
-	__be32 tmp;
-	__be32 b_ipv4;
-	__be32 b_ipv4_network;
-	__be32 b_ipv4_netmask;
-	__be32 b_ipv4_broadcast;
+	__be32 tmp = 0;
+	__be32 b_ipv4 = 0;
+	__be32 b_ipv4_network = 0;
+	__be32 b_ipv4_netmask = 0;
+	__be32 b_ipv4_broadcast = 0;
 
-	int ret;
-	uint8_t cidr;
-	char buf[1024];
+	int ret = 0;
+	uint8_t cidr = 0;
+	char buf[1024] = {0};
 	uint16_t mtu = iface->mtu;
 
 

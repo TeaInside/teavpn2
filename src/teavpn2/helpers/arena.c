@@ -1,4 +1,5 @@
 
+#include <stdio.h>
 #include <string.h>
 #include <assert.h>
 #include <teavpn2/global/helpers/arena.h>
@@ -12,32 +13,31 @@
  * YOU HAVE BEEN WARNED!
  */
 
-static char   *ar_addr = NULL;
-static size_t ar_size  = 0;
-static size_t ar_pos   = 0;
+static char   *__ar_addr = NULL;
+static size_t __ar_size  = 0;
+static size_t __ar_pos   = 0;
 
 
 void ar_init(char *ar, size_t ar_size)
 {
-	ar_addr = ar;
-	ar_size = ar_size;
-	ar_pos = 0;
+	__ar_addr = ar;
+	__ar_size = ar_size;
+	__ar_pos = 0;
 }
 
 
 size_t ar_unused_size()
 {
-	return ar_size - ar_pos;
+	return __ar_size - __ar_pos;
 }
 
 
-static inline void *internal_ar_alloc(size_t len)
+static __always_inline void *internal_ar_alloc(size_t len)
 {
-	char *ret = &ar_addr[ar_pos];
-	ar_pos += len;
+	char *ret = &__ar_addr[__ar_pos];
 
-	assert(ar_size > ar_pos);
-
+	__ar_pos += len;
+	assert(__ar_size > __ar_pos);
 	return (void *)ret;
 }
 
@@ -55,7 +55,6 @@ void *ar_strdup(const char *str)
 
 	ret = internal_ar_alloc(len + 1);
 	ret[len] = '\0';
-
 	return memcpy(ret, str, len);
 }
 
@@ -67,6 +66,5 @@ void *ar_strndup(const char *str, size_t inlen)
 
 	ret = internal_ar_alloc(len + 1);
 	ret[len] = '\0';
-
 	return memcpy(ret, str, len);
 }

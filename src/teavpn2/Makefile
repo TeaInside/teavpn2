@@ -13,8 +13,6 @@ endif
 include $(BASE_DIR)/src/teavpn2/helpers/Makefile
 
 OBJ_TMP_CC	:= \
-	$(BASE_DIR)/src/teavpn2/arena.o \
-	$(BASE_DIR)/src/teavpn2/debug.o \
 	$(BASE_DIR)/src/teavpn2/main.o
 
 OBJ_PRE_CC	+= $(OBJ_TMP_CC)

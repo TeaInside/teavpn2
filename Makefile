@@ -6,8 +6,11 @@
 # TeaVPN2
 #
 
-TEAVPN_SERVER_VERSION = 0.0.1
-TEAVPN_CLIENT_VERSION = 0.0.1
+TARGET_BIN	= teavpn2
+TEAVPN_SERVER_VERSION	= 0.0.1
+TEAVPN_CLIENT_VERSION	= 0.0.1
+SERVER_DEFAULT_CONFIG_FILE	= config/server.ini
+CLIENT_DEFAULT_CONFIG_FILE	= config/client.ini
 
 CC	:= cc
 CXX	:= c++
@@ -33,7 +36,6 @@ WARN_FLAGS	:= \
 	-Wstack-usage=2097152
 
 
-TARGET_BIN	:= teavpn2
 USE_CLIENT	:= 1
 USE_SERVER	:= 1
 
@@ -113,6 +115,8 @@ endif
 # Force these to be a simple variable
 OBJ_CC		:=
 OBJ_PRE_CC	:=
+OBJ_TMP_CC	:=
+CFLAGS_TMP	:=
 #######################################
 
 all: $(TARGET_BIN)

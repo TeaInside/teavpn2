@@ -19,11 +19,17 @@ struct cli_sock_cfg {
 };
 
 
+struct cli_auth_cfg {
+	char		*username;
+	char		*password;
+};
+
 struct cli_cfg {
 	char			*cfg_file;  /* Config file     */
 	char			*data_dir;  /* Data directory  */
 	struct cli_iface_cfg	iface;
 	struct cli_sock_cfg 	sock;
+	struct cli_auth_cfg	auth;
 };
 
 int teavpn_client_entry(int argc, char *argv[]);

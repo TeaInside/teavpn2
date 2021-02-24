@@ -199,14 +199,15 @@ static int setup_socket_tcp_server(int fd)
 	int rv;
 	int y = 1;
 	socklen_t len = sizeof(y);
+	const void *pval = (const void *)&y;
 
 
-	rv = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const void *)&y, len);
+	rv = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, pval, len);
 	if (unlikely(rv < 0))
 		goto out_err;
 
 
-	rv = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (const void *)&y, len);
+	rv = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, pval, len);
 	if (unlikely(rv < 0))
 		goto out_err;
 

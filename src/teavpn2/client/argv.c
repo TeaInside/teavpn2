@@ -7,7 +7,6 @@
 #include <teavpn2/global/helpers/arena.h>
 #include <teavpn2/global/helpers/string.h>
 
-
 struct parse_struct {
 	char		*app;
 	struct cli_cfg  *cfg;
@@ -15,14 +14,18 @@ struct parse_struct {
 
 /* ---------------------- Default configuration values ---------------------- */
 #ifdef DEF_CLIENT_CFG_FILE
-	static char d_cfg_file[] = DEF_CLIENT_CFG_FILE;
+	char d_cfg_file_client[] = DEF_CLIENT_CFG_FILE;
 #else
-	static char d_cfg_file[] = "/etc/teavpn2/client.ini";
+	char d_cfg_file_client[] = "/etc/teavpn2/client.ini";
 #endif
 
+
+/* Default config for virtual network interface */
 static uint16_t d_mtu = 1500;
 static char d_dev[] = "teavpn2";
 
+
+/* Default config for socket */
 static sock_type d_sock_type = SOCK_TCP;
 static uint16_t d_server_port = 55555;
 /* -------------------------------------------------------------------------- */
@@ -30,18 +33,25 @@ static uint16_t d_server_port = 55555;
 
 static inline void init_default_cfg(struct cli_cfg *cfg)
 {
-	struct cli_sock_cfg *sock = &cfg->sock;
 	struct cli_iface_cfg *iface = &cfg->iface;
+	struct cli_sock_cfg *sock = &cfg->sock;
+	struct cli_auth_cfg *auth = &cfg->auth;
 
-	cfg->cfg_file = d_cfg_file;
+	cfg->cfg_file = d_cfg_file_client;
 	cfg->data_dir = NULL;
 
+	/* Virtual network interface. */
 	iface->mtu = d_mtu;
 	iface->dev = d_dev;
 
+	/* Socket config. */
 	sock->type = d_sock_type;
 	sock->server_addr = NULL;
 	sock->server_port = d_server_port;
+
+	/* Auth config. */
+	auth->username = NULL;
+	auth->password = NULL;
 }
 
 static const struct option long_opt[] = {
@@ -63,10 +73,14 @@ static const struct option long_opt[] = {
 	{"server-port",   required_argument, 0, 'p'},
 	{"sock-type",     required_argument, 0, 's'},
 
+	/* Auth */
+	{"username",      required_argument, 0, 'u'},
+	{"password",      required_argument, 0, 'P'},
+
 	{0, 0, 0, 0}
 };
 
-static const char short_opt[] = "hvc:D:d:m:S:p:s:";
+static const char short_opt[] = "hvc:D:d:m:S:p:s:u:P:";
 
 static inline void show_help(const char *app);
 static inline void show_version(void);
@@ -75,6 +89,10 @@ static inline int parse_opt(int argc, char *argv[], struct parse_struct *cx)
 {
 	int c;
 	struct cli_cfg *cfg = cx->cfg;
+	struct cli_iface_cfg *iface = &cfg->iface;
+	struct cli_sock_cfg *sock = &cfg->sock;
+	struct cli_auth_cfg *auth = &cfg->auth;
+
 
 	while (true) {
 
@@ -108,20 +126,20 @@ static inline int parse_opt(int argc, char *argv[], struct parse_struct *cx)
 
 		/* ---------------  Virtual network interface --------------- */
 		case 'd':
-			cfg->iface.dev = trunc_str(optarg, 255);
+			iface->dev = trunc_str(optarg, 255);
 			break;
 		case 'm':
-			cfg->iface.mtu = atoi(optarg);
+			iface->mtu = atoi(optarg);
 			break;
 		/* ---------------------------------------------------------- */
 
 
 		/* ------------------------- Socket ------------------------- */
 		case 'S':
-			cfg->sock.server_addr = trunc_str(optarg, 255);
+			sock->server_addr = trunc_str(optarg, 255);
 			break;
 		case 'p':
-			cfg->sock.server_port = atoi(optarg);
+			sock->server_port = atoi(optarg);
 			break;
 		case 's':
 			{
@@ -137,10 +155,10 @@ static inline int parse_opt(int argc, char *argv[], struct parse_struct *cx)
 				tmp.targ[3]  = '\0';
 
 				if (!memcmp(tmp.targ, "tcp", 4)) {
-					cfg->sock.type = SOCK_TCP;
+					sock->type = SOCK_TCP;
 				} else
 				if (!memcmp(tmp.targ, "udp", 4)) {
-					cfg->sock.type = SOCK_UDP;
+					sock->type = SOCK_UDP;
 				} else {
 					pr_error("Invalid socket type \"%s\"",
 						 optarg);
@@ -149,6 +167,17 @@ static inline int parse_opt(int argc, char *argv[], struct parse_struct *cx)
 			}
 			break;
 		/* ---------------------------------------------------------- */
+
+
+		/* -------------------------- Auth -------------------------- */
+		case 'u':
+			auth->username = trunc_str(optarg, 255);
+			break;
+		case 'P':
+			auth->password = ar_strndup(optarg, 255);
+			memset(optarg, 'x', strlen(optarg));
+			break;
+		/* ---------------------------------------------------------- */			
 
 		case '?':
 		default:
@@ -171,7 +200,7 @@ static inline void show_help(const char *app)
 	printf("Available options:\n");
 	printf("  -h, --help\t\t\tShow this help message.\n");
 	printf("  -c, --config=FILE\t\tSet config file (default: %s).\n",
-	       d_cfg_file);
+	       d_cfg_file_client);
 	printf("  -v, --version\t\t\tShow program version.\n");
 	printf("  -D, --data-dir\t\tSet data directory.\n");
 
