@@ -2,15 +2,15 @@
 #include <stdlib.h>
 #include <getopt.h>
 #include <string.h>
+#include <teavpn2/lib/arena.h>
+#include <teavpn2/lib/string.h>
 #include <teavpn2/server/common.h>
-#include <teavpn2/global/helpers/arena.h>
-#include <teavpn2/global/helpers/string.h>
+
 
 struct parse_struct {
 	char		*app;
 	struct srv_cfg  *cfg;
 };
-
 
 /* ---------------------- Default configuration values ---------------------- */
 #ifdef SERVER_DEFAULT_CONFIG_FILE
@@ -57,6 +57,7 @@ static __always_inline void init_default_cfg(struct srv_cfg *cfg)
 	struct srv_iface_cfg *iface = &cfg->iface;
 
 	cfg->cfg_file = d_srv_cfg_file;
+	cfg->data_dir = NULL;
 
 	/* Virtual network interface config */
 	iface->mtu = d_srv_mtu;
@@ -159,8 +160,8 @@ static __always_inline int getopt_handler(int argc, char *argv[],
 		case 's':
 			{
 				union {
-					char 		targ[4];
-					uint32_t 	int_rep;
+					char		targ[4];
+					uint32_t	int_rep;
 				} tmp;
 				tmp.int_rep = 0;
 				strncpy(tmp.targ, optarg, sizeof(tmp.targ) - 1);
@@ -207,7 +208,6 @@ int teavpn_server_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 	ctx.app  = argv[0];
 	ctx.cfg  = cfg;
 	init_default_cfg(cfg);
-
 	if (getopt_handler(argc - 1, argv + 1, &ctx) < 0)
 		return -1;
 

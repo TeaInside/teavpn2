@@ -1,8 +1,6 @@
 
-DEP_DIRS += $(BASE_DEP_DIR)/src/teavpn2/server/linux
-
-OBJ_TMP_CC := \
-	$(BASE_DIR)/src/teavpn2/server/linux/iface.o \
+DEP_DIRS	+= $(BASE_DEP_DIR)/src/teavpn2/server/linux
+OBJ_TMP_CC	:= \
 	$(BASE_DIR)/src/teavpn2/server/linux/tcp.o
 
 OBJ_PRE_CC	+= $(OBJ_TMP_CC)

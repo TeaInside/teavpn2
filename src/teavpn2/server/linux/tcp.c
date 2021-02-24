@@ -1,218 +1,226 @@
 
 #include <poll.h>
-#include <assert.h>
-#include <unistd.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <signal.h>
 #include <string.h>
-#include <stdlib.h>
-#include <pthread.h>
+#include <assert.h>
+#include <unistd.h>
 #include <arpa/inet.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #include <netinet/tcp.h>
-
+#include <teavpn2/net/linux/iface.h>
 #include <teavpn2/server/linux/tcp.h>
-#include <teavpn2/server/linux/iface.h>
+#include <teavpn2/client/linux/tcp.h>
 
 
-#define MAX_ERR_COUNT (15u)
-
-
-static struct srv_tcp_state *state_g = NULL;
-
-
-static __always_inline int32_t push_client_stack(struct srv_client_stack *stack,
-						 uint16_t i)
-{
-	uint16_t sp = stack->sp;
-
-	assert(sp != 0);
-
-	stack->block[--sp] = i;
-	stack->sp = sp;
-
-	return (int32_t)i;
-}
-
-
-static __always_inline int32_t pop_client_stack(struct srv_client_stack *stack)
-{
-	int32_t ret;
-	uint16_t sp = stack->sp;
-
-	/* sp must never be higher than max_sp */
-	assert(sp <= stack->max_sp);
-
-	if (sp == stack->max_sp)
-		return -1;
-
-	ret = (int32_t)stack->block[sp];
-	stack->sp = ++sp;
-	return ret;
-}
+#define MAX_ERR_C (10u)
+static struct srv_tcp_state *g_state;
 
 
 static void intr_handler(int sig)
 {
-	struct srv_tcp_state *state = state_g;
+	struct srv_tcp_state *state = g_state;
 
 	state->stop = true;
-	putchar(10);
+	putchar('\n');
 	(void)sig;
 }
 
 
-static int client_init(struct tcp_client *client, uint16_t idx)
+static int32_t push_clst(struct srv_tcp_clstack *stack, uint16_t val)
+{
+	uint16_t sp = stack->sp;
+
+	assert(sp > 0);
+	stack->arr[--sp] = val;
+	stack->sp = sp;
+	return (int32_t)val;
+}
+
+
+static int32_t pop_clst(struct srv_tcp_clstack *stack)
+{
+	int32_t val;
+	uint16_t sp = stack->sp;
+	uint16_t max_sp = stack->max_sp;
+
+	/* sp must never be higher than max_sp */
+	assert(sp <= max_sp);
+
+	if (sp == max_sp)
+		return -1; /* There is nothing in the stack */
+
+	val = (int32_t)stack->arr[sp];
+	stack->sp = ++sp;
+	return (int32_t)val;
+}
+
+
+static void init_client_slots(struct srv_tcp_client *clients, uint16_t i)
+{
+	while (i--) {
+		memset(&clients[i], 0, sizeof(struct srv_tcp_client));
+		clients[i].cli_fd = -1;
+		clients[i].arr_idx = i;
+	}
+}
+
+
+static int init_state(struct srv_tcp_state *state)
 {
 	int tmp;
-
-	client->is_used = false;
-	client->is_connected = false;
-	client->is_authorized = false;
-	client->tun_fd = -1;
-	client->cli_fd = -1;
-
-	if (client->ht_mutex_active)
-		pthread_mutex_destroy(&(client->ht_mutex));
+	struct srv_cfg *cfg = state->cfg;
+	uint16_t *stack_arr = NULL;
+	uint16_t max_conn = cfg->sock.max_conn;
+	struct srv_tcp_client *clients = NULL;
+	struct srv_tcp_clstack *stack = &state->stack;
 
 
-	tmp = pthread_mutex_init(&(client->ht_mutex), NULL);
-	if (tmp != 0) {
-		int tmp_err;
-		tmp_err = tmp > 0 ? tmp : -tmp;
-		pr_error("pthread_mutex_init: %s", strerror(tmp_err));
-		return -tmp_err;
+	clients = calloc(max_conn, sizeof(struct srv_tcp_client));
+	if (unlikely(clients == NULL))
+		goto out_err_calloc;
+
+	stack_arr = calloc(max_conn, sizeof(uint16_t));
+	if (unlikely(stack_arr == NULL))
+		goto out_err_calloc;
+
+	stack->sp = max_conn;
+	stack->max_sp = max_conn;
+	stack->arr = stack_arr;
+
+	init_client_slots(clients, max_conn);
+
+	while (max_conn--)
+		push_clst(stack, max_conn);
+
+	state->net_fd = -1;
+	state->tun_fd = -1;
+	state->pipe_fd[0] = -1;
+	state->pipe_fd[1] = -1;
+	state->stop = false;
+	state->clients = clients;
+	return 0;
+
+
+out_err_calloc:
+	tmp = errno;
+	free(clients);
+	pr_error("calloc: Cannot allocate memory: %s", strerror(tmp));
+	return -ENOMEM;
+}
+
+
+static int init_pipe(struct srv_tcp_state *state)
+{
+	prl_notice(6, "Initializing pipe...");
+	if (unlikely(pipe(state->pipe_fd) < 0)) {
+		int tmp = errno;
+		pr_error("pipe(): %s", strerror(tmp));
+		return -tmp;
 	}
 
-	client->ht_mutex_active = true;
-
-	memset(client->username, 0, sizeof(client->username));
-	memset(&client->src_ip, 0, sizeof(client->src_ip));
-	memset(client->send_buf, 0, sizeof(client->send_buf));
-	memset(client->recv_buf, 0, sizeof(client->recv_buf));
-
-	client->arr_idx = idx;
-	client->err_c = 0;
-	client->send_s = 0;
-	client->send_c = 0;
-	client->recv_s = 0;
-	client->recv_c = 0;
+	prl_notice(6, "Pipe has been successfully created!");
+	prl_notice(6, "state->pipe_fd[0] = %d", state->pipe_fd[0]);
+	prl_notice(6, "state->pipe_fd[1] = %d", state->pipe_fd[1]);
 
 	return 0;
 }
 
 
-static int init_tcp_state(struct srv_tcp_state *state)
+static void destroy_state(struct srv_tcp_state *state)
 {
-	int retval = 0;
-	uint16_t *stack_block;
-	struct tcp_client *clients;
-	struct srv_cfg *cfg = state->cfg;
-	uint16_t max_conn = cfg->sock.max_conn;
-	uint16_t tmp_dec = max_conn;
+	int tun_fd = state->tun_fd;
+	int net_fd = state->net_fd;
+	int *pipe_fd = state->pipe_fd;
+	uint16_t max_conn = state->cfg->sock.max_conn;
+	struct srv_tcp_client *client;
+	struct srv_tcp_client *clients = state->clients;
 
-	clients = calloc(max_conn, sizeof(*clients));
-	if (clients == NULL) {
-		pr_error("calloc: %s", strerror(errno));
-		return -ENOMEM;
+	if (pipe_fd[0] != -1) {
+		prl_notice(6, "Closing state->pipe_fd[0] (%d)", pipe_fd[0]);
+		close(pipe_fd[0]);
 	}
 
-	for (uint16_t i = 0; i < max_conn; i++) {
-		retval = client_init(&clients[i], i);
-		if (retval != 0)
-			goto out_err;
+	if (pipe_fd[1] != -1) {
+		prl_notice(6, "Closing state->pipe_fd[1] (%d)", pipe_fd[1]);
+		close(pipe_fd[1]);
 	}
 
-	stack_block = calloc(max_conn, sizeof(*stack_block));
-	if (stack_block == NULL) {
-		pr_error("calloc: %s", strerror(errno));
-		retval = -ENOMEM;
-		goto out_err;
+	if (tun_fd != -1) {
+		prl_notice(6, "Closing state->tun_fd (%d)", tun_fd);
+		close(tun_fd);
 	}
 
-	state->stack.sp = max_conn;
-	state->stack.max_sp = max_conn;
-	state->stack.block = stack_block;
-
-	while (tmp_dec--)
-		push_client_stack(&state->stack, tmp_dec);
-
-	state->net_fd = -1;
-	state->stop = false;
-	state->n_online = 0;
-	state->clients = clients;
-
-	return retval;
-
-out_err:
-	free(clients);
-	return retval;
-}
-
-
-static inline void client_close_fd(struct tcp_client *client, uint16_t i)
-{
-	int fd;
-
-	fd = client->tun_fd;
-	if (fd != -1) {
-		prl_notice(3, "Closing clients[%d].tun_fd (%d)...", i, fd);
-		close(fd);
+	if (net_fd != -1) {
+		prl_notice(6, "Closing state->net_fd (%d)", net_fd);
+		close(net_fd);
 	}
 
-	fd = client->cli_fd;
-	if (fd != -1) {
-		pthread_mutex_lock(&client->ht_mutex);
-		prl_notice(3, "Closing clients[%d].cli_fd (%d)...", i, fd);
-		close(fd);
-		pthread_mutex_unlock(&client->ht_mutex);
-	}
-}
-
-
-static void destroy_tcp_state(struct srv_tcp_state *state)
-{
-	struct srv_cfg *cfg = state->cfg;
-	uint16_t max_conn = cfg->sock.max_conn;
-	struct tcp_client *clients = state->clients;
-
-	for (uint16_t i = 0; i < max_conn; i++) {
-		client_close_fd(&clients[i], i);
-
-		if (clients[i].ht_mutex_active) {
-			pthread_mutex_destroy(&clients[i].ht_mutex);
-			clients[i].ht_mutex_active = false;
+	while (max_conn--) {
+		client = clients + max_conn;
+		if (client->is_used) {
+			prl_notice(6, "Closing clients[%d].cli_fd (%d)",
+				   max_conn, client->cli_fd);
+			close(client->cli_fd);
 		}
 	}
 
-
 	free(clients);
-	free(state->stack.block);
-
-	if (state->net_fd != -1) {
-		prl_notice(3, "Closing socket fd (%d)...", state->net_fd);
-		close(state->net_fd);
-	}
+	free(state->stack.arr);
 }
 
 
-static int setup_socket_tcp_server(int fd)
+static int init_iface(struct srv_tcp_state *state)
+{
+	int fd;
+	struct iface_cfg i;
+	struct srv_iface_cfg *j = &state->cfg->iface;
+
+	prl_notice(3, "Creating virtual network interface: \"%s\"...",j->dev);
+	fd = tun_alloc(j->dev, IFF_TUN);
+	if (unlikely(fd < 0))
+		return -1;
+	if (unlikely(fd_set_nonblock(fd) < 0))
+		goto out_err;
+
+	memset(&i, 0, sizeof(struct iface_cfg));
+	strncpy(i.dev, j->dev, sizeof(i.dev) - 1);
+	strncpy(i.ipv4, j->ipv4, sizeof(i.ipv4) - 1);
+	strncpy(i.ipv4_netmask, j->ipv4_netmask, sizeof(i.ipv4_netmask) - 1);
+	i.mtu = j->mtu;
+
+	if (unlikely(!raise_up_interface(&i)))
+		goto out_err;
+
+	state->tun_fd = fd;
+	return 0;
+
+out_err:
+	close(fd);
+	return -1;
+}
+
+
+static int socket_setup(int fd, struct srv_cfg *cfg)
 {
 	int rv;
 	int y = 1;
 	socklen_t len = sizeof(y);
-	const void *pval = (const void *)&y;
+	const void *pv = (const void *)&y;
 
-
-	rv = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, pval, len);
+	rv = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, pv, len);
 	if (unlikely(rv < 0))
 		goto out_err;
 
-
-	rv = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, pval, len);
+	rv = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, pv, len);
 	if (unlikely(rv < 0))
 		goto out_err;
 
-
-	return 0;
+	(void)cfg;
+	return rv;
 
 out_err:
 	pr_error("setsockopt(): %s", strerror(errno));
@@ -220,391 +228,401 @@ out_err:
 }
 
 
-static int init_socket_tcp_server(struct srv_tcp_state *state)
+static int init_socket(struct srv_tcp_state *state)
 {
 	int fd;
-	int retval = 0;
+	int ern;
+	int retval;
 	struct sockaddr_in srv_addr;
-	struct srv_sock_cfg *sock_cfg = &(state->cfg->sock);
+	struct srv_sock_cfg *sock = &state->cfg->sock;
+	int backlog = sock->backlog;
+	char *bind_addr = sock->bind_addr;
+	uint16_t bind_port = sock->bind_port;
 
-	const char *bind_addr = sock_cfg->bind_addr;
-	uint16_t bind_port = sock_cfg->bind_port;
-
-
-	prl_notice(2, "Creating TCP socket...");
+	prl_notice(3, "Creating TCP socket...");
 	fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
 	if (unlikely(fd < 0)) {
-		int tmp = errno;
-		retval = -tmp;
-		pr_error("socket(): %s", strerror(tmp));
+		ern = errno;
+		retval = -ern;
+		pr_error("socket(): %s", strerror(ern));
 		goto out_err;
 	}
 
-
-	prl_notice(2, "Setting up socket file descriptor...");
-	retval = setup_socket_tcp_server(fd);
+	prl_notice(3, "Setting up socket file descriptor...");
+	retval = socket_setup(fd, state->cfg);
 	if (unlikely(retval < 0))
 		goto out_err;
-
 
 	memset(&srv_addr, 0, sizeof(struct sockaddr_in));
 	srv_addr.sin_family = AF_INET;
 	srv_addr.sin_port = htons(bind_port);
 	srv_addr.sin_addr.s_addr = inet_addr(bind_addr);
 
-
 	retval = bind(fd, (struct sockaddr *)&srv_addr, sizeof(srv_addr));
 	if (unlikely(retval < 0)) {
-		int tmp = errno;
-		retval = -tmp;
-		pr_error("bind(): %s", strerror(tmp));
+		ern = errno;
+		retval = -ern;
+		pr_error("bind(): %s", strerror(ern));
 		goto out_err;
 	}
 
-
-	retval = listen(fd, sock_cfg->backlog);
+	retval = listen(fd, backlog);
 	if (unlikely(retval < 0)) {
-		int tmp = errno;
-		retval = -tmp;
-		pr_error("listen(): %s", strerror(tmp));
+		ern = errno;
+		retval = -ern;
+		pr_error("listen(): %s", strerror(ern));
 		goto out_err;
 	}
 
 
 	state->net_fd = fd;
 	prl_notice(0, "Listening on %s:%d...", bind_addr, bind_port);
-
 	return retval;
 
 out_err:
-	if (likely(fd > 0)) {
-		prl_notice(3, "Closing socket descriptor (%d)...", fd);
+	if (fd > 0)
 		close(fd);
-	}
-
 	return retval;
 }
 
 
-static void tcp_accept_event(struct srv_tcp_state *state)
+static void accept_conn(int net_fd, struct pollfd *clfds,
+			struct srv_tcp_state *state)
 {
 	int rv;
-	int32_t n_index;
-	const char *chr_tmp;
-	int net_fd = state->net_fd;
-	struct sockaddr_in cli_addr;
-	char r_src_ip[IPV4LEN];
-	uint16_t r_src_port;
-	struct tcp_client *client;
-	struct pollfd *clfds;
-	socklen_t addrlen = sizeof(cli_addr);
+	int ern;
+	int32_t ridx;
+	uint16_t idx;
+	const char *chtmp;
+	char src_ip[IPV4LEN];
+	uint16_t sport;
+	struct pollfd *cltkn;
+	struct sockaddr_in claddr;
+	struct srv_tcp_client *client;
+	socklen_t addrlen = sizeof(struct sockaddr_in);
 
-	memset(&cli_addr, 0, sizeof(cli_addr));
+	memset(&claddr, 0, addrlen);
 
-	rv = accept(net_fd, &cli_addr, &addrlen);
+	rv = accept(net_fd, &claddr, &addrlen);
 	if (unlikely(rv < 0)) {
-		int tmp = errno;
-		if (tmp == EAGAIN)
+		ern = errno;
+		if (ern == EAGAIN)
 			return;
-		pr_error("accept(): %s", strerror(tmp));
+		pr_error("accept(): %s", strerror(ern));
 		return;
 	}
 
-
-	chr_tmp = inet_ntop(AF_INET, &cli_addr.sin_addr, r_src_ip, IPV4LEN);
-	if (unlikely(chr_tmp == NULL)) {
-		pr_error("tcp_accept_event: inet_ntop(%lx): %s",
-			 cli_addr.sin_addr.s_addr, strerror(errno));
+	/* Get readable source IP address */
+	chtmp = inet_ntop(AF_INET, &claddr.sin_addr, src_ip, IPV4LEN);
+	if (unlikely(chtmp == NULL)) {
+		int ern = errno;
+		pr_error("inet_ntop(%lx): %s", claddr.sin_addr.s_addr,
+			 strerror(ern));
 		goto out_close;
 	}
 
-	r_src_port = ntohs(cli_addr.sin_port);
+	/* Get readable source port */
+	sport = ntohs(claddr.sin_port);
 
-
-	n_index = pop_client_stack(&state->stack);
-	if (unlikely(n_index == -1)) {
-		prl_notice(1, "Client slot is full, dropping connection from "
-			   "%s:%d...", r_src_ip, r_src_port);
+	ridx = pop_clst(&state->stack);
+	if (unlikely(ridx == -1)) {
+		prl_notice(1, "Client slot is full, can't accept connection");
+		prl_notice(1, "Dropping connection from %s:%d", chtmp, sport);
 		goto out_close;
 	}
 
-	clfds = &state->fds[1];
-	client = &state->clients[n_index];
 
+	/* Welcome new connection :) */
+	idx = (uint16_t)ridx;
+
+	cltkn = &clfds[idx];
+	cltkn->fd = rv;
+	cltkn->events = POLLIN;
+
+	client = &state->clients[idx];
 	client->is_used = true;
-	client->is_connected = true;
-	client->is_authorized = false;
-
+	client->is_conn = true;
+	client->is_auth = false;
+	client->ht_mutx = false;
+	client->ctstate = CT_NEW;
 	client->cli_fd = rv;
-	client->ev_state = EV_FIRST_CONNECT;
+	client->err_c = 0;
+	client->recv_c = 0;
+	client->recv_s = 0;
 
-	client->src_ip = cli_addr;
+	strncpy(client->src_ip, src_ip, IPV4LEN);
+	client->src_port = sport;
+	memcpy(&client->src_data, &claddr, sizeof(struct sockaddr_in));
 
-	/* Save human readable IP and port */
-	strncpy(client->r_src_ip, r_src_ip, sizeof(client->r_src_ip));
-	client->r_src_port = r_src_port;
-
-	/* Set fds for poll */
-	clfds[n_index].fd = rv;
-	clfds[n_index].events = POLLIN;
-
-	/* +1 since nfds also contains main TCP socket fd */
-	if (state->nfds < (state->cfg->sock.max_conn + 1u))
-		state->nfds++;
-
+	assert(client->arr_idx == idx);
+	prl_notice(1, "New connection from %s:%d", chtmp, sport);
 	return;
 
 out_close:
 	close(rv);
-}
-
-
-static void handle_ev_first_connect(uint16_t hlen,
-				    struct srv_tcp_state *state,
-				    struct tcp_client *client)
-{
-	(void)hlen;
-	(void)state;
-	(void)client;
-}
-
-
-static void handle_ev_authorization(uint16_t hlen,
-				    struct srv_tcp_state *state,
-				    struct tcp_client *client)
-{
-	(void)hlen;
-	(void)state;
-	(void)client;
-}
-
-
-static void handle_ev_established(uint16_t hlen,
-				  struct srv_tcp_state *state,
-				  struct tcp_client *client)
-{
-	(void)hlen;
-	(void)state;
-	(void)client;
-}
-
-
-static void handle_ev_disconnected(uint16_t hlen,
-				   struct srv_tcp_state *state,
-				   struct tcp_client *client)
-{
-	(void)hlen;
-	(void)state;
-	(void)client;
-}
-
-
-static void handle_client_event(struct srv_tcp_state *state, uint16_t idx)
-{
-	struct tcp_client *client = &state->clients[idx];
-
-	ssize_t nread;
-	int cli_fd = client->cli_fd;
-	char *buf = client->recv_buf;
-	uint16_t recv_s = client->recv_s;
-	uint16_t hlen;
-
-
-	nread = recv(cli_fd, buf + recv_s, RECVBUFSIZ, MSG_DONTWAIT);
-	if (likely(nread > 0))
-		goto recv_ok;
-
-
-	if (unlikely(nread < 0)) {
-		if (errno == EAGAIN)
-			return;
-
-		pr_error("recv() from (%s:%d): %s", client->r_src_ip,
-			 client->r_src_port, strerror(errno));
-
-		if (++client->err_c >= MAX_ERR_COUNT) {
-			/* TODO: Handle disconnect */
-		}
-		return;
-	}
-
-
-	if (unlikely(nread == 0)) {
-		prl_notice(3, "Client disconnected (%s:%d)", client->r_src_ip,
-			   client->r_src_port);
-
-		/* TODO: Handle disconnect */
-		return;
-	}
-
-
 	return;
-
-recv_ok:
-
-	recv_s += (uint16_t)nread;
+}
 
 
-	if (unlikely(offsetof(struct cli_tcp_pkt, data) < recv_s)) {
-		/* We haven't received the length and type of packet,
-		   must wait until we know them */
-		goto out_save_recv_s;
+static void clear_disconnect(struct srv_tcp_client *client)
+{
+	client->is_used = false;
+	client->is_conn = false;
+	client->is_auth = false;
+	client->ht_mutx = false;
+	client->ctstate = CT_DISCONNECTED;
+	client->cli_fd = -1;
+}
+
+
+static int send_server_banner(struct srv_tcp_client *client,
+			      struct srv_tcp_state *state)
+{
+	size_t send_len;
+	ssize_t send_ret;
+	char *src_ip = client->src_ip;
+	uint16_t src_port = client->src_port;
+	struct srv_tcp_pkt *srv_pkt = &state->srv_pkt;
+
+	srv_pkt->type   = SRV_PKT_BANNER;
+	srv_pkt->length = sizeof(struct srv_banner);
+	
+	srv_pkt->banner.cur.ver = 0;
+	srv_pkt->banner.cur.sub_ver = 0;
+	srv_pkt->banner.cur.sub_sub_ver = 1;
+
+	srv_pkt->banner.min.ver = 0;
+	srv_pkt->banner.min.sub_ver = 0;
+	srv_pkt->banner.min.sub_sub_ver = 1;
+
+	srv_pkt->banner.max.ver = 0;
+	srv_pkt->banner.max.sub_ver = 0;
+	srv_pkt->banner.max.sub_sub_ver = 1;
+
+	send_len = SRV_PKT_MIN_RSIZ + sizeof(struct srv_banner);
+	send_ret = send(client->cli_fd, srv_pkt, send_len, 0);
+	if (unlikely(send_ret < 0)) {
+		pr_error("send() to %s:%d: %s", src_ip, src_port,
+			 strerror(errno));
+		return -1;
+	}
+	prl_notice(11, "send() %ld bytes to %s:%d", send_ret, src_ip, src_port);
+
+	return 0;
+}
+
+
+static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
+			  uint16_t i)
+{
+	int ern;
+	size_t recv_s;
+	size_t recv_len;
+	ssize_t recv_ret;
+	char *recv_buf;
+	struct cli_tcp_pkt *cli_pkt;
+	struct srv_tcp_client *client;
+	char *src_ip;
+	uint16_t src_port;
+	uint16_t fdata_len; /* Full data length    */
+	uint16_t cdata_len; /* Current data length */
+
+	client   = &state->clients[i];
+	cli_pkt  = &client->cli_pkt;
+	recv_s   = client->recv_s;
+	recv_buf = client->recv_buf;
+	src_ip   = client->src_ip;
+	src_port = client->src_port;
+
+	recv_len = sizeof(struct cli_tcp_pkt) - recv_s;
+	recv_ret = recv(cl->fd, recv_buf + recv_s, recv_len, 0);
+	if (unlikely(recv_ret < 0)) {
+		ern = errno;
+		if (ern == EAGAIN)
+			return;
+		pr_error("recv(): %s", strerror(ern));
+		goto out_err_c;
 	}
 
+	if (unlikely(recv_ret == 0)) {
+		prl_notice(6, "%s:%d has closed its connection", src_ip,
+			   src_port);
+		goto out_close_conn;
+	}
 
-	hlen = ntohs(client->cli_pkt.len);
+	prl_notice(11, "recv() %ld bytes from %s:%d", recv_ret, src_ip,
+		   src_port);
 
-	if (unlikely(hlen > sizeof(client->recv_buf))) {
 
+	recv_s += (size_t)recv_ret;
+	if (unlikely(recv_s < CLI_PKT_MIN_RSIZ)) {
 		/*
-		 *	Client gives packet len which is greater than recv_buf.
-		 *
-		 *	Possibilities in this case:
-		 *	- There is a bug in client module.
-		 *	- The packet has been corrupted.
-		 *	- Client has been compromised to send malicious packet.
+		 * We haven't received the type and length of packet.
+		 * Very unlikely happens, maybe connection is too slow (?)
 		 */
-
-		pr_error("Client sends invalid packet len (%s:%d) "
-			 "(max_allowed_len = %u; cli_pkt->len = %u;"
-			 " recv_s = %u) POSSIBLE BUG!", client->r_src_ip,
-			 client->r_src_port, sizeof(client->recv_buf), hlen,
-			 recv_s);
-
-		/* Reset buffer ptr to avoid heap overflow */
-		goto out;
-	}
-
-
-	if (unlikely(hlen < recv_s)) {
-		/* We only have partial packet at this point,
-		   must wait until complete */
 		goto out_save_recv_s;
 	}
 
+	fdata_len = htons(cli_pkt->length);
+	if (unlikely(fdata_len > CLI_PKT_DATA_SIZ)) {
+		/*
+		 * Client sends invalid length.
+		 *
+		 * Possibilities in this case:
+		 * - There is a bug in client module.
+		 * - The packet has been corrupted.
+		 * - Client has been compromised to send malicious packet.
+		 * - Or whatever causes packet corruption (?)
+		 */
+		prl_notice(1, "Client sends invalid packet len (%s:%d) "
+			   "(max_allowed_len = %u; cli_pkt->length = %u;"
+			   " recv_s = %u) POSSIBLE BUG!", src_ip, src_port,
+			   CLI_PKT_DATA_SIZ, fdata_len, recv_s);
+		goto out_err_c;
+	}
 
-	switch (client->ev_state) {
-	case EV_FIRST_CONNECT:
-		handle_ev_first_connect(hlen, state, client);
+	/* Calculate current data length */
+	cdata_len = recv_s - CLI_PKT_MIN_RSIZ;
+	if (unlikely(cdata_len < fdata_len)) {
+		/*
+		 * We have received the type and length of packet, but
+		 * incomplete, let's wait a bit longer in the next cycle.
+		 */
+		goto out_save_recv_s;
+	}
+
+	assert(cdata_len == fdata_len);
+
+	switch (cli_pkt->type) {
+	case CLI_PKT_HELLO:
+		if (unlikely(send_server_banner(client, state) < 0))
+			goto out_close_conn;
 		break;
-
-	case EV_AUTHORIZATION:
-		handle_ev_authorization(hlen, state, client);
+	case CLI_PKT_AUTH:
 		break;
-
-	case EV_ESTABLISHED:
-		handle_ev_established(hlen, state, client);
+	case CLI_PKT_DATA:
 		break;
-
-	case EV_DISCONNECTED:
-		handle_ev_disconnected(hlen, state, client);
+	case CLI_PKT_CLOSE:
 		break;
-
 	default:
-		pr_error("Invalid state on handle_client_event: state = %d",
-			 client->ev_state);
-		abort();
+		prl_notice(11, "Received invalid packet from %s:%d (type: %d)",
+			   src_ip, src_port, cli_pkt->type);
+
+		if (likely(!client->is_auth))
+			goto out_close_conn;
 		break;
 	}
 
-
-out:
-	/* Reset buffer pointer */
-	client->recv_s = 0u;
 	return;
 
 out_save_recv_s:
 	client->recv_s = recv_s;
+	return;
+
+out_err_c:
+	client->recv_s = 0;
+	if (unlikely(client->err_c++ >= MAX_ERR_C)) {
+		prl_notice(3, "Connection %s:%d reached the max number of "
+			   "error", src_ip, src_port);
+		goto out_close_conn;
+	}
+	return;
+
+out_close_conn:
+	prl_notice(3, "Closing connection fd from %s:%d", src_ip, src_port);
+	close(cl->fd);
+	cl->fd = -1;
+	clear_disconnect(client);
+	return;
 }
 
 
-static int handle_tcp_event_loop(struct srv_tcp_state *state)
+static int event_loop(struct srv_tcp_state *state)
 {
-	int retval;
+	int rv;
+	int ern;
 	int timeout;
-	struct pollfd *fds = NULL;
-	struct pollfd *clfds = NULL; /* fds slot for client */
-	struct srv_cfg *cfg = state->cfg;
-	uint16_t max_conn = cfg->sock.max_conn;
+	int retval = 0;
+	int net_fd = state->net_fd;
+	int tun_fd = state->tun_fd;
+	int *pipe_fd = state->pipe_fd;
+	struct pollfd *fds;
+	struct pollfd *clfds;
+	uint16_t max_conn = state->cfg->sock.max_conn;
 
-
-	retval = 0;
-
-	fds = calloc(max_conn + 1, sizeof(*fds));
+	fds = calloc(max_conn + 3, sizeof(struct pollfd));
 	if (unlikely(fds == NULL)) {
-		pr_error("calloc(): %s", strerror(errno));
+		pr_error("calloc: Cannot allocate memory: %s", strerror(errno));
 		return -ENOMEM;
 	}
 
-	timeout = 3000;
-	state->fds = fds;
-	state->nfds = 1;
-
-	fds[0].fd = state->net_fd;
+	fds[0].fd = net_fd;;
 	fds[0].events = POLLIN;
 
-	clfds = &fds[1];
+	fds[1].fd = -tun_fd; /* OFF */
+	fds[1].events = POLLIN;
 
-	prl_notice(0, "Initialization Sequence Completed");
+	fds[2].fd = pipe_fd[0];
+	fds[2].events = POLLIN;
+
+	clfds = fds + 3;
+
+	for (uint16_t i = 0; i < max_conn; i++)
+		clfds[i].fd = -1;
+
+	state->fds = fds;
+	state->nfds = 3 + max_conn;
+	timeout = 5000;
 
 	while (true) {
-		int rv;
-
 		rv = poll(fds, state->nfds, timeout);
 
+		prl_notice(15, "==== poll() = %d", rv);
+
 		if (unlikely(rv == 0)) {
-
 			/* Poll reached timeout. */
-
-			/*
-			 * TODO: Rearrange fds and state->clients.
-			 * (Deal with dead descriptors)
-			 */
-			goto end_of_loop;
+			goto eol;
 		}
-
 
 		if (unlikely(rv < 0)) {
-			int tmp = errno;
-
-			if (tmp == EINTR && state->stop) {
+			ern = errno;
+			if (ern == EINTR) {
 				retval = 0;
-				prl_notice(0, "Interrupted, closing...");
-				goto out;
+				prl_notice(0, "Interrupted!");
+				break;
 			}
-
-			retval = -tmp;
-			pr_error("poll(): %s", strerror(tmp));
-			goto out;
+			retval = -ern;
+			pr_error("poll(): %s", strerror(ern));
+			break;
 		}
 
-
 		if (unlikely((fds[0].revents & POLLIN) != 0)) {
-			tcp_accept_event(state);
+			accept_conn(net_fd, clfds, state);
 			rv--;
 		}
 
-
-		for (uint16_t i = 0; likely((rv > 0) && (i < max_conn)); i++) {
-			if (likely((clfds[i].revents & POLLIN) != 0))
-				handle_client_event(state, i);
+		if (likely((rv != 0) && ((fds[1].revents & POLLIN) != 0))) {
+			rv--;
 		}
 
+		for (uint16_t i = 0; (i < max_conn) && (rv > 0); i++) {
+			if ((clfds[i].revents & POLLIN) != 0) {
+				handle_client(&clfds[i], state, i);
+				rv--;
+			}
+		}
 
-	end_of_loop:
+	eol:
 		if (unlikely(state->stop))
 			break;
 	}
 
-
-out:
 	free(fds);
-	state->fds = NULL;
 	return retval;
 }
 
 
-int teavpn_tcp_server(struct srv_cfg *cfg)
+int teavpn_server_tcp_handler(struct srv_cfg *cfg)
 {
 	int retval;
 	struct srv_tcp_state state;
@@ -612,35 +630,27 @@ int teavpn_tcp_server(struct srv_cfg *cfg)
 	memset(&state, 0, sizeof(state));
 
 	state.cfg = cfg;
-	state_g = &state; /* For interrupt signal */
+	g_state = &state;
 
 	signal(SIGINT, intr_handler);
 	signal(SIGHUP, intr_handler);
-	signal(SIGQUIT, intr_handler);
 	signal(SIGTERM, intr_handler);
+	signal(SIGQUIT, intr_handler);
 
-
-	retval = init_tcp_state(&state);
-	if (unlikely(retval != 0))
+	retval = init_state(&state);
+	if (unlikely(retval < 0))
 		goto out;
-
-
-	retval = init_iface_tcp_server(&state);
-	if (unlikely(retval != 0))
+	retval = init_pipe(&state);
+	if (unlikely(retval < 0))
 		goto out;
-
-
-	retval = init_socket_tcp_server(&state);
-	if (unlikely(retval != 0))
+	retval = init_iface(&state);
+	if (unlikely(retval < 0))
 		goto out;
-
-
-	retval = handle_tcp_event_loop(&state);
-	if (unlikely(retval != 0))
+	retval = init_socket(&state);
+	if (unlikely(retval < 0))
 		goto out;
-
-
+	retval = event_loop(&state);
 out:
-	destroy_tcp_state(&state);
+	destroy_state(&state);
 	return retval;
 }

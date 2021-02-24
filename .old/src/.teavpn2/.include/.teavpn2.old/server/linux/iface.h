@@ -9,6 +9,6 @@
 #include <teavpn2/server/common.h>
 #include <teavpn2/server/linux/tcp.h>
 
-int init_iface_tcp_server(struct srv_tcp_state *state);
+int teavpn_tcp_init_iface(struct srv_tcp_state *state);
 
 #endif /* #ifndef __TEAVPN2__SERVER__LINUX__IFACE_H */

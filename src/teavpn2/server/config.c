@@ -2,9 +2,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <inih/inih.h>
+#include <teavpn2/lib/arena.h>
 #include <teavpn2/server/common.h>
-#include <teavpn2/global/helpers/arena.h>
-#include <teavpn2/global/helpers/string.h>
+
 
 extern int8_t __notice_level;
 extern char d_srv_cfg_file[];
@@ -13,7 +13,6 @@ struct parse_struct {
 	bool  		exec;
 	struct srv_cfg	*cfg;
 };
-
 
 static int parser_handler(void *user, const char *section, const char *name,
 			  const char *value, int lineno)
@@ -42,8 +41,8 @@ static int parser_handler(void *user, const char *section, const char *name,
 	RMATCH_S("socket") {
 		RMATCH_N("sock_type") {
 			union {
-				char 		targ[4];
-				uint32_t 	int_rep;
+				char		targ[4];
+				uint32_t	int_rep;
 			} tmp;
 			tmp.int_rep = 0;
 			strncpy(tmp.targ, value, sizeof(tmp.targ) - 1);
@@ -114,8 +113,10 @@ out_err:
 	return false;
 }
 
+
 int teavpn_server_cfg_parse(struct srv_cfg *cfg)
 {
+	int retval = 0;
 	FILE *fhandle = NULL;
 	struct parse_struct ctx;
 	char *cfg_file = cfg->cfg_file;
@@ -135,12 +136,22 @@ int teavpn_server_cfg_parse(struct srv_cfg *cfg)
 			 strerror(tmp));
 		return -tmp;
 	}
-	if (ini_parse_file(fhandle, parser_handler, &ctx) < 0)
-		return -1;
-	if (!ctx.exec) {
-		pr_error("Error loading config file!");
-		return -EINVAL;
+
+	if (ini_parse_file(fhandle, parser_handler, &ctx) < 0) {
+		retval = -1;
+		goto out;
 	}
 
-	return 0;
+	if (!ctx.exec) {
+		retval = -EINVAL;
+		pr_error("Error loading config file!");
+		goto out;
+	}
+
+
+out:
+	if (fhandle)
+		fclose(fhandle);
+
+	return retval;
 }

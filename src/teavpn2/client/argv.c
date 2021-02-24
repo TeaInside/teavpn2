@@ -2,10 +2,10 @@
 #include <stdlib.h>
 #include <getopt.h>
 #include <string.h>
-
+#include <teavpn2/lib/arena.h>
+#include <teavpn2/lib/string.h>
 #include <teavpn2/client/common.h>
-#include <teavpn2/global/helpers/arena.h>
-#include <teavpn2/global/helpers/string.h>
+
 
 struct parse_struct {
 	char		*app;
@@ -13,41 +13,56 @@ struct parse_struct {
 };
 
 /* ---------------------- Default configuration values ---------------------- */
-#ifdef DEF_CLIENT_CFG_FILE
-	char d_cfg_file_client[] = DEF_CLIENT_CFG_FILE;
+#ifdef CLIENT_DEFAULT_CONFIG_FILE
+	char d_cli_cfg_file[] = CLIENT_DEFAULT_CONFIG_FILE;
 #else
-	char d_cfg_file_client[] = "/etc/teavpn2/client.ini";
+	char d_cli_cfg_file[] = "/etc/teavpn2/client.ini";
 #endif
 
 
 /* Default config for virtual network interface */
-static uint16_t d_mtu = 1500;
-static char d_dev[] = "teavpn2";
+uint16_t d_cli_mtu = 1500;
+char d_cli_dev[] = "teavpn2";
 
 
 /* Default config for socket */
-static sock_type d_sock_type = SOCK_TCP;
-static uint16_t d_server_port = 55555;
+sock_type d_cli_sock_type = SOCK_TCP;
+uint16_t d_cli_server_port = 55555;
 /* -------------------------------------------------------------------------- */
 
+/*
+ * ---- Short technical overview about config ---- 
+ *
+ * Note that cfg->cfg_file is a pointer (`char *`). If it contains an empty
+ * string then the app takes default config value and override it with command
+ * line arguments.
+ * 
+ * If cfg->cfg_file contains non empty string, it will open a file with name
+ * taken from such a string. If the file does not exists, it will check the file
+ * name, whether it is equals to d_cli_cli_cfg_file or not, if it is equal, then
+ * it does nothing and continue the execution like when cfg->cfg_file contains
+ * and empty string, but if it is not equal to d_cli_cli_cfg_file, then it errors
+ * and extis immediately.
+ *
+ */
 
-static inline void init_default_cfg(struct cli_cfg *cfg)
+static __always_inline void init_default_cfg(struct cli_cfg *cfg)
 {
 	struct cli_iface_cfg *iface = &cfg->iface;
 	struct cli_sock_cfg *sock = &cfg->sock;
 	struct cli_auth_cfg *auth = &cfg->auth;
 
-	cfg->cfg_file = d_cfg_file_client;
+	cfg->cfg_file = d_cli_cfg_file;
 	cfg->data_dir = NULL;
 
 	/* Virtual network interface. */
-	iface->mtu = d_mtu;
-	iface->dev = d_dev;
+	iface->mtu = d_cli_mtu;
+	iface->dev = d_cli_dev;
 
 	/* Socket config. */
-	sock->type = d_sock_type;
+	sock->type = d_cli_sock_type;
 	sock->server_addr = NULL;
-	sock->server_port = d_server_port;
+	sock->server_port = d_cli_server_port;
 
 	/* Auth config. */
 	auth->username = NULL;
@@ -65,27 +80,25 @@ static const struct option long_opt[] = {
 	{"data-dir",      required_argument, 0, 'D'},
 
 	/* Virtual network interface */
-	{"dev",           required_argument, 0, 'd'},
 	{"mtu",           required_argument, 0, 'm'},
+	{"dev",           required_argument, 0, 'd'},
 
 	/* Socket */
-	{"server-addr",   required_argument, 0, 'S'},
-	{"server-port",   required_argument, 0, 'p'},
+	{"server-addr",   required_argument, 0, 'H'},
+	{"server-port",   required_argument, 0, 'P'},
 	{"sock-type",     required_argument, 0, 's'},
 
 	/* Auth */
 	{"username",      required_argument, 0, 'u'},
-	{"password",      required_argument, 0, 'P'},
+	{"password",      required_argument, 0, 'p'},
 
 	{0, 0, 0, 0}
 };
 
-static const char short_opt[] = "hvc:D:d:m:S:p:s:u:P:";
+static const char short_opt[] = "hvc:D:d:m:s:H:P:u:p:";
 
-static inline void show_help(const char *app);
-static inline void show_version(void);
-
-static inline int parse_opt(int argc, char *argv[], struct parse_struct *cx)
+static __always_inline int getopt_handler(int argc, char *argv[],
+					  struct parse_struct *cx)
 {
 	int c;
 	struct cli_cfg *cfg = cx->cfg;
@@ -93,53 +106,30 @@ static inline int parse_opt(int argc, char *argv[], struct parse_struct *cx)
 	struct cli_sock_cfg *sock = &cfg->sock;
 	struct cli_auth_cfg *auth = &cfg->auth;
 
-
 	while (true) {
-
 		int option_index = 0;
 		c = getopt_long(argc, argv, short_opt, long_opt, &option_index);
-
 		if (unlikely(c == -1))
 			break;
 
-
 		switch (c) {
-		/* -------------------- Help and version -------------------- */
 		case 'h':
-			show_help(cx->app);
-			break;
+			teavpn_client_show_help(cx->app);
+			goto out_exit;
 		case 'v':
-			show_version();
-			break;
-		/* ---------------------------------------------------------- */
-
-
-		/* ------------- Config file and data directory ------------- */
+			teavpn_client_show_version();
+			goto out_exit;
 		case 'c':
 			cfg->cfg_file = trunc_str(optarg, 255);
 			break;
 		case 'D':
 			cfg->data_dir = trunc_str(optarg, 255);
 			break;
-		/* ---------------------------------------------------------- */
-
-
-		/* ---------------  Virtual network interface --------------- */
+		case 'm':
+			iface->mtu = (uint16_t)atoi(optarg);
+			break;
 		case 'd':
 			iface->dev = trunc_str(optarg, 255);
-			break;
-		case 'm':
-			iface->mtu = atoi(optarg);
-			break;
-		/* ---------------------------------------------------------- */
-
-
-		/* ------------------------- Socket ------------------------- */
-		case 'S':
-			sock->server_addr = trunc_str(optarg, 255);
-			break;
-		case 'p':
-			sock->server_port = atoi(optarg);
 			break;
 		case 's':
 			{
@@ -147,13 +137,10 @@ static inline int parse_opt(int argc, char *argv[], struct parse_struct *cx)
 					char 		targ[4];
 					uint32_t 	int_rep;
 				} tmp;
-
-				tmp.int_rep = 0u;
+				tmp.int_rep = 0;
 				strncpy(tmp.targ, optarg, sizeof(tmp.targ) - 1);
-
 				tmp.int_rep |= 0x20202020u; /* tolower */
 				tmp.targ[3]  = '\0';
-
 				if (!memcmp(tmp.targ, "tcp", 4)) {
 					sock->type = SOCK_TCP;
 				} else
@@ -166,75 +153,28 @@ static inline int parse_opt(int argc, char *argv[], struct parse_struct *cx)
 				}
 			}
 			break;
-		/* ---------------------------------------------------------- */
-
-
-		/* -------------------------- Auth -------------------------- */
+		case 'H':
+			sock->server_addr = trunc_str(optarg, 255);
+			break;
+		case 'P':
+			sock->server_port = (uint16_t)atoi(optarg);
+			break;
 		case 'u':
 			auth->username = trunc_str(optarg, 255);
 			break;
-		case 'P':
+		case 'p':
 			auth->password = ar_strndup(optarg, 255);
 			memset(optarg, 'x', strlen(optarg));
 			break;
-		/* ---------------------------------------------------------- */			
-
-		case '?':
 		default:
 			return -1;
 		}
 	}
-
 	return 0;
-}
-
-
-static inline void show_help(const char *app)
-{
-	printf("Usage: %s client [options]\n", app);
-
-	printf("\n");
-	printf("  TeaVPN Client Application\n");
-	printf("\n");
-
-	printf("Available options:\n");
-	printf("  -h, --help\t\t\tShow this help message.\n");
-	printf("  -c, --config=FILE\t\tSet config file (default: %s).\n",
-	       d_cfg_file_client);
-	printf("  -v, --version\t\t\tShow program version.\n");
-	printf("  -D, --data-dir\t\tSet data directory.\n");
-
-	printf("\n");
-	printf("[Config options]\n");
-	printf(" Virtual network interface:\n");
-	printf("  -d, --dev=DEV\t\t\tSet virtual network interface name"
-	       " (default: %s).\n", d_dev);
-	printf("  -m, --mtu=MTU\t\t\tSet mtu value (default: %d).\n", d_mtu);
-
-
-	printf("\n");
-	printf(" Socket:\n");
-	printf("  -s, --sock-type=TYPE\t\tSet socket type (must be tcp or udp)"
-	       " (default: tcp).\n");
-	printf("  -H, --server-addr=IP\t\tSet bind address.\n");
-	printf("  -P, --server-port=PORT\tSet bind port (default: %d).\n",
-	       d_server_port);
-
-	printf("\n");
-	printf("\n");
-	printf("For bug reporting, please open an issue on GitHub repository."
-	       "\n");
-	printf("GitHub repository: https://github.com/TeaInside/teavpn2\n");
-	printf("\n");
-	printf("This software is licensed under the GPL-v3 license.\n");
+out_exit:
 	exit(0);
 }
 
-static inline void show_version(void)
-{
-	puts("TeaVPN Server " TEAVPN_CLIENT_VERSION);
-	exit(0);
-}
 
 int teavpn_client_argv_parse(int argc, char *argv[], struct cli_cfg *cfg)
 {
@@ -242,10 +182,8 @@ int teavpn_client_argv_parse(int argc, char *argv[], struct cli_cfg *cfg)
 
 	cx.app = argv[0];
 	cx.cfg = cfg;
-
 	init_default_cfg(cfg);
-
-	if (parse_opt(argc - 1, argv + 1, &cx) < 0)
+	if (getopt_handler(argc - 1, argv + 1, &cx) < 0)
 		return -1;
 
 	return 0;

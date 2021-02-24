@@ -2,11 +2,6 @@
 #include <string.h>
 #include <teavpn2/server/common.h>
 
-#if defined(__linux__)
-# include <teavpn2/server/linux/tcp.h>
-#else
-# error Target environment is not supported at the moment.
-#endif
 
 int teavpn_server_entry(int argc, char *argv[])
 {
@@ -21,7 +16,7 @@ int teavpn_server_entry(int argc, char *argv[])
 
 	switch (cfg.sock.type) {
 	case SOCK_TCP:
-		return teavpn_tcp_server(&cfg);
+		return teavpn_server_tcp(&cfg);
 	case SOCK_UDP:
 		pr_error("UDP socket is not supported at the moment");
 		return -ESOCKTNOSUPPORT;

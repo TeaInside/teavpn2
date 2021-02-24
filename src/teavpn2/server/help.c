@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <teavpn2/server/common.h>
 
+
 extern char d_srv_cfg_file[];
 
 /* Default config for virtual network interface */
@@ -36,7 +37,8 @@ void teavpn_server_show_help(const char *app)
 	printf(" Virtual network interface:\n");
 	printf("  -d, --dev=DEV\t\t\tSet virtual network interface name"
 	       " (default: %s).\n", d_srv_dev);
-	printf("  -m, --mtu=MTU\t\t\tSet mtu value (default: %d).\n", d_srv_mtu);
+	printf("  -m, --mtu=MTU\t\t\tSet mtu value (default: %d).\n",
+	       d_srv_mtu);
 	printf("  -4, --ipv4=IP\t\t\tSet IPv4 (default: %s).\n", d_srv_ipv4);
 	printf("  -N, --ipv4-netmask=MASK\tSet IPv4 netmask (default: %s).\n",
 	       d_srv_ipv4_netmask);

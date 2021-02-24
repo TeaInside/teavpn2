@@ -10,9 +10,11 @@ ifeq ($(USE_CLIENT),1)
 	include $(BASE_DIR)/src/teavpn2/client/Makefile
 endif
 
-include $(BASE_DIR)/src/teavpn2/helpers/Makefile
+include $(BASE_DIR)/src/teavpn2/lib/Makefile
+include $(BASE_DIR)/src/teavpn2/net/Makefile
 
 OBJ_TMP_CC	:= \
+	$(BASE_DIR)/src/teavpn2/debug.o \
 	$(BASE_DIR)/src/teavpn2/main.o
 
 OBJ_PRE_CC	+= $(OBJ_TMP_CC)
