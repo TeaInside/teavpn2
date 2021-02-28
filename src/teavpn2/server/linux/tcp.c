@@ -456,26 +456,31 @@ static int handle_auth(struct srv_tcp_client *client,
 {
 	char *src_ip = client->src_ip;
 	uint16_t src_port = client->src_port;
+	char *username;
 	struct cli_tcp_pkt *cli_pkt = &client->cli_pkt;
 	struct auth_pkt *auth = &cli_pkt->auth;
 	struct srv_tcp_pkt *srv_pkt = &state->srv_pkt;
 	struct srv_auth_ok *auth_ok = &srv_pkt->auth_ok;
 	struct iface_cfg *iface = &auth_ok->iface;
 
-	if (teavpn_server_get_auth(iface, auth)) {
+	username = auth->username;
+	prl_notice(0, "Receive authentication from %s:%d (username: %s)",
+		   src_ip, src_port, username);
+
+	if (teavpn_server_get_auth(iface, auth, state->cfg)) {
 		if (send_auth_ok(client, state)) {
 			auth_ok_msg(iface, client, auth);
 			return true;
 		} else {
 			prl_notice(2, "Authentication error from %s:%u "
 				   "(username: %s)", src_ip, src_port,
-				   auth->username);
+				   username);
 			return false;
 		}
 	}
 
 	prl_notice(2, "Authentication failed from %s:%u (username: %s)", src_ip,
-		   src_port, auth->username);
+		   src_port, username);
 	return -1;
 }
 
