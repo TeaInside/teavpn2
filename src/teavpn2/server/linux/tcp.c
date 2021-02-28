@@ -385,8 +385,8 @@ static int send_server_banner(struct srv_tcp_client *client,
 	struct srv_tcp_pkt *srv_pkt = &state->srv_pkt;
 
 	srv_pkt->type   = SRV_PKT_BANNER;
-	srv_pkt->length = sizeof(struct srv_banner);
-	
+	srv_pkt->length = htons(sizeof(struct srv_banner));
+
 	srv_pkt->banner.cur.ver = 0;
 	srv_pkt->banner.cur.sub_ver = 0;
 	srv_pkt->banner.cur.sub_sub_ver = 1;
@@ -510,9 +510,10 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 
 		if (likely(!client->is_auth))
 			goto out_close_conn;
-		break;
-	}
 
+		goto out_err_c;
+	}
+	client->recv_s = 0;
 	return;
 
 out_save_recv_s:

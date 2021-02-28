@@ -9,6 +9,7 @@
 
 
 struct cli_tcp_state {
+	bool			is_auth;
 	int			net_fd;
 	int			tun_fd;
 	struct cli_cfg		*cfg;
