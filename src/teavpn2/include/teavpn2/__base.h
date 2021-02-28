@@ -51,12 +51,26 @@ struct iface_cfg {
 	uint16_t	mtu;
 };
 
+
 STATIC_ASSERT(
 	sizeof(struct iface_cfg) == (
 		16 + (IPV4SLEN * 2) + 2
 	),
-	"Invalid sizeof(struct iface_cfg)"
+	"Bad sizeof(struct iface_cfg)"
 );
+STATIC_ASSERT(
+	offsetof(struct iface_cfg, ipv4) == 16,
+	"Bad offset of ipv4 in struct iface_cfg"
+);
+STATIC_ASSERT(
+	offsetof(struct iface_cfg, ipv4_netmask) == (16 + IPV4SLEN),
+	"Bad offset of ipv4_netmask in struct iface_cfg"
+);
+STATIC_ASSERT(
+	offsetof(struct iface_cfg, mtu) == (16 + (IPV4SLEN * 2)),
+	"Bad offset of mtu in struct iface_cfg"
+);
+
 
 typedef enum {
 	SOCK_TCP = 0,

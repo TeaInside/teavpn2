@@ -11,6 +11,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/tcp.h>
+#include <teavpn2/server/auth.h>
 #include <teavpn2/net/linux/iface.h>
 #include <teavpn2/server/linux/tcp.h>
 #include <teavpn2/client/linux/tcp.h>
@@ -412,6 +413,23 @@ static int send_server_banner(struct srv_tcp_client *client,
 }
 
 
+static int handle_auth(struct srv_tcp_client *client,
+		       struct srv_tcp_state *state)
+{
+	struct cli_tcp_pkt *cli_pkt = &client->cli_pkt;
+	struct auth_pkt *auth = &cli_pkt->auth;
+	struct srv_tcp_pkt *srv_pkt = &state->srv_pkt;
+	struct srv_auth_ok *auth_ok = &srv_pkt->auth_ok;
+	struct iface_cfg *iface = &auth_ok->iface;
+
+	if (teavpn_server_get_auth(iface, auth)) {
+		return 0;
+	}
+
+	return -1;
+}
+
+
 static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 			  uint16_t i)
 {
@@ -499,6 +517,13 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 			goto out_close_conn;
 		break;
 	case CLI_PKT_AUTH:
+		if (likely(!client->is_auth)) {
+			if (handle_auth(client, state) < 0) {
+				/* Wrong credential */
+				goto out_close_conn;
+			}
+		}
+		/* Ignore auth packet if the client has been authenticated */
 		break;
 	case CLI_PKT_DATA:
 		break;

@@ -7,6 +7,7 @@ endif
 
 OBJ_TMP_CC	:= \
 	$(BASE_DIR)/src/teavpn2/server/argv.o \
+	$(BASE_DIR)/src/teavpn2/server/auth.o \
 	$(BASE_DIR)/src/teavpn2/server/config.o \
 	$(BASE_DIR)/src/teavpn2/server/entry.o \
 	$(BASE_DIR)/src/teavpn2/server/help.o \
