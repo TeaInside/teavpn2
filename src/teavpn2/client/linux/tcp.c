@@ -10,8 +10,10 @@
 #include <netinet/tcp.h>
 #include <teavpn2/net/linux/iface.h>
 #include <teavpn2/client/linux/tcp.h>
+#include <teavpn2/server/linux/tcp.h>
 
 
+#define MAX_ERR_C (10u)
 static struct cli_tcp_state *g_state;
 
 
@@ -153,6 +155,35 @@ static int send_hello(struct cli_tcp_state *state)
 }
 
 
+static void handle_server_data(int net_fd, struct cli_tcp_state *state)
+{
+	int ern;
+	size_t recv_s;
+	size_t recv_len;
+	ssize_t recv_ret;
+	char *recv_buf;
+	struct srv_tcp_pkt *srv_pkt;
+
+	recv_buf = state->recv_buf;
+	srv_pkt  = &state->srv_pkt;
+	recv_s   = state->recv_s;
+
+	recv_len = sizeof(struct srv_tcp_pkt) - recv_s;
+	recv_ret = recv(net_fd, recv_buf, recv_len, 0);
+	if (unlikely(recv_ret < 0)) {
+		ern = errno;
+		if (ern == EAGAIN)
+			return;
+		pr_error("recv(): %s", strerror(ern));
+		goto out_err_c;
+	}
+
+
+out_err_c:
+	state->err_c++;
+}
+
+
 static int event_loop(struct cli_tcp_state *state)
 {
 	int rv;
@@ -197,6 +228,7 @@ static int event_loop(struct cli_tcp_state *state)
 
 
 		if (likely((fds[0].revents & POLLIN) != 0)) {
+			handle_server_data(net_fd, state);
 			rv--;
 		}
 
