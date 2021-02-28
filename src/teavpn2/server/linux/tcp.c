@@ -437,18 +437,45 @@ static bool send_auth_ok(struct srv_tcp_client *client,
 }
 
 
+static void auth_ok_msg(struct iface_cfg *iface, struct srv_tcp_client *client,
+			struct auth_pkt *auth)
+{
+	char *src_ip = client->src_ip;
+	uint16_t src_port = client->src_port;
+
+	prl_notice(2, "Authentication success from %s:%u (username: %s)",
+		   src_ip, src_port, auth->username);
+
+	prl_notice(2, "Assign IP %s %s to %s:%u (username: %s)", iface->ipv4,
+		   iface->ipv4_netmask, src_ip, src_port, auth->username);
+}
+
+
 static int handle_auth(struct srv_tcp_client *client,
 		       struct srv_tcp_state *state)
 {
+	char *src_ip = client->src_ip;
+	uint16_t src_port = client->src_port;
 	struct cli_tcp_pkt *cli_pkt = &client->cli_pkt;
 	struct auth_pkt *auth = &cli_pkt->auth;
 	struct srv_tcp_pkt *srv_pkt = &state->srv_pkt;
 	struct srv_auth_ok *auth_ok = &srv_pkt->auth_ok;
 	struct iface_cfg *iface = &auth_ok->iface;
 
-	if (teavpn_server_get_auth(iface, auth))
-		return send_auth_ok(client, state);
+	if (teavpn_server_get_auth(iface, auth)) {
+		if (send_auth_ok(client, state)) {
+			auth_ok_msg(iface, client, auth);
+			return true;
+		} else {
+			prl_notice(2, "Authentication error from %s:%u "
+				   "(username: %s)", src_ip, src_port,
+				   auth->username);
+			return false;
+		}
+	}
 
+	prl_notice(2, "Authentication failed from %s:%u (username: %s)", src_ip,
+		   src_port, auth->username);
 	return -1;
 }
 
