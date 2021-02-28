@@ -376,13 +376,31 @@ static void clear_disconnect(struct srv_tcp_client *client)
 }
 
 
-static int send_server_banner(struct srv_tcp_client *client,
+static size_t send_to_client(struct srv_tcp_client *client,
+			     struct srv_tcp_pkt *srv_pkt,
+			     size_t send_len)
+{
+	char *src_ip = client->src_ip;
+	uint16_t src_port = client->src_port;
+	ssize_t send_ret;
+
+	send_ret = send(client->cli_fd, srv_pkt, send_len, 0);
+	if (unlikely(send_ret < 0)) {
+		client->err_c++;
+		pr_error("send() to %s:%d: %s", src_ip, src_port,
+			 strerror(errno));
+		return 0;
+	}
+	prl_notice(11, "send() %ld bytes to %s:%d", send_ret, src_ip, src_port);
+
+	return (size_t)send_ret;
+}
+
+
+static bool send_server_banner(struct srv_tcp_client *client,
 			      struct srv_tcp_state *state)
 {
 	size_t send_len;
-	ssize_t send_ret;
-	char *src_ip = client->src_ip;
-	uint16_t src_port = client->src_port;
 	struct srv_tcp_pkt *srv_pkt = &state->srv_pkt;
 
 	srv_pkt->type   = SRV_PKT_BANNER;
@@ -401,15 +419,21 @@ static int send_server_banner(struct srv_tcp_client *client,
 	srv_pkt->banner.max.sub_sub_ver = 1;
 
 	send_len = SRV_PKT_MIN_RSIZ + sizeof(struct srv_banner);
-	send_ret = send(client->cli_fd, srv_pkt, send_len, 0);
-	if (unlikely(send_ret < 0)) {
-		pr_error("send() to %s:%d: %s", src_ip, src_port,
-			 strerror(errno));
-		return -1;
-	}
-	prl_notice(11, "send() %ld bytes to %s:%d", send_ret, src_ip, src_port);
+	return send_to_client(client, srv_pkt, send_len) == send_len;
+}
 
-	return 0;
+
+static bool send_auth_ok(struct srv_tcp_client *client,
+			struct srv_tcp_state *state)
+{
+	size_t send_len;
+	struct srv_tcp_pkt *srv_pkt = &state->srv_pkt;
+
+	srv_pkt->type   = SRV_PKT_AUTH_OK;
+	srv_pkt->length = htons(sizeof(struct srv_auth_ok));
+
+	send_len = SRV_PKT_MIN_RSIZ + sizeof(struct srv_auth_ok);
+	return send_to_client(client, srv_pkt, send_len) == send_len;
 }
 
 
@@ -422,9 +446,8 @@ static int handle_auth(struct srv_tcp_client *client,
 	struct srv_auth_ok *auth_ok = &srv_pkt->auth_ok;
 	struct iface_cfg *iface = &auth_ok->iface;
 
-	if (teavpn_server_get_auth(iface, auth)) {
-		return 0;
-	}
+	if (teavpn_server_get_auth(iface, auth))
+		return send_auth_ok(client, state);
 
 	return -1;
 }
@@ -513,7 +536,7 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 
 	switch (cli_pkt->type) {
 	case CLI_PKT_HELLO:
-		if (unlikely(send_server_banner(client, state) < 0))
+		if (unlikely(!send_server_banner(client, state)))
 			goto out_close_conn;
 		break;
 	case CLI_PKT_AUTH:
