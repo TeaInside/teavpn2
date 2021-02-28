@@ -437,6 +437,20 @@ static bool send_auth_ok(struct srv_tcp_client *client,
 }
 
 
+static bool send_auth_reject(struct srv_tcp_client *client,
+			     struct srv_tcp_state *state)
+{
+	size_t send_len;
+	struct srv_tcp_pkt *srv_pkt = &state->srv_pkt;
+
+	srv_pkt->type   = SRV_PKT_AUTH_REJECT;
+	srv_pkt->length = 0;
+
+	send_len = SRV_PKT_MIN_RSIZ;
+	return send_to_client(client, srv_pkt, send_len) == send_len;
+}
+
+
 static void auth_ok_msg(struct iface_cfg *iface, struct srv_tcp_client *client,
 			struct auth_pkt *auth)
 {
@@ -463,6 +477,9 @@ static int handle_auth(struct srv_tcp_client *client,
 	struct srv_auth_ok *auth_ok = &srv_pkt->auth_ok;
 	struct iface_cfg *iface = &auth_ok->iface;
 
+	auth->username[sizeof(auth->username) - 1] = '\0';
+	auth->password[sizeof(auth->password) - 1] = '\0';
+
 	username = auth->username;
 	prl_notice(0, "Receive authentication from %s:%d (username: %s)",
 		   src_ip, src_port, username);
@@ -475,13 +492,16 @@ static int handle_auth(struct srv_tcp_client *client,
 			prl_notice(2, "Authentication error from %s:%u "
 				   "(username: %s)", src_ip, src_port,
 				   username);
-			return false;
+			goto out_fail;
 		}
 	}
 
 	prl_notice(2, "Authentication failed from %s:%u (username: %s)", src_ip,
 		   src_port, username);
-	return -1;
+
+out_fail:
+	send_auth_reject(client, state);
+	return false;
 }
 
 
@@ -573,7 +593,7 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 		break;
 	case CLI_PKT_AUTH:
 		if (likely(!client->is_auth)) {
-			if (handle_auth(client, state) < 0) {
+			if (!handle_auth(client, state)) {
 				/* Wrong credential */
 				goto out_close_conn;
 			}
@@ -614,6 +634,7 @@ out_close_conn:
 	close(cl->fd);
 	cl->fd = -1;
 	clear_disconnect(client);
+	push_clst(&state->stack, client->arr_idx);
 	return;
 }
 
