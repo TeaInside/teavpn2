@@ -21,7 +21,7 @@ static int parser_handler(void *user, const char *section, const char *name,
 			  const char *value, int lineno)
 {
 	struct parse_struct *ctx = (struct parse_struct *)user;
-	struct iface_cfg *iface = ctx->iface;;
+	struct iface_cfg *iface = ctx->iface;
 
 	/* Section match */
 	#define RMATCH_S(STR) if (unlikely(!strcmp(section, (STR))))
@@ -73,6 +73,7 @@ out_err:
 
 static bool validate_username(char *u)
 {
+	uint16_t i = 0;
 	while (*u) {
 		char c = *u++;
 		bool cond =
@@ -81,11 +82,12 @@ static bool validate_username(char *u)
 		    || (('0' <= c) && (c <= '9'))
 		    || ((c == '_') || (c == '-'));
 
+		i++;
 		if (!cond)
 			return false;
 	}
 
-	return true;
+	return true && (i < 0xffu);
 }
 
 
@@ -111,7 +113,7 @@ bool teavpn_server_get_auth(struct iface_cfg *iface, struct auth_pkt *auth,
 		return false;
 	}
 
-	snprintf(ctx.user_file, sizeof(ctx.user_file) - 1,"%s/users/%s.ini",
+	snprintf(ctx.user_file, sizeof(ctx.user_file) - 1, "%s/users/%s.ini",
 		 cfg->data_dir, username);
 
 	handle = fopen(ctx.user_file, "r");

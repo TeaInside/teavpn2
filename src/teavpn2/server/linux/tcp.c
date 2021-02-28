@@ -691,6 +691,8 @@ static int event_loop(struct srv_tcp_state *state)
 	state->nfds = 3 + max_conn;
 	timeout = 5000;
 
+	prl_notice(0, "Initialization Sequence Completed");
+
 	while (true) {
 		rv = poll(fds, state->nfds, timeout);
 

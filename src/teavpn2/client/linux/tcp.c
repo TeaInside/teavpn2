@@ -136,7 +136,23 @@ out_err:
 }
 
 
-static int send_hello(struct cli_tcp_state *state)
+static size_t send_to_server(struct cli_tcp_state *state,
+			     struct cli_tcp_pkt *cli_pkt, size_t send_len)
+{
+	int net_fd = state->net_fd;
+
+	send_ret = send(net_fd, cli_pkt, send_len, 0);
+	if (unlikely(send_ret < 0)) {
+		pr_error("send(): %s", strerror(errno));
+		return 0;
+	}
+	prl_notice(11, "send(): %ld bytes", send_ret);
+
+	return (size_t)send_ret;
+}
+
+
+static bool send_hello(struct cli_tcp_state *state)
 {
 	size_t send_len;
 	ssize_t send_ret;
@@ -147,18 +163,11 @@ static int send_hello(struct cli_tcp_state *state)
 	cli_pkt->length = 0;
 
 	send_len = offsetof(struct cli_tcp_pkt, raw_data);
-	send_ret = send(net_fd, cli_pkt, send_len, 0);
-	if (unlikely(send_ret < 0)) {
-		pr_error("send(): %s", strerror(errno));
-		return -1;
-	}
-	prl_notice(11, "send(): %ld bytes", send_ret);
-
-	return 0;
+	return send_to_server(state, cli_pkt, send_len) == send_len;
 }
 
 
-static int send_auth(struct cli_tcp_state *state)
+static bool send_auth(struct cli_tcp_state *state)
 {
 	uint16_t data_len;
 	size_t send_len;
@@ -179,40 +188,48 @@ static int send_auth(struct cli_tcp_state *state)
 	auth->username[sizeof(auth->username) - 1] = '\0';
 	auth->password[sizeof(auth->password) - 1] = '\0';
 
-	send_len = offsetof(struct cli_tcp_pkt, raw_data[data_len]);
-	send_ret = send(net_fd, cli_pkt, send_len, 0);
-	if (unlikely(send_ret < 0)) {
-		pr_error("send(): %s", strerror(errno));
-		return -1;
-	}
-	prl_notice(11, "send(): %ld bytes", send_ret);
-
-	return 0;	
+	send_len = offsetof(struct cli_tcp_pkt, raw_data);
+	return send_to_server(state, cli_pkt, send_len) == send_len;
 }
 
 
-static int read_banner(struct cli_tcp_state *state)
+static bool read_banner(struct cli_tcp_state *state)
 {
 	struct srv_tcp_pkt *srv_pkt = &state->srv_pkt;
 	struct srv_banner *banner = &srv_pkt->banner;
 
-	if ((banner->cur.ver == 0)
-	    && (banner->cur.sub_ver == 0)
+	if ((	banner->cur.ver		== 0)
+	    && (banner->cur.sub_ver 	== 0)
 	    && (banner->cur.sub_sub_ver == 1)) {
 
 		if (!state->is_auth)
 			return send_auth(state);
 
-		return 0;
+		return true;
 	}
 
-	return -1;
+	return false;
 }
 
 
 static void handle_auth_ok(struct cli_tcp_state *state)
 {
-	(void)state;
+	struct cli_cfg *cfg = state->cfg;
+	struct cli_iface_cfg *iface_cfg = &cfg->iface;
+	struct srv_tcp_pkt *srv_pkt = &state->srv_pkt;
+	struct srv_auth_ok *auth_ok = &srv_pkt->auth_ok;
+	struct iface_cfg *iface = &auth_ok->iface;
+
+	strncpy(iface->dev, iface_cfg->dev, sizeof(iface->dev) - 1);
+
+	if (unlikely(!raise_up_interface(iface))) {
+		state->stop = true;
+		pr_error("Cannot raise up virtual network interface");
+		return;
+	}
+
+	prl_notice(0, "Virtual network interface has been raised up");
+	prl_notice(0, "Initialization Sequence Completed");
 }
 
 
@@ -290,7 +307,7 @@ static void handle_server_data(int net_fd, struct cli_tcp_state *state)
 
 	switch (srv_pkt->type) {
 	case SRV_PKT_BANNER:
-		if (read_banner(state) < 0)
+		if (!read_banner(state))
 			goto out_close_conn;
 		break;
 	case SRV_PKT_AUTH_OK:
