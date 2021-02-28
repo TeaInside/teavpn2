@@ -398,7 +398,7 @@ static size_t send_to_client(struct srv_tcp_client *client,
 
 
 static bool send_server_banner(struct srv_tcp_client *client,
-			      struct srv_tcp_state *state)
+			       struct srv_tcp_state *state)
 {
 	size_t send_len;
 	struct srv_tcp_pkt *srv_pkt = &state->srv_pkt;
@@ -487,6 +487,7 @@ static int handle_auth(struct srv_tcp_client *client,
 	if (teavpn_server_get_auth(iface, auth, state->cfg)) {
 		if (send_auth_ok(client, state)) {
 			auth_ok_msg(iface, client, auth);
+			client->ctstate = CT_AUTHENTICATED;
 			return true;
 		} else {
 			prl_notice(2, "Authentication error from %s:%u "
@@ -584,14 +585,24 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 		goto out_save_recv_s;
 	}
 
-	assert(cdata_len == fdata_len);
+	if (cdata_len != fdata_len) {
+		pr_error("cdata_len != fdata_len (internal error)");
+		goto out_err_c;
+	}
 
 	switch (cli_pkt->type) {
 	case CLI_PKT_HELLO:
-		if (unlikely(!send_server_banner(client, state)))
-			goto out_close_conn;
+		if (likely(client->ctstate == CT_NEW)) {
+			if (unlikely(!send_server_banner(client, state)))
+				goto out_close_conn;
+			client->ctstate = CT_ESTABLISHED;
+		}
 		break;
 	case CLI_PKT_AUTH:
+		if (unlikely(client->ctstate == CT_NEW)) {
+			/* New connection must hello first */
+			goto out_close_conn;
+		}
 		if (likely(!client->is_auth)) {
 			if (!handle_auth(client, state)) {
 				/* Wrong credential */
@@ -601,9 +612,13 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 		/* Ignore auth packet if the client has been authenticated */
 		break;
 	case CLI_PKT_DATA:
+		if (unlikely(client->ctstate != CT_AUTHENTICATED)) {
+			/* Unauthenticated client trying to send data */
+			goto out_close_conn;
+		}
 		break;
 	case CLI_PKT_CLOSE:
-		break;
+		goto out_close_conn;
 	default:
 		prl_notice(11, "Received invalid packet from %s:%d (type: %d)",
 			   src_ip, src_port, cli_pkt->type);

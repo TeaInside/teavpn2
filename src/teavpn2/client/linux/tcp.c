@@ -210,6 +210,12 @@ static int read_banner(struct cli_tcp_state *state)
 }
 
 
+static void handle_auth_ok(struct cli_tcp_state *state)
+{
+	(void)state;
+}
+
+
 static void handle_server_data(int net_fd, struct cli_tcp_state *state)
 {
 	int ern;
@@ -288,9 +294,11 @@ static void handle_server_data(int net_fd, struct cli_tcp_state *state)
 			goto out_close_conn;
 		break;
 	case SRV_PKT_AUTH_OK:
+		handle_auth_ok(state);
 		break;
 	case SRV_PKT_AUTH_REJECT:
-		break;
+		prl_notice(0, "Authentication rejected by server");
+		goto out_close_conn;
 	case SRV_PKT_DATA:
 		break;
 	case SRV_PKT_CLOSE:
