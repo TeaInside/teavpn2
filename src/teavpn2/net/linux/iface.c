@@ -208,7 +208,7 @@ bool raise_up_interface(struct iface_cfg *iface)
 	if (!inet_ntop(AF_INET, &b_ipv4_broadcast, u_ipv4_broadcast,
 		       IPV4SAFE)) {
 		pr_error("inet_ntop(%x): u_ipv4_broadcast: %s",
-			 u_ipv4_broadcast, strerror(errno));
+			 b_ipv4_broadcast, strerror(errno));
 		return false;
 	}
 

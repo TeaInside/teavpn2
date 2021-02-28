@@ -6,8 +6,11 @@
 
 extern int8_t __notice_level;
 
-void __pr_error(const char *fmt, ...);
-void __pr_notice(const char *fmt, ...);
+void __pr_error(const char *fmt, ...)
+	__attribute__((format(printf, 1, 2)));
+
+void __pr_notice(const char *fmt, ...)
+	 __attribute__((format(printf, 1, 2)));
 
 #define NOTICE_STATIC_LEVEL (20)
 #define NOTICE_ALWAYS_EXEC  (1)

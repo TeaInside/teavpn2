@@ -316,7 +316,7 @@ static void accept_conn(int net_fd, struct pollfd *clfds,
 	chtmp = inet_ntop(AF_INET, &claddr.sin_addr, src_ip, IPV4LEN);
 	if (unlikely(chtmp == NULL)) {
 		int ern = errno;
-		pr_error("inet_ntop(%lx): %s", claddr.sin_addr.s_addr,
+		pr_error("inet_ntop(%u): %s", claddr.sin_addr.s_addr,
 			 strerror(ern));
 		goto out_close;
 	}
@@ -445,7 +445,7 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 	}
 
 	if (unlikely(recv_ret == 0)) {
-		prl_notice(6, "%s:%d has closed its connection", src_ip,
+		prl_notice(6, "%s:%u has closed its connection", src_ip,
 			   src_port);
 		goto out_close_conn;
 	}
@@ -474,9 +474,9 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 		 * - Client has been compromised to send malicious packet.
 		 * - Or whatever causes packet corruption (?)
 		 */
-		prl_notice(1, "Client sends invalid packet len (%s:%d) "
-			   "(max_allowed_len = %u; cli_pkt->length = %u;"
-			   " recv_s = %u) POSSIBLE BUG!", src_ip, src_port,
+		prl_notice(1, "Client sends invalid packet len (%s:%u) "
+			   "(max_allowed_len = %zu; cli_pkt->length = %u;"
+			   " recv_s = %zu) POSSIBLE BUG!", src_ip, src_port,
 			   CLI_PKT_DATA_SIZ, fdata_len, recv_s);
 		goto out_err_c;
 	}

@@ -21,7 +21,7 @@ int teavpn_client_entry(int argc, char *argv[])
 		pr_error("UDP socket is not supported at the moment");
 		return -ESOCKTNOSUPPORT;
 	default:
-		pr_error("Invalid socket type: %d", cfg.sock.type);
+		pr_error("Invalid socket type: %u", cfg.sock.type);
 		return -EINVAL;
 	}
 }
