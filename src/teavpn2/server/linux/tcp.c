@@ -435,6 +435,7 @@ static size_t send_to_client(struct srv_tcp_client *client,
 			     size_t send_len)
 {
 	char *src_ip = client->src_ip;
+	char *username = client->username;
 	uint16_t src_port = client->src_port;
 	ssize_t send_ret;
 
@@ -445,7 +446,8 @@ static size_t send_to_client(struct srv_tcp_client *client,
 			 strerror(errno));
 		return 0;
 	}
-	prl_notice(11, "send() %ld bytes to %s:%d", send_ret, src_ip, src_port);
+	prl_notice(11, "send() %ld bytes to %s:%d (%s)", send_ret, src_ip,
+		   src_port, username);
 
 	return (size_t)send_ret;
 }
@@ -624,6 +626,7 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 	struct cli_tcp_pkt *cli_pkt;
 	struct srv_tcp_client *client;
 	char *src_ip;
+	char *username;
 	uint16_t src_port;
 	uint16_t fdata_len; /* Full data length    */
 	uint16_t cdata_len; /* Current data length */
@@ -634,6 +637,7 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 	recv_buf = client->recv_buf;
 	src_ip   = client->src_ip;
 	src_port = client->src_port;
+	username = client->username;
 
 	recv_len = CLI_PKT_RSIZE - recv_s;
 	recv_ret = recv(cl->fd, recv_buf + recv_s, recv_len, 0);
@@ -651,8 +655,8 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 		goto out_close_conn;
 	}
 
-	prl_notice(11, "recv() %ld bytes from %s:%d", recv_ret, src_ip,
-		   src_port);
+	prl_notice(11, "recv() %ld bytes from %s:%d (%s)", recv_ret, src_ip,
+		   src_port, username);
 
 
 	recv_s += (size_t)recv_ret;
@@ -672,7 +676,7 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 		 * Corrupted packet?
 		 */
 		prl_notice(1, "Client %s:%u sends invalid packet length "
-			      "(max_allowed_len = %zu; srv_pkt->length = %u;"
+			      "(max_allowed_len = %zu; srv_pkt->length = %u; "
 			      "recv_s = %zu) CORRUPTED PACKET?", src_ip,
 			      src_port, SRV_PKT_DATA_SIZ, fdata_len, recv_s);
 		goto out_err_c;

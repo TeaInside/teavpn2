@@ -117,7 +117,7 @@ again:
 	retval = connect(fd, &srv_addr, addrlen);
 	if (retval < 0) {
 		ern = errno;
-		if (ern == EINPROGRESS)
+		if (ern == EINPROGRESS || ern == EALREADY)
 			goto again;
 		retval = -ern;
 		pr_error("connect(): %s", strerror(ern));
@@ -146,7 +146,7 @@ static ssize_t send_to_server(struct cli_tcp_state *state,
 		pr_error("send(): %s", strerror(errno));
 		return -1;
 	}
-	prl_notice(11, "send(): %ld bytes", send_ret);
+	prl_notice(11, "send() %ld bytes to server", send_ret);
 
 	return send_ret;
 }
@@ -174,6 +174,8 @@ static bool handle_auth_ok(struct cli_tcp_state *state)
 	struct srv_tcp_pkt *srv_pkt = &state->srv_pkt;
 	struct srv_auth_ok *auth_ok = &srv_pkt->auth_ok;
 	struct iface_cfg *iface = &auth_ok->iface;
+
+	prl_notice(0, "Authentication success!");
 
 	strncpy(iface->dev, iface_cfg->dev, sizeof(iface->dev) - 1);
 
@@ -434,7 +436,7 @@ static int event_loop(struct cli_tcp_state *state)
 	fds[0].fd = net_fd;
 	fds[0].events = inev;
 
-	fds[1].fd = -tun_fd;
+	fds[1].fd = tun_fd;
 	fds[1].events = inev;
 
 	nfds = 2;
