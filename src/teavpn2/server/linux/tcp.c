@@ -656,11 +656,11 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 		goto out_close_conn;
 	}
 
-	prl_notice(11, "recv() %ld bytes from %s:%d (%s)", recv_ret, src_ip,
-		   src_port, username);
-
-
 	recv_s += (size_t)recv_ret;
+
+	prl_notice(11, "recv() %ld bytes from %s:%u (%s; recv_s = %zu)",
+		   recv_ret, src_ip, src_port, username, recv_s);
+
 	if (unlikely(recv_s < CLI_PKT_MIN_RSIZ)) {
 		/*
 		 * We haven't received the type and length of packet.
@@ -670,7 +670,7 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 		goto out_save_recv_s;
 	}
 
-	fdata_len = htons(cli_pkt->length);
+	fdata_len = ntohs(cli_pkt->length);
 	if (unlikely(fdata_len > CLI_PKT_DATA_SIZ)) {
 		/*
 		 * fdata_length must never be greater than SRV_PKT_DATA_SIZ.
@@ -694,6 +694,8 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 		 */
 		goto out_save_recv_s;
 	}
+
+	prl_notice(11, "Process data! %s:%u", src_ip, src_port);
 
 	switch (cli_pkt->type) {
 	case CLI_PKT_HELLO:
