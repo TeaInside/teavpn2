@@ -271,11 +271,10 @@ static void handle_server_data(int net_fd, struct cli_tcp_state *state)
 		size_t cpsize = recv_s - fdata_len - CLI_PKT_MIN_RSIZ;
 
 		memmove(recv_buf, recv_buf + recv_s, cpsize);
-		state->recv_s = cpsize;
+		recv_s = cpsize;
 	} else {
-		state->recv_s = 0;
+		recv_s = 0;
 	}
-	return;
 
 out_save_recv_s:
 	state->recv_s = recv_s;
