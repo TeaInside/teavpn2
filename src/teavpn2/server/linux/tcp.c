@@ -737,14 +737,16 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 		goto out_err_c;
 	}
 
-	if (cdata_len > fdata_len) {
+	if (likely(cdata_len > fdata_len)) {
 		/*
 		 * We have extra packet on the tail, must memmove to
 		 * the front.
 		 */
 		size_t cpsize = recv_s - fdata_len - CLI_PKT_MIN_RSIZ;
+		char   *src   = recv_buf + CLI_PKT_MIN_RSIZ + fdata_len;
 
-		memmove(recv_buf, recv_buf + recv_s, cpsize);
+		memmove(recv_buf, src, cpsize);
+
 		recv_s = cpsize;
 		prl_notice(11, "memmove %s:%u", src_ip, src_port);
 	} else {
