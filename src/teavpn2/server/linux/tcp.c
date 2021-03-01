@@ -544,6 +544,7 @@ static int handle_auth(struct srv_tcp_client *client,
 		if (send_auth_ok(client, state)) {
 			auth_ok_msg(iface, client, auth);
 			client->ctstate = CT_AUTHENTICATED;
+			strncpy(client->username, username, 0xffu - 1u);
 			return true;
 		} else {
 			prl_notice(2, "Authentication error from %s:%u "
