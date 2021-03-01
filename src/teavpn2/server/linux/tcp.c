@@ -744,6 +744,7 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 
 		memmove(recv_buf, recv_buf + recv_s, cpsize);
 		recv_s = cpsize;
+		prl_notice(11, "memmove %s:%u", src_ip, src_port);
 	} else {
 		recv_s = 0;
 	}
