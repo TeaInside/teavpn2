@@ -17,6 +17,60 @@
 #include <teavpn2/client/linux/tcp.h>
 
 
+typedef enum {
+	CT_NEW			= 0,
+	CT_ESTABLISHED		= 1,
+	CT_AUTHENTICATED	= 2,
+	CT_DISCONNECTED		= 3,
+} srv_tcp_ctstate;
+
+struct srv_tcp_client {
+	uint8_t			is_used: 1;
+	uint8_t			is_conn: 1;
+	uint8_t			is_auth: 1;
+	uint8_t			ht_mutx: 1;
+	srv_tcp_ctstate		ctstate;
+	int			cli_fd;
+	uint16_t		arr_idx;
+	uint8_t			err_c;
+
+	uint64_t		send_c;
+	uint64_t		recv_c;
+	uint16_t		recv_s;
+	union {
+		char			recv_buf[sizeof(struct cli_tcp_pkt)];
+		struct cli_tcp_pkt	cli_pkt;
+	};
+
+	char			username[255];
+	char			src_ip[IPV4LEN + 1];
+	uint16_t		src_port;
+	struct sockaddr_in	src_data;
+};
+
+struct srv_tcp_clstack {
+	uint16_t	sp;
+	uint16_t	max_sp;
+	uint16_t	*arr;
+};
+
+struct srv_tcp_state {
+	int			net_fd;
+	int			tun_fd;
+	int			pipe_fd[2];
+	nfds_t			nfds;
+	struct pollfd		*fds;
+	struct srv_cfg		*cfg;
+	struct srv_tcp_client	*clients;
+	struct srv_tcp_clstack	stack;
+	union {
+		char			send_buf[sizeof(struct srv_tcp_pkt)];
+		struct srv_tcp_pkt	srv_pkt;
+	};
+	bool			stop;
+};
+
+
 #define MAX_ERR_C (10u)
 static struct srv_tcp_state *g_state;
 
@@ -377,7 +431,7 @@ static void clear_disconnect(struct srv_tcp_client *client)
 
 
 static size_t send_to_client(struct srv_tcp_client *client,
-			     struct srv_tcp_pkt *srv_pkt,
+			     const struct srv_tcp_pkt *srv_pkt,
 			     size_t send_len)
 {
 	char *src_ip = client->src_ip;
@@ -424,7 +478,7 @@ static bool send_server_banner(struct srv_tcp_client *client,
 
 
 static bool send_auth_ok(struct srv_tcp_client *client,
-			struct srv_tcp_state *state)
+			 struct srv_tcp_state *state)
 {
 	size_t send_len;
 	struct srv_tcp_pkt *srv_pkt = &state->srv_pkt;
@@ -506,6 +560,59 @@ out_fail:
 }
 
 
+static bool handle_iface_write(struct srv_tcp_state *state,
+			       struct cli_tcp_pkt *cli_pkt,
+			       uint16_t fdata_len)
+{
+	ssize_t write_ret;
+	int tun_fd = state->tun_fd;
+
+	write_ret = write(tun_fd, cli_pkt->raw_data, fdata_len);
+	if (write_ret < 0) {
+		pr_error("write(): %s", strerror(errno));
+		return false;
+	}
+	prl_notice(11, "write() %ld bytes to tun_fd", write_ret);
+
+	return true;
+}
+
+
+static void handle_iface_read(int tun_fd, struct srv_tcp_state *state)
+{
+	int ern;
+	size_t send_len;
+	ssize_t read_ret;
+	uint16_t max_conn = state->cfg->sock.max_conn;
+	struct srv_tcp_client *clients = state->clients;
+	struct srv_tcp_pkt *srv_pkt = &state->srv_pkt;
+	char *buf = srv_pkt->raw_data;
+
+	read_ret = read(tun_fd, buf, 4096);
+	if (read_ret < 0) {
+		ern = errno;
+		if (ern == EAGAIN)
+			return;
+
+		state->stop = true;
+		pr_error("read(tun_fd): %s", strerror(ern));
+		return;
+	}
+
+	srv_pkt->type   = SRV_PKT_DATA;
+	srv_pkt->length = htons((uint16_t)read_ret);
+
+	send_len = SRV_PKT_MIN_RSIZ + (uint16_t)read_ret;
+	while (max_conn--) {
+		struct srv_tcp_client *client = clients + max_conn;
+
+		if (client->ctstate == CT_AUTHENTICATED) {
+			send_to_client(client, srv_pkt, send_len);
+		}
+	}
+}
+
+
 static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 			  uint16_t i)
 {
@@ -583,11 +690,6 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 		goto out_save_recv_s;
 	}
 
-	if (cdata_len != fdata_len) {
-		pr_error("cdata_len != fdata_len (internal error)");
-		goto out_err_c;
-	}
-
 	switch (cli_pkt->type) {
 	case CLI_PKT_HELLO:
 		if (likely(client->ctstate == CT_NEW)) {
@@ -614,6 +716,7 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 			/* Unauthenticated client trying to send data */
 			goto out_close_conn;
 		}
+		handle_iface_write(state, cli_pkt, fdata_len);
 		break;
 	case CLI_PKT_CLOSE:
 		goto out_close_conn;
@@ -626,8 +729,19 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 
 		goto out_err_c;
 	}
-	client->recv_s = 0;
-	return;
+
+	if (cdata_len > fdata_len) {
+		/*
+		 * We have extra packet on the tail, must memmove to
+		 * the front.
+		 */
+		size_t cpsize = recv_s - fdata_len - CLI_PKT_MIN_RSIZ;
+
+		memmove(recv_buf, recv_buf + recv_s, cpsize);
+		recv_s = cpsize;
+	} else {
+		recv_s = 0;
+	}
 
 out_save_recv_s:
 	client->recv_s = recv_s;
@@ -664,6 +778,10 @@ static int event_loop(struct srv_tcp_state *state)
 	struct pollfd *fds;
 	struct pollfd *clfds;
 	uint16_t max_conn = state->cfg->sock.max_conn;
+	short curev; /* Current returned events */
+	const short inev  = POLLIN | POLLPRI;	/* Input events    */
+	const short errev = POLLERR | POLLHUP;	/* Error events    */
+	const short retev = inev | errev;	/* Returned events */
 
 	fds = calloc(max_conn + 3, sizeof(struct pollfd));
 	if (unlikely(fds == NULL)) {
@@ -672,13 +790,13 @@ static int event_loop(struct srv_tcp_state *state)
 	}
 
 	fds[0].fd = net_fd;;
-	fds[0].events = POLLIN;
+	fds[0].events = inev;
 
-	fds[1].fd = -tun_fd; /* OFF */
-	fds[1].events = POLLIN;
+	fds[1].fd = tun_fd;
+	fds[1].events = inev;
 
 	fds[2].fd = pipe_fd[0];
-	fds[2].events = POLLIN;
+	fds[2].events = inev;
 
 	clfds = fds + 3;
 
@@ -719,29 +837,47 @@ static int event_loop(struct srv_tcp_state *state)
 			break;
 		}
 
-
-		if (unlikely((fds[0].revents & POLLIN) != 0)) {
-			/*
-			 * Someone is trying to connect to us.
-			 */
-			accept_conn(net_fd, clfds, state);
+		curev = fds[0].revents;
+		if (unlikely((curev & retev) != 0)) {
+			if (likely((curev & inev) != 0)) {
+				/*
+				 * Someone is trying to connect to us.
+				 */
+				accept_conn(net_fd, clfds, state);
+			} else {
+				/* Error? */
+				break;
+			}
 			rv--;
 		}
 
-		if (likely((rv != 0) && ((fds[1].revents & POLLIN) != 0))) {
-			/*
-			 * Read from virtual network interface.
-			 */
+		curev = fds[1].revents;
+		if (likely((rv > 0) && ((curev & retev) != 0))) {
+			if (likely((curev & inev) != 0)) {
+				/*
+				 * Read from virtual network interface.
+				 */
+				handle_iface_read(tun_fd, state);
+			} else {
+				/* Error? */
+				break;
+			}
 			rv--;
 		}
 
-		for (uint16_t i = 0; (i < max_conn) && (rv > 0); i++) {
+		for (uint16_t i = 0; likely((i < max_conn) && (rv > 0)); i++) {
 			/*
 			 * Enumerate client file descriptors.
 			 */
-			if ((clfds[i].revents & POLLIN) != 0) {
-				handle_client(&clfds[i], state, i);
-				rv--;
+			curev = clfds[i].revents;
+			if (likely((curev & retev) != 0)) {
+				if (likely((curev & inev) != 0)) {
+					handle_client(&clfds[i], state, i);
+					rv--;
+				} else {
+					/* Error? */
+					break;
+				}
 			}
 		}
 	}

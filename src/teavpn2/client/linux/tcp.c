@@ -135,9 +135,9 @@ out_err:
 }
 
 
-static bool send_to_server(struct cli_tcp_state *state,
-			   struct cli_tcp_pkt *cli_pkt,
-			   size_t send_len)
+static ssize_t send_to_server(struct cli_tcp_state *state,
+			      struct cli_tcp_pkt *cli_pkt,
+			      size_t send_len)
 {
 	ssize_t send_ret;
 
@@ -167,9 +167,122 @@ static bool send_hello(struct cli_tcp_state *state)
 }
 
 
-static void handle_auth_ok(struct cli_tcp_state *state)
+static bool handle_auth_ok(struct cli_tcp_state *state)
 {
-	(void)state;
+	struct cli_cfg *cfg = state->cfg;
+	struct cli_iface_cfg *iface_cfg = &cfg->iface;
+	struct srv_tcp_pkt *srv_pkt = &state->srv_pkt;
+	struct srv_auth_ok *auth_ok = &srv_pkt->auth_ok;
+	struct iface_cfg *iface = &auth_ok->iface;
+
+	strncpy(iface->dev, iface_cfg->dev, sizeof(iface->dev) - 1);
+
+	if (unlikely(!raise_up_interface(iface))) {
+		pr_error("Cannot raise up virtual network interface");
+		return false;
+	}
+
+	prl_notice(0, "Virtual network interface has been raised up");
+	prl_notice(0, "Initialization Sequence Completed");
+	return true;
+}
+
+
+static bool check_banner_version(struct cli_tcp_state *state,
+				 uint16_t fdata_len)
+{
+	struct srv_tcp_pkt *srv_pkt = &state->srv_pkt;
+
+	if (fdata_len != sizeof(struct srv_banner)) {
+		pr_error("Cannot verify server banner version "
+			 "(fdata_len != sizeof(struct srv_banner))");
+		return false;
+	}
+
+	if (	srv_pkt->banner.cur.ver 	== 0
+	     && srv_pkt->banner.cur.sub_ver 	== 0
+	     && srv_pkt->banner.cur.sub_sub_ver	== 1) {
+	     	/*
+	     	 * Only accept teavpn2 v0.0.1 at the moment.
+	     	 */
+		return true;
+	}
+
+	pr_error("Server is running unsupported version of teavpn2");
+	return false;
+}
+
+
+static bool send_auth(struct cli_tcp_state *state)
+{
+	ssize_t send_ret;
+	uint16_t send_len;
+	uint16_t data_len;
+	struct cli_tcp_pkt *cli_pkt = &state->cli_pkt;
+	struct auth_pkt	*auth = &cli_pkt->auth;
+	struct cli_auth_cfg *auth_cfg = &state->cfg->auth;
+
+	prl_notice(0, "Authenticating...");
+	data_len = sizeof(struct auth_pkt);
+	cli_pkt->type = CLI_PKT_AUTH;
+	cli_pkt->length = htons(data_len);
+
+	strncpy(auth->username, auth_cfg->username, sizeof(auth->username) - 1);
+	strncpy(auth->password, auth_cfg->password, sizeof(auth->password) - 1);
+	auth->username[sizeof(auth->username) - 1] = '\0';
+	auth->password[sizeof(auth->password) - 1] = '\0';
+
+	send_len = offsetof(struct cli_tcp_pkt, raw_data) + data_len;
+	send_ret = send_to_server(state, cli_pkt, send_len);
+	return send_ret > 0;
+}
+
+
+static bool handle_iface_write(struct cli_tcp_state *state, uint16_t fdata_len)
+{
+	ssize_t write_ret;
+	int tun_fd = state->tun_fd;
+	struct srv_tcp_pkt *srv_pkt = &state->srv_pkt;
+
+	write_ret = write(tun_fd, srv_pkt->raw_data, fdata_len);
+	if (write_ret < 0) {
+		pr_error("write(): %s", strerror(errno));
+		return false;
+	}
+	prl_notice(11, "write() %ld bytes to tun_fd", write_ret);
+
+	return true;
+}
+
+
+static bool handle_iface_read(int tun_fd, struct cli_tcp_state *state)
+{
+	int ern;
+	size_t send_len;
+	ssize_t read_ret;
+	struct cli_tcp_pkt *cli_pkt = &state->cli_pkt;
+	char *buf = cli_pkt->raw_data;
+
+	read_ret = read(tun_fd, buf, 4096);
+	if (read_ret < 0) {
+		ern = errno;
+		if (ern == EAGAIN)
+			return true;
+
+		state->stop = true;
+		pr_error("read(tun_fd): %s", strerror(ern));
+		return false;
+	}
+
+	prl_notice(11, "read() %ld bytes from tun_fd", read_ret);
+
+	cli_pkt->type   = CLI_PKT_DATA;
+	cli_pkt->length = htons((uint16_t)read_ret);
+	send_len = CLI_PKT_MIN_RSIZ + (uint16_t)read_ret;
+
+	send_to_server(state, cli_pkt, send_len);
+
+	return true;
 }
 
 
@@ -245,14 +358,21 @@ static void handle_server_data(int net_fd, struct cli_tcp_state *state)
 
 	switch (srv_pkt->type) {
 	case SRV_PKT_BANNER:
+		if (!check_banner_version(state, fdata_len))
+			goto out_close_conn;
+		if (!send_auth(state))
+			goto out_close_conn;
 		break;
 	case SRV_PKT_AUTH_OK:
-		handle_auth_ok(state);
+		if (!handle_auth_ok(state))
+			goto out_close_conn;
 		break;
 	case SRV_PKT_AUTH_REJECT:
 		prl_notice(0, "Authentication rejected by server");
 		goto out_close_conn;
 	case SRV_PKT_DATA:
+		if (!handle_iface_write(state, fdata_len))
+			goto out_close_conn;
 		break;
 	case SRV_PKT_CLOSE:
 		prl_notice(6, "Server has sent close packet");
@@ -305,12 +425,17 @@ static int event_loop(struct cli_tcp_state *state)
 	struct pollfd fds[2];
 	int net_fd = state->net_fd;
 	int tun_fd = state->tun_fd;
+	short curev; /* Current returned events */
+	const short inev  = POLLIN | POLLPRI;	/* Input events    */
+	const short errev = POLLERR | POLLHUP;	/* Error events    */
+	const short retev = inev | errev;	/* Returned events */
+
 
 	fds[0].fd = net_fd;
-	fds[0].events = POLLIN;
+	fds[0].events = inev;
 
 	fds[1].fd = -tun_fd;
-	fds[1].events = POLLIN;
+	fds[1].events = inev;
 
 	nfds = 2;
 	timeout = 5000;
@@ -344,12 +469,25 @@ static int event_loop(struct cli_tcp_state *state)
 		}
 
 
-		if (likely((fds[0].revents & POLLIN) != 0)) {
-			handle_server_data(net_fd, state);
+		curev = fds[0].revents;
+		if (likely((curev & retev) != 0)) {
+			if (likely((curev & inev) != 0)) {
+				handle_server_data(net_fd, state);
+			} else {
+				/* Error? */
+				break;
+			}
 			rv--;
 		}
 
-		if (likely((fds[1].revents & POLLIN) != 0)) {
+		curev = fds[1].revents;
+		if (likely((rv > 0) && ((curev & retev) != 0))) {
+			if (likely((curev & inev) != 0)) {
+				handle_iface_read(tun_fd, state);
+			} else {
+				/* Error? */
+				break;
+			}
 			rv--;
 		}
 	}
