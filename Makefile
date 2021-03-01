@@ -33,7 +33,8 @@ WARN_FLAGS	:= \
 	-Wduplicated-cond \
 	-Wduplicated-branches \
 	-Wunsafe-loop-optimizations \
-	-Wstack-usage=2097152
+	-Wstack-usage=2097152 \
+	-Wimplicit-fallthrough
 
 
 USE_CLIENT	:= 1

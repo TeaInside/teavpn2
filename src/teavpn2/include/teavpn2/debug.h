@@ -13,7 +13,7 @@ void __pr_notice(const char *fmt, ...)
 	 __attribute__((format(printf, 1, 2)));
 
 #define NOTICE_STATIC_LEVEL (20)
-#define NOTICE_ALWAYS_EXEC  (1)
+#define NOTICE_ALWAYS_EXEC  (0)
 
 #define pr_error  __pr_error
 #define pr_debug  __pr_debug

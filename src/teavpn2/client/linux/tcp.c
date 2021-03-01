@@ -101,11 +101,11 @@ static int init_socket(struct cli_tcp_state *state)
 	if (retval < 0)
 		goto out_err;
 
-	srv_addr.sin_family = AF_INET; 
-	srv_addr.sin_port = htons(server_port); 
+	srv_addr.sin_family = AF_INET;
+	srv_addr.sin_port = htons(server_port);
 
 	if (!inet_pton(AF_INET, server_addr, &srv_addr.sin_addr)) {
-		ern = errno;
+		ern = EINVAL;
 		retval = -ern;
 		pr_error("inet_pton(%s): %s", server_addr, strerror(ern));
 		goto out_err;
@@ -204,9 +204,9 @@ static bool check_banner_version(struct cli_tcp_state *state,
 	if (	srv_pkt->banner.cur.ver 	== 0
 	     && srv_pkt->banner.cur.sub_ver 	== 0
 	     && srv_pkt->banner.cur.sub_sub_ver	== 1) {
-	     	/*
-	     	 * Only accept teavpn2 v0.0.1 at the moment.
-	     	 */
+		/*
+		 * Only accept teavpn2 v0.0.1 at the moment.
+		 */
 		return true;
 	}
 
@@ -262,6 +262,7 @@ static bool handle_iface_read(int tun_fd, struct cli_tcp_state *state)
 	int ern;
 	size_t send_len;
 	ssize_t read_ret;
+	ssize_t send_ret;
 	struct cli_tcp_pkt *cli_pkt = &state->cli_pkt;
 	char *buf = cli_pkt->raw_data;
 
@@ -280,11 +281,11 @@ static bool handle_iface_read(int tun_fd, struct cli_tcp_state *state)
 
 	cli_pkt->type   = CLI_PKT_DATA;
 	cli_pkt->length = htons((uint16_t)read_ret);
+
 	send_len = CLI_PKT_MIN_RSIZ + (uint16_t)read_ret;
+	send_ret = send_to_server(state, cli_pkt, send_len);
 
-	send_to_server(state, cli_pkt, send_len);
-
-	return true;
+	return send_ret > 0;
 }
 
 
@@ -319,9 +320,12 @@ static void handle_server_data(int net_fd, struct cli_tcp_state *state)
 		goto out_close_conn;
 	}
 
-	prl_notice(11, "recv() %ld bytes from server", recv_ret);
-
 	recv_s += (size_t)recv_ret;
+
+	prl_notice(11, "recv() %ld bytes from server (recv_s = %zu)", recv_ret,
+		   recv_s);
+
+back_chk:
 	if (unlikely(recv_s < SRV_PKT_MIN_RSIZ)) {
 		/*
 		 * We haven't received the type and length of packet.
@@ -359,44 +363,60 @@ static void handle_server_data(int net_fd, struct cli_tcp_state *state)
 	
 
 	switch (srv_pkt->type) {
-	case SRV_PKT_BANNER:
-		if (!check_banner_version(state, fdata_len))
+	case SRV_PKT_BANNER: {
+		if (unlikely(!check_banner_version(state, fdata_len)))
 			goto out_close_conn;
-		if (!send_auth(state))
-			goto out_close_conn;
-		break;
-	case SRV_PKT_AUTH_OK:
-		if (!handle_auth_ok(state))
+		if (unlikely(!send_auth(state)))
 			goto out_close_conn;
 		break;
-	case SRV_PKT_AUTH_REJECT:
+	}
+	case SRV_PKT_AUTH_OK: {
+		if (unlikely(!handle_auth_ok(state)))
+			goto out_close_conn;
+		break;
+	}
+	case SRV_PKT_AUTH_REJECT: {
 		prl_notice(0, "Authentication rejected by server");
 		goto out_close_conn;
-	case SRV_PKT_DATA:
-		if (!handle_iface_write(state, fdata_len))
+	}
+	case SRV_PKT_DATA: {
+		if (unlikely(!handle_iface_write(state, fdata_len)))
 			goto out_close_conn;
 		break;
-	case SRV_PKT_CLOSE:
+	}
+	case SRV_PKT_CLOSE: {
 		prl_notice(6, "Server has sent close packet");
 		goto out_close_conn;
+	}
 	default:
 		prl_notice(11, "Received invalid packet from server (type: %d)",
 			   srv_pkt->type);
 		goto out_err_c;
 	}
 
-	if (cdata_len > fdata_len) {
+
+	prl_notice(15, "cdata_len = %u; fdata_len = %u", cdata_len, fdata_len);
+
+	if (likely(cdata_len > fdata_len)) {
 		/*
 		 * We have extra packet on the tail, must memmove to
-		 * the front.
+		 * the head before we run out of buffer.
 		 */
-		size_t cpsize = recv_s - fdata_len - CLI_PKT_MIN_RSIZ;
 
-		memmove(recv_buf, recv_buf + recv_s, cpsize);
-		recv_s = cpsize;
-	} else {
-		recv_s = 0;
+		size_t cur_valid_size = CLI_PKT_MIN_RSIZ + fdata_len;
+		size_t copy_size      = recv_s - cur_valid_size;
+
+		memmove(recv_buf, recv_buf + cur_valid_size, copy_size);
+		recv_s = copy_size;
+
+		prl_notice(15, "memmove (copy_size: %zu; recv_s: %zu; "
+			       "cur_valid_size: %zu)", copy_size, recv_s,
+			       cur_valid_size);
+
+		goto back_chk;
 	}
+
+	recv_s = 0;
 
 out_save_recv_s:
 	state->recv_s = recv_s;
@@ -485,7 +505,8 @@ static int event_loop(struct cli_tcp_state *state)
 		curev = fds[1].revents;
 		if (likely((rv > 0) && ((curev & retev) != 0))) {
 			if (likely((curev & inev) != 0)) {
-				handle_iface_read(tun_fd, state);
+				if (unlikely(!handle_iface_read(tun_fd, state)))
+					break;
 			} else {
 				/* Error? */
 				break;
@@ -531,13 +552,13 @@ int teavpn_client_tcp_handler(struct cli_cfg *cfg)
 	init_state(&state);
 
 	retval = init_iface(&state);
-	if (retval < 0)
+	if (unlikely(retval < 0))
 		goto out;
 	retval = init_socket(&state);
-	if (retval < 0)
+	if (unlikely(retval < 0))
 		goto out;
 	retval = send_hello(&state);
-	if (retval < 0)
+	if (unlikely(retval < 0))
 		goto out;
 	retval = event_loop(&state);
 out:

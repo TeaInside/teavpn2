@@ -7,9 +7,11 @@
 
 #if defined(__linux__)
 #  include <pthread.h>
-static pthread_mutex_t get_time_mt  = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t pr_error_mt  = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t pr_notice_mt = PTHREAD_MUTEX_INITIALIZER;
+// static pthread_mutex_t get_time_mt  = PTHREAD_MUTEX_INITIALIZER;
+// static pthread_mutex_t pr_error_mt  = PTHREAD_MUTEX_INITIALIZER;
+// static pthread_mutex_t pr_notice_mt = PTHREAD_MUTEX_INITIALIZER;
+#  define pthread_mutex_lock(MUT) /* Do nothing */
+#  define pthread_mutex_unlock(MUT) /* Do nothing */
 #else
 #  define pthread_mutex_lock(MUT) /* Do nothing */
 #  define pthread_mutex_unlock(MUT) /* Do nothing */
