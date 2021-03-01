@@ -23,10 +23,15 @@ struct cli_tcp_pkt {
 		char		raw_data[4096];
 		struct auth_pkt	auth;
 
+		struct {
+			char		__dummy0[4095];
+			uint8_t		__end;
+		};
 
 		struct {
-			char		__dummy[4095];
-			uint8_t		__end;
+			char		__dummy1[4096];
+			char		__extra[4095];
+			uint8_t		__end_extra;
 		};
 	};
 };
@@ -49,6 +54,7 @@ STATIC_ASSERT(
 		+ 1	/* __pad     */
 		+ 2	/* length    */
 		+ 4096	/* data      */
+		+ 4096  /* extra     */
 	),
 	"Bad sizeof(struct cli_tcp_pkt)"
 );
@@ -69,5 +75,6 @@ STATIC_ASSERT(
 #define CLI_PKT_MIN_RSIZ (offsetof(struct cli_tcp_pkt, raw_data))
 #define CLI_PKT_END_OFF  (offsetof(struct cli_tcp_pkt, __end))
 #define CLI_PKT_DATA_SIZ (CLI_PKT_END_OFF - CLI_PKT_MIN_RSIZ)
+#define CLI_PKT_RSIZE	 (offsetof(struct cli_tcp_pkt, __end_extra))
 
 #endif /* #ifndef __TEAVPN2__CLIENT__LINUX__TCP_PACKET_H */

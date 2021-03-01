@@ -52,8 +52,14 @@ struct srv_tcp_pkt {
 
 
 		struct {
-			char		__dummy[4095];
+			char		__dummy0[4095];
 			uint8_t		__end;
+		};
+
+		struct {
+			char		__dummy1[4096];
+			char		__extra[4095];
+			uint8_t		__end_extra;
 		};
 	};
 };
@@ -76,6 +82,7 @@ STATIC_ASSERT(
 		+ 1	/* __pad     */
 		+ 2	/* length    */
 		+ 4096	/* data      */
+		+ 4096  /* extra     */
 	),
 	"Bad sizeof(struct srv_tcp_pkt)"
 );
@@ -107,5 +114,6 @@ STATIC_ASSERT(offsetof(struct srv_tcp_pkt, auth_ok) == 4,
 #define SRV_PKT_MIN_RSIZ (offsetof(struct srv_tcp_pkt, raw_data))
 #define SRV_PKT_END_OFF  (offsetof(struct srv_tcp_pkt, __end))
 #define SRV_PKT_DATA_SIZ (SRV_PKT_END_OFF - SRV_PKT_MIN_RSIZ)
+#define SRV_PKT_RSIZE	 (offsetof(struct srv_tcp_pkt, __end_extra))
 
 #endif /* #ifndef __TEAVPN2__SERVER__LINUX__TCP_PACKET_H */

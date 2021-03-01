@@ -528,7 +528,7 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 	src_ip   = client->src_ip;
 	src_port = client->src_port;
 
-	recv_len = sizeof(struct cli_tcp_pkt) - recv_s;
+	recv_len = CLI_PKT_RSIZE - recv_s;
 	recv_ret = recv(cl->fd, recv_buf + recv_s, recv_len, 0);
 	if (unlikely(recv_ret < 0)) {
 		ern = errno;
@@ -552,7 +552,8 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 	if (unlikely(recv_s < CLI_PKT_MIN_RSIZ)) {
 		/*
 		 * We haven't received the type and length of packet.
-		 * Very unlikely happens, maybe connection is too slow (?)
+		 * It very unlikely happens, maybe connection is too
+		 * slow (?)
 		 */
 		goto out_save_recv_s;
 	}
@@ -560,18 +561,13 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 	fdata_len = htons(cli_pkt->length);
 	if (unlikely(fdata_len > CLI_PKT_DATA_SIZ)) {
 		/*
-		 * Client sends invalid length.
-		 *
-		 * Possibilities in this case:
-		 * - There is a bug in client module.
-		 * - The packet has been corrupted.
-		 * - Client has been compromised to send malicious packet.
-		 * - Or whatever causes packet corruption (?)
+		 * fdata_length must never be greater than SRV_PKT_DATA_SIZ.
+		 * Corrupted packet?
 		 */
-		prl_notice(1, "Client sends invalid packet len (%s:%u) "
-			   "(max_allowed_len = %zu; cli_pkt->length = %u;"
-			   " recv_s = %zu) POSSIBLE BUG!", src_ip, src_port,
-			   CLI_PKT_DATA_SIZ, fdata_len, recv_s);
+		prl_notice(1, "Client %s:%u sends invalid packet length "
+			      "(max_allowed_len = %zu; srv_pkt->length = %u;"
+			      "recv_s = %zu) CORRUPTED PACKET?", src_ip,
+			      src_port, SRV_PKT_DATA_SIZ, fdata_len, recv_s);
 		goto out_err_c;
 	}
 
@@ -579,8 +575,10 @@ static void handle_client(struct pollfd *cl, struct srv_tcp_state *state,
 	cdata_len = recv_s - CLI_PKT_MIN_RSIZ;
 	if (unlikely(cdata_len < fdata_len)) {
 		/*
-		 * We have received the type and length of packet, but
-		 * incomplete, let's wait a bit longer in the next cycle.
+		 * We've received the type and length of packet.
+		 *
+		 * However, the packet has not been fully received.
+		 * So let's wait for the next cycle to process it.
 		 */
 		goto out_save_recv_s;
 	}
@@ -693,14 +691,19 @@ static int event_loop(struct srv_tcp_state *state)
 
 	prl_notice(0, "Initialization Sequence Completed");
 
-	while (true) {
+	for (;;) {
+		if (unlikely(state->stop))
+			break;
+
 		rv = poll(fds, state->nfds, timeout);
 
-		prl_notice(15, "==== poll() = %d", rv);
-
 		if (unlikely(rv == 0)) {
-			/* Poll reached timeout. */
-			goto eol;
+			/*
+			 * Poll reached timeout.
+			 *
+			 * TODO: Do something meaningful here...
+			 */
+			continue;
 		}
 
 		if (unlikely(rv < 0)) {
@@ -710,30 +713,37 @@ static int event_loop(struct srv_tcp_state *state)
 				prl_notice(0, "Interrupted!");
 				break;
 			}
+
 			retval = -ern;
 			pr_error("poll(): %s", strerror(ern));
 			break;
 		}
 
+
 		if (unlikely((fds[0].revents & POLLIN) != 0)) {
+			/*
+			 * Someone is trying to connect to us.
+			 */
 			accept_conn(net_fd, clfds, state);
 			rv--;
 		}
 
 		if (likely((rv != 0) && ((fds[1].revents & POLLIN) != 0))) {
+			/*
+			 * Read from virtual network interface.
+			 */
 			rv--;
 		}
 
 		for (uint16_t i = 0; (i < max_conn) && (rv > 0); i++) {
+			/*
+			 * Enumerate client file descriptors.
+			 */
 			if ((clfds[i].revents & POLLIN) != 0) {
 				handle_client(&clfds[i], state, i);
 				rv--;
 			}
 		}
-
-	eol:
-		if (unlikely(state->stop))
-			break;
 	}
 
 	free(fds);
