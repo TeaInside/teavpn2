@@ -1002,8 +1002,6 @@ static int event_loop(struct srv_tcp_state *state)
 					goto out;
 				}
 
-				prl_notice(0, "map - FDS_MAP_ADD = %d",
-					   map - FDS_MAP_ADD);
 				handle_client(fd, map - FDS_MAP_ADD, state);
 				break;
 			}
