@@ -16,7 +16,9 @@ void __pr_notice(const char *fmt, ...)
 #define NOTICE_STATIC_LEVEL (20)
 #endif
 
-#define NOTICE_ALWAYS_EXEC  (1)
+#ifndef NOTICE_ALWAYS_EXEC
+#define NOTICE_ALWAYS_EXEC  (0)
+#endif
 
 #define pr_error  __pr_error
 #define pr_debug  __pr_debug
