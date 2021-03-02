@@ -12,7 +12,6 @@ typedef struct _HashtableOA {
 
 	size_t		n;		/* Number of items   */
 	size_t		size;		/* Number of buckets */
-	Bucket		buckets[];
 } HashtableOA;
 
 #endif

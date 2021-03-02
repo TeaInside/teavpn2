@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <string.h>
 #include <stdbool.h>
 #include <teavpn2/debug.h>
 
@@ -43,6 +44,11 @@
 #ifndef __no_inline
 #  define __no_inline __attribute__((noinline))
 #endif
+
+
+#define PRERR "(%d) %s"
+#define PREAG(NUM) NUM, strerror(NUM)
+
 
 struct iface_cfg {
 	char		dev[16];

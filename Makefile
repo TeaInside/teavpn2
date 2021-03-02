@@ -131,6 +131,7 @@ CXXFLAGS	:= $(INCLUDE_DIR) $(CXXFLAGS) $(CCXXFLAGS)
 $(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC)
 	@echo "   LD		" "$(@)"
 	@$(LD) $(LDFLAGS) $(OBJ_CC) $(OBJ_PRE_CC) -o "$@" $(LIB_LDFLAGS)
+	@chmod a+x teavpn2 || true
 
 $(DEP_DIRS):
 	@echo "   MKDIR	" "$(@:$(BASE_DIR)/%=%)"
@@ -147,3 +148,6 @@ $(OBJ_PRE_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
 
 clean:
 	@rm -rfv $(DEP_DIRS) $(OBJ_CC) $(OBJ_PRE_CC) $(TARGET_BIN)
+
+server: $(TARGET_BIN)
+	sudo $(VG) $(VGFLAGS) ./$(TARGET_BIN) server
