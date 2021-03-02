@@ -546,10 +546,14 @@ static ssize_t send_to_client(struct srv_tcp_client *client,
 	int err;
 	ssize_t send_ret;
 
+again:
 	send_ret = send(client->cli_fd, srv_pkt, send_len, 0);
 	if (unlikely(send_ret < 0)) {
 		client->err_c++;
 		err = errno;
+		if (err == EAGAIN)
+			goto again;
+
 		pr_error("send() to " PRWIU ": " PRERR, W_IP(client),
 			 client->username, PREAG(err));
 		return -1;

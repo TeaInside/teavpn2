@@ -139,10 +139,16 @@ static ssize_t send_to_server(struct cli_tcp_state *state,
 			      struct cli_tcp_pkt *cli_pkt,
 			      size_t send_len)
 {
+	int err;
 	ssize_t send_ret;
 
+again:
 	send_ret = send(state->net_fd, cli_pkt, send_len, 0);
 	if (unlikely(send_ret < 0)) {
+		err = errno;
+		if (err == EAGAIN)
+			goto again;
+
 		pr_error("send(): %s", strerror(errno));
 		return -1;
 	}

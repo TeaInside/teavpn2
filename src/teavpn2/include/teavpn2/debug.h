@@ -12,7 +12,10 @@ void __pr_error(const char *fmt, ...)
 void __pr_notice(const char *fmt, ...)
 	 __attribute__((format(printf, 1, 2)));
 
+#ifndef NOTICE_STATIC_LEVEL
 #define NOTICE_STATIC_LEVEL (20)
+#endif
+
 #define NOTICE_ALWAYS_EXEC  (1)
 
 #define pr_error  __pr_error
