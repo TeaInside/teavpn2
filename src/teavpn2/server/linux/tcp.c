@@ -870,6 +870,7 @@ static void handle_client(int cli_fd, int map, struct srv_tcp_state *state)
 	recv_len = CLI_PKT_RSIZE - recv_s;
 	prl_notice(0, "recv_len = %zu", recv_len);
 	recv_ret = recv(cli_fd, recv_buf + recv_s, recv_len, 0);
+	prl_notice(0, "recv_ret = %ld", recv_ret);
 
 	if (unlikely(recv_ret < 0)) {
 		err = errno;
