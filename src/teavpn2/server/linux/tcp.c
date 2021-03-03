@@ -81,7 +81,6 @@ struct srv_tcp_state {
 	struct srv_cfg		*cfg;
 	struct srv_tcp_client	*clients;
 	bool			stop;
-	bool			has_wrq;
 };
 
 
@@ -177,7 +176,6 @@ static void tcp_client_init(struct srv_tcp_client *client, uint16_t idx)
 	client->send_c      = 0;
 	client->recv_c      = 0;
 	client->in_ip       = 0;
-	client->has_wrq	    = 0;
 }
 
 
@@ -513,7 +511,7 @@ static void handle_recv_client(int cli_fd, int map, struct srv_tcp_state *state)
 	recv_buf = client->buf.raw;
 
 	client->recv_c++;
-	recv_len = CLI_PKT_RECVL - recv_s;
+	recv_len = CLI_PKT_RECV_L - recv_s;
 
 	recv_ret = recv(cli_fd, recv_buf + recv_s, recv_len, 0);
 	if (unlikely(recv_ret < 0)) {

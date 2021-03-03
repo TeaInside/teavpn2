@@ -97,14 +97,27 @@ STATIC_ASSERT(
 );
 
 
-
-#define CLI_MIN_PKTL  (offsetof(struct cli_tcp_pkt, raw_data[0]))
-#define CLI_PKT_RECVL (sizeof(union _cli_tcp_pkt_buf))
+#define CLI_PKT_MIN_L	(offsetof(struct cli_tcp_pkt, raw_data[0]))
+#define CLI_PKT_END_OFF	(offsetof(struct cli_tcp_pkt, __end))
+#define CLI_PKT_DATA_L	(CLI_PKT_END_OFF - CLI_PKT_MIN_L + 1)
+#define CLI_PKT_RECV_L	(sizeof(union _cli_tcp_pkt_buf))
 
 
 STATIC_ASSERT(
-	CLI_MIN_PKTL == 4,
-	"Bad value of CLI_MIN_PKTL"
+	CLI_PKT_MIN_L == 4,
+	"Bad value of CLI_PKT_MIN_L"
+);
+STATIC_ASSERT(
+	CLI_PKT_END_OFF == 4 + 4095,
+	"Bad value of CLI_PKT_END_OFF"
+);
+STATIC_ASSERT(
+	CLI_PKT_DATA_L == 4096,
+	"Bad value of CLI_PKT_DATA_L"
+);
+STATIC_ASSERT(
+	CLI_PKT_RECV_L == (sizeof(struct cli_tcp_pkt) * 4),
+	"Bad value of CLI_PKT_RECV_L"
 );
 
 #endif /* #ifndef __TEAVPN2__CLIENT__LINUX__TCP_PACKET_H */

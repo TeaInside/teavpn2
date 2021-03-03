@@ -136,4 +136,28 @@ STATIC_ASSERT(
 	"Bad sizeof(union _srv_tcp_pkt_buf)"
 );
 
+
+#define SRV_PKT_MIN_L	(offsetof(struct srv_tcp_pkt, raw_data[0]))
+#define SRV_PKT_END_OFF	(offsetof(struct srv_tcp_pkt, __end))
+#define SRV_PKT_DATA_L	(SRV_PKT_END_OFF - SRV_PKT_MIN_L + 1)
+#define SRV_PKT_RECV_L	(sizeof(union _srv_tcp_pkt_buf))
+
+
+STATIC_ASSERT(
+	SRV_PKT_MIN_L == 4,
+	"Bad value of SRV_PKT_MIN_L"
+);
+STATIC_ASSERT(
+	SRV_PKT_END_OFF == 4 + 4095,
+	"Bad value of SRV_PKT_END_OFF"
+);
+STATIC_ASSERT(
+	SRV_PKT_DATA_L == 4096,
+	"Bad value of SRV_PKT_DATA_L"
+);
+STATIC_ASSERT(
+	SRV_PKT_RECV_L == (sizeof(struct srv_tcp_pkt) * 4),
+	"Bad value of SRV_PKT_RECV_L"
+);
+
 #endif /* #ifndef __TEAVPN2__SERVER__LINUX__TCP_PACKET_H */
