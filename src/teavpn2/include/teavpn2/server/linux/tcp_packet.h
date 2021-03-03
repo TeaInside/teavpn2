@@ -9,111 +9,131 @@
 #include <teavpn2/server/linux/tcp_packet.h>
 
 
-typedef enum __attribute__((packed)) {
+typedef enum __attribute__((packed)) _srv_tcp_pkt_type {
 	SRV_PKT_BANNER		= 0,
 	SRV_PKT_AUTH_OK		= 1,
 	SRV_PKT_AUTH_REJECT	= 2,
-	SRV_PKT_DATA		= 3,
-	SRV_PKT_CLOSE		= 4,
+	SRV_PKT_IFACE_DATA	= 3,
+	SRV_PKT_REQSYNC		= 4,
+	SRV_PKT_CLOSE		= 5,
 } srv_tcp_pkt_type;
 
+
 struct srv_banner {
-	struct {
-		uint8_t		ver;
-		uint8_t		sub_ver;
-		uint8_t		sub_sub_ver;
-	} cur;
-
-	struct {
-		uint8_t		ver;
-		uint8_t		sub_ver;
-		uint8_t		sub_sub_ver;
-	} min;
-
-	struct {
-		uint8_t		ver;
-		uint8_t		sub_ver;
-		uint8_t		sub_sub_ver;
-	} max;
+	struct ver_info			cur;
+	struct ver_info			min;
+	struct ver_info			max;
 };
 
-struct srv_auth_ok {
-	struct iface_cfg	iface;
+
+struct auth_ok {
+	struct iface_cfg		iface;
 };
+
 
 struct srv_tcp_pkt {
-	srv_tcp_pkt_type	type;
-	uint8_t			__pad;
-	uint16_t		length;
+	srv_tcp_pkt_type		type;
+	uint8_t				pad_n;
+	uint16_t			length;
 	union {
 		char			raw_data[4096];
 		struct srv_banner	banner;
-		struct srv_auth_ok	auth_ok;
-
+		struct auth_ok		auth_ok;
 
 		struct {
 			char		__dummy0[4095];
 			uint8_t		__end;
 		};
-
-		struct {
-			char		__dummy1[4096];
-			char		__extra[4095];
-			uint8_t		__end_extra;
-		};
 	};
 };
 
-/**
- * Note that the offsets must be calculated properly by hand and
- * must be statically asserted.
- *
- * If we have different offsets on different architecture or platform,
- * this software won't work.
- */
 
+typedef union _srv_tcp_pkt_buf {
+	struct srv_tcp_pkt		pkt;
+	struct srv_tcp_pkt		__pkt_chk[4];
+} srv_tcp_pkt_buf;
+
+
+/* enum _srv_tcp_pkt_type */
 STATIC_ASSERT(
-	sizeof(srv_tcp_pkt_type) == 1,
-	"Bad sizeof(srv_tcp_pkt_type)"
+	sizeof(enum _srv_tcp_pkt_type) == 1,
+	"Bad sizeof(enum _srv_tcp_pkt_type)"
+);
+
+
+/* struct srv_banner check */
+STATIC_ASSERT(
+	sizeof(struct srv_banner) == (sizeof(struct ver_info) * 3),
+	"Bad sizeof(struct srv_banner)"
 );
 STATIC_ASSERT(
+	offsetof(struct srv_banner, cur) == (sizeof(struct ver_info) * 0),
+	"Bad offsetof(struct srv_banner, cur)"
+);
+STATIC_ASSERT(
+	offsetof(struct srv_banner, min) == (sizeof(struct ver_info) * 1),
+	"Bad offsetof(struct srv_banner, min)"
+);
+STATIC_ASSERT(
+	offsetof(struct srv_banner, max) == (sizeof(struct ver_info) * 2),
+	"Bad offsetof(struct srv_banner, max)"
+);
+
+
+STATIC_ASSERT(
+	sizeof(struct auth_ok) == sizeof(struct iface_cfg),
+	"Bad sizeof(struct auth_ok)"
+);
+
+
+/* struct srv_tcp_pkt */
+STATIC_ASSERT(
 	sizeof(struct srv_tcp_pkt) == (
-		  1	/* type      */
-		+ 1	/* __pad     */
-		+ 2	/* length    */
-		+ 4096	/* data      */
-		+ 4096  /* extra     */
+		1	/* type   */
+		+ 1	/* pad    */
+		+ 2	/* length */
+		+ 4096	/* data   */
 	),
 	"Bad sizeof(struct srv_tcp_pkt)"
 );
 STATIC_ASSERT(
-	sizeof(struct srv_banner) == 9,
-	"Bad sizeof(struct srv_banner)"
+	offsetof(struct srv_tcp_pkt, type) == 0,
+	"Bad offsetof(struct srv_tcp_pkt, type)"
 );
 STATIC_ASSERT(
-	sizeof(struct srv_auth_ok) == sizeof(struct iface_cfg),
-	"Bad sizeof(struct srv_auth_ok)"
+	offsetof(struct srv_tcp_pkt, pad_n) == 1,
+	"Bad offsetof(struct srv_tcp_pkt, pad_n)"
 );
 STATIC_ASSERT(
 	offsetof(struct srv_tcp_pkt, length) == 2,
-	"Bad offset of length in struct srv_tcp_pkt"
+	"Bad offsetof(struct srv_tcp_pkt, length)"
 );
 STATIC_ASSERT(
 	offsetof(struct srv_tcp_pkt, raw_data) == 4,
-	"Bad offset of raw_data in struct srv_tcp_pkt"
+	"Bad offsetof(struct srv_tcp_pkt, raw_data)"
 );
 STATIC_ASSERT(
 	offsetof(struct srv_tcp_pkt, banner) == 4,
-	"Bad offset of banner in struct srv_tcp_pkt"
+	"Bad offsetof(struct srv_tcp_pkt, banner)"
 );
-STATIC_ASSERT(offsetof(struct srv_tcp_pkt, auth_ok) == 4,
-	"Bad offset of auth_ok in struct srv_tcp_pkt"
+STATIC_ASSERT(
+	offsetof(struct srv_tcp_pkt, auth_ok) == 4,
+	"Bad offsetof(struct srv_tcp_pkt, auth_ok)"
+);
+STATIC_ASSERT(
+	offsetof(struct srv_tcp_pkt, __dummy0) == 4,
+	"Bad offsetof(struct srv_tcp_pkt, __dummy0)"
+);
+STATIC_ASSERT(
+	offsetof(struct srv_tcp_pkt, __end) == 4 + 4095,
+	"Bad offsetof(struct srv_tcp_pkt, __end)"
 );
 
 
-#define SRV_PKT_MIN_RSIZ (offsetof(struct srv_tcp_pkt, raw_data))
-#define SRV_PKT_END_OFF  (offsetof(struct srv_tcp_pkt, __end))
-#define SRV_PKT_DATA_SIZ (SRV_PKT_END_OFF - SRV_PKT_MIN_RSIZ)
-#define SRV_PKT_RSIZE	 (offsetof(struct srv_tcp_pkt, __end_extra))
+/* union _srv_tcp_pkt_buf */
+STATIC_ASSERT(
+	sizeof(union _srv_tcp_pkt_buf) == (sizeof(struct srv_tcp_pkt) * 4),
+	"Bad sizeof(union _srv_tcp_pkt_buf)"
+);
 
 #endif /* #ifndef __TEAVPN2__SERVER__LINUX__TCP_PACKET_H */

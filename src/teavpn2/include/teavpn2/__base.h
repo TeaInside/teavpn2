@@ -50,6 +50,13 @@
 #define PREAG(NUM) NUM, strerror(NUM)
 
 
+struct ver_info {
+	uint8_t		ver;
+	uint8_t		sub_ver;
+	uint8_t		sub_sub_ver;
+};
+
+
 struct iface_cfg {
 	char		dev[16];
 	char		ipv4[IPV4SLEN];
@@ -57,12 +64,36 @@ struct iface_cfg {
 	uint16_t	mtu;
 };
 
+STATIC_ASSERT(sizeof(uint8_t) == 1, "Bad sizeof(uint8_t)");
+STATIC_ASSERT(sizeof(uint16_t) == 2, "Bad sizeof(uint16_t)");
+STATIC_ASSERT(sizeof(uint32_t) == 4, "Bad sizeof(uint32_t)");
+STATIC_ASSERT(sizeof(uint64_t) == 8, "Bad sizeof(uint64_t)");
 
+STATIC_ASSERT(
+	sizeof(struct ver_info) == 3,
+	"Bad sizeof(struct ver_info)"
+);
+STATIC_ASSERT(
+	offsetof(struct ver_info, ver) == 0,
+	"Bad offset of ver in struct ver_info"
+);
+STATIC_ASSERT(
+	offsetof(struct ver_info, sub_ver) == 1,
+	"Bad offset of sub_ver in struct ver_info"
+);
+STATIC_ASSERT(
+	offsetof(struct ver_info, sub_sub_ver) == 2,
+	"Bad offset of sub_sub_ver in struct ver_info"
+);
 STATIC_ASSERT(
 	sizeof(struct iface_cfg) == (
 		16 + (IPV4SLEN * 2) + 2
 	),
 	"Bad sizeof(struct iface_cfg)"
+);
+STATIC_ASSERT(
+	offsetof(struct iface_cfg, dev) == 0,
+	"Bad offset of dev in struct iface_cfg"
 );
 STATIC_ASSERT(
 	offsetof(struct iface_cfg, ipv4) == 16,
