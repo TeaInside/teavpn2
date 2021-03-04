@@ -26,7 +26,7 @@ struct srv_banner {
 };
 
 
-struct auth_ok {
+struct srv_auth_ok {
 	struct iface_cfg		iface;
 };
 
@@ -38,7 +38,7 @@ struct srv_tcp_pkt {
 	union {
 		char			raw_data[4096];
 		struct srv_banner	banner;
-		struct auth_ok		auth_ok;
+		struct srv_auth_ok	auth_ok;
 
 		struct {
 			char		__dummy0[4095];
@@ -82,8 +82,8 @@ STATIC_ASSERT(
 
 
 STATIC_ASSERT(
-	sizeof(struct auth_ok) == sizeof(struct iface_cfg),
-	"Bad sizeof(struct auth_ok)"
+	sizeof(struct srv_auth_ok) == sizeof(struct iface_cfg),
+	"Bad sizeof(struct srv_auth_ok)"
 );
 
 

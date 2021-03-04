@@ -21,9 +21,9 @@
 #define FDS_MAP_SIZE (65535)
 #define FDS_ADD_NUM  (3)
 #define MAX_ERR_C    (15)
-#define EPOLL_INEVT  (EPOLLIN | EPOLLPRI | EPOLLRDHUP)
+#define EPOLL_INEVT  (EPOLLIN | EPOLLPRI | EPOLLRDHUP | EPOLLET)
 
-/* Macros for printing */
+/* Ah, just short macros for printing... */
 #define W_IP(CL) ((CL)->src_ip), ((CL)->src_port)
 #define W_UN(CL) ((CL)->username)
 #define W_IU(CL) W_IP(CL), W_UN(CL)
@@ -44,11 +44,11 @@ typedef enum __ctstate {
 } _ctstate;
 
 
-typedef enum _evt_cli_goto {
+typedef enum _evt_loop_goto {
 	RETURN_OK	= 0,
 	OUT_CONN_ERR	= 1,
 	OUT_CONN_CLOSE	= 2,
-} evt_cli_goto;
+} evt_loop_goto;
 
 
 struct srv_tcp_client {
@@ -94,7 +94,7 @@ struct srv_tcp_state {
 };
 
 
-static struct srv_tcp_state *g_state; /* Only for interrupt access */
+static struct srv_tcp_state *g_state;
 
 
 static void intr_handler(int sig)
@@ -104,25 +104,6 @@ static void intr_handler(int sig)
 	state->stop = true;
 	putchar('\n');
 	prl_notice(0, "Signal %d (%s) has been caught", sig, strsignal(sig));
-}
-
-
-static void tcp_client_init(struct srv_tcp_client *client, uint16_t idx)
-{
-	client->is_used     = false;
-	client->is_conn     = false;
-	client->is_auth     = false;
-	client->username[0] = '_';
-	client->username[1] = '\0';
-	client->arr_idx     = idx;
-	client->on_idx_i    = -1;
-	client->cli_fd      = -1;
-	client->ctstate     = CT_DEAD;
-	client->err_c       = 0;
-	client->recv_s      = 0;
-	client->send_c      = 0;
-	client->recv_c      = 0;
-	client->in_ip       = 0;
 }
 
 
@@ -146,14 +127,65 @@ static int32_t pop_cl(struct _cl_stk *cl_stk)
 	/* sp must never be higher than max_sp */
 	assert(sp <= max_sp);
 
-	if (unlikely(sp == max_sp)) {
-		/* There is nothing on the stack */
-		return -1;
-	}
+	if (unlikely(sp == max_sp))
+		return -1; /* There is nothing in the stack */
 
 	val = (int32_t)cl_stk->arr[sp];
 	cl_stk->sp = ++sp;
 	return (int32_t)val;
+}
+
+
+static int epoll_add(int epl_fd, int fd, uint32_t events)
+{
+	int err;
+	struct epoll_event event;
+
+	/* Shut the valgrind up! */
+	memset(&event, 0, sizeof(struct epoll_event));
+
+	event.events = events;
+	event.data.fd = fd;
+	if (unlikely(epoll_ctl(epl_fd, EPOLL_CTL_ADD, fd, &event) < 0)) {
+		err = errno;
+		pr_error("epoll_ctl(EPOLL_CTL_ADD): " PRERR, PREAG(err));
+		return -1;
+	}
+
+	return 0;
+}
+
+
+static int epoll_delete(int epl_fd, int fd)
+{
+	int err;
+
+	if (unlikely(epoll_ctl(epl_fd, EPOLL_CTL_DEL, fd, NULL) < 0)) {
+		err = errno;
+		pr_error("epoll_ctl(EPOLL_CTL_DEL): " PRERR, PREAG(err));
+		return -1;
+	}
+
+	return 0;
+}
+
+
+static void tcp_client_init(struct srv_tcp_client *client, uint16_t idx)
+{
+	client->is_used     = false;
+	client->is_conn     = false;
+	client->is_auth     = false;
+	client->username[0] = '_';
+	client->username[1] = '\0';
+	client->arr_idx     = idx;
+	client->on_idx_i    = -1;
+	client->cli_fd      = -1;
+	client->ctstate     = CT_DEAD;
+	client->err_c       = 0;
+	client->recv_s      = 0;
+	client->send_c      = 0;
+	client->recv_c      = 0;
+	client->in_ip       = 0;
 }
 
 
@@ -206,6 +238,7 @@ static int init_state(struct srv_tcp_state *state)
 	state->fds_map = fds_map;
 	state->clients = clients;
 	return 0;
+
 out_err_calloc:
 	err = errno;
 	free(on_idx_arr);
@@ -223,7 +256,6 @@ static int init_iface(struct srv_tcp_state *state)
 	struct srv_iface_cfg *j = &state->cfg->iface;
 
 	prl_notice(0, "Creating virtual network interface: \"%s\"...", j->dev);
-
 	fd = tun_alloc(j->dev, IFF_TUN);
 	if (unlikely(fd < 0))
 		return -1;
@@ -241,6 +273,7 @@ static int init_iface(struct srv_tcp_state *state)
 
 	state->tun_fd = fd;
 	return 0;
+
 out_err:
 	close(fd);
 	return -1;
@@ -285,6 +318,7 @@ static int socket_setup(int fd, struct srv_cfg *cfg)
 	 */
 	(void)cfg;
 	return rv;
+
 out_err:
 	err = errno;
 	pr_error("setsockopt(): " PRERR, PREAG(err));
@@ -347,38 +381,6 @@ out_err:
 }
 
 
-static int epoll_add(int epl_fd, int fd, uint32_t events)
-{
-	int err;
-	struct epoll_event event;
-
-	/* Shut the valgrind up! */
-	memset(&event, 0, sizeof(struct epoll_event));
-
-	event.events = events;
-	event.data.fd = fd;
-	if (unlikely(epoll_ctl(epl_fd, EPOLL_CTL_ADD, fd, &event) < 0)) {
-		err = errno;
-		pr_error("epoll_ctl(EPOLL_CTL_ADD): " PRERR, PREAG(err));
-		return -1;
-	}
-	return 0;
-}
-
-
-static int epoll_delete(int epl_fd, int fd)
-{
-	int err;
-
-	if (unlikely(epoll_ctl(epl_fd, EPOLL_CTL_DEL, fd, NULL) < 0)) {
-		err = errno;
-		pr_error("epoll_ctl(EPOLL_CTL_DEL): " PRERR, PREAG(err));
-		return -1;
-	}
-	return 0;
-}
-
-
 static int init_epoll(struct srv_tcp_state *state)
 {
 	int err;
@@ -388,7 +390,7 @@ static int init_epoll(struct srv_tcp_state *state)
 
 	prl_notice(0, "Initializing epoll fd...");
 
-	epl_fd = epoll_create((int)state->cfg->sock.max_conn + 3);
+	epl_fd = epoll_create((int)state->cfg->sock.max_conn);
 	if (unlikely(epl_fd < 0)) {
 		err = errno;
 		retval = epl_fd;
@@ -444,81 +446,26 @@ static void remove_online_cl_idx(struct srv_tcp_state *state, uint16_t idx)
 }
 
 
-static bool resolve_new_conn(int cli_fd, struct sockaddr_in *addr,
-			     struct srv_tcp_state *state)
-{
-	int err;
-	uint16_t sport;
-	const char *sip;
-	char buf[IPV4LEN + 1];
-
-	uint16_t idx;
-	int32_t ret_idx;
-	struct srv_tcp_client *client;
-
-	/* Get readable source IP address */
-	sip = inet_ntop(AF_INET, &addr->sin_addr, buf, IPV4LEN);
-	if (unlikely(sip == NULL)) {
-		err = errno;
-		pr_error("inet_ntop(%u): " PRERR, addr->sin_addr.s_addr,
-			 PREAG(err));
-		return false;
-	}
-
-	/* Get readable source port */
-	sport = ntohs(addr->sin_port);
-
-	if (unlikely(cli_fd > (FDS_MAP_SIZE - 1))) {
-		pr_error("Cannot accept new connection from %s:%u because "
-			 "returned fd from accept() is too big "
-			 "(FDS_MAP_SIZE = %d, returned fd = %d)", sip, sport,
-			 FDS_MAP_SIZE, cli_fd);
-		return false;
-	}
-
-	ret_idx = pop_cl(&state->cl_stk);
-	if (unlikely(ret_idx == -1)) {
-		prl_notice(0, "Client slot is full, can't accept connection");
-		prl_notice(0, "Dropping connection from %s:%u", sip, sport);
-		return false;
-	}
-
-	/* Welcome new connection :) */
-	idx = (uint16_t)ret_idx;
-	if (unlikely(epoll_add(state->epl_fd, cli_fd, EPOLL_INEVT) < 0)) {
-		pr_error("Cannot accept new connection from %s:%u because of "
-			 "error on epoll_add()", sip, sport);
-		return false;
-	}
-
-	state->fds_map[cli_fd] = idx + FDS_ADD_NUM;
-	client = &state->clients[idx];
-	client->is_used  = true;
-	client->is_conn  = true;
-	client->ctstate  = CT_NEW;
-	client->cli_fd   = cli_fd;
-	client->src_port = sport;
-	strncpy(client->src_ip, sip, IPV4LEN);
-
-	assert(client->arr_idx == idx);
-
-	prl_notice(0, "New connection from %s:%u (fd:%d)", sip, sport, cli_fd);
-	return true;
-}
-
-
-static void accept_new_conn(int net_fd, struct srv_tcp_state *state)
+static void accept_conn(int net_fd, int epl_fd, struct srv_tcp_state *state)
 {
 	int err;
 	int cli_fd;
+	int32_t ridx;
+	uint16_t idx;
+	uint16_t sport;
+	const char *sip;
+	char buf[IPV4LEN + 1];
 	struct sockaddr_in addr;
+	struct srv_tcp_client *client;
+	const uint32_t epl_evt = EPOLL_INEVT;
 	socklen_t addrlen = sizeof(struct sockaddr_in);
+
+	memset(&addr, 0, addrlen);
 
 	prl_notice(0, "Accepting new connection...");
 
-	memset(&addr, 0, addrlen);
 	cli_fd = accept(net_fd, &addr, &addrlen);
-	if (cli_fd < 0) {
+	if (unlikely(cli_fd < 0)) {
 		err = errno;
 		if (err == EAGAIN)
 			return;
@@ -526,8 +473,57 @@ static void accept_new_conn(int net_fd, struct srv_tcp_state *state)
 		return;
 	}
 
-	if (!resolve_new_conn(cli_fd, &addr, state))
-		close(cli_fd);
+	/* Get readable source IP address */
+	sip = inet_ntop(AF_INET, &addr.sin_addr, buf, IPV4LEN);
+	if (unlikely(sip == NULL)) {
+		err = errno;
+		pr_error("inet_ntop(%u): " PRERR, addr.sin_addr.s_addr,
+			 PREAG(err));
+		goto out_close;
+	}
+
+	/* Get readable source port */
+	sport = ntohs(addr.sin_port);
+
+	if (unlikely(cli_fd > (FDS_MAP_SIZE - 1))) {
+		pr_error("Cannot accept new connection from %s:%u because "
+			 "returned fd from accept() is too big "
+			 "(FDS_MAP_SIZE = %d, returned fd = %d)", sip, sport,
+			 FDS_MAP_SIZE, cli_fd);
+		goto out_close;
+	}
+
+	ridx = pop_cl(&state->cl_stk);
+	if (unlikely(ridx == -1)) {
+		prl_notice(0, "Client slot is full, can't accept connection");
+		prl_notice(0, "Dropping connection from %s:%u", sip, sport);
+		goto out_close;
+	}
+
+	/* Welcome new connection :) */
+	idx = (uint16_t)ridx;
+	if (unlikely(epoll_add(epl_fd, cli_fd, epl_evt) < 0)) {
+		pr_error("Cannot accept new connection from %s:%u because of "
+			 "error on epoll_add()", sip, sport);
+		goto out_close;
+	}
+
+	state->fds_map[cli_fd] = idx + FDS_ADD_NUM;
+
+	client = &state->clients[idx];
+	client->is_used  = true;
+	client->is_conn  = true;
+	client->ctstate  = CT_NEW;
+	client->cli_fd   = cli_fd;
+	client->src_port = sport;
+	strncpy(client->src_ip, sip, IPV4LEN);
+	assert(client->arr_idx == idx);
+
+	prl_notice(1, "New connection from %s:%u (fd:%d)", sip, sport, cli_fd);
+	return;
+
+out_close:
+	close(cli_fd);
 }
 
 
@@ -541,27 +537,25 @@ static ssize_t send_to_client(struct srv_tcp_client *client,
 
 	send_len_pad   = (send_len_no_pad + 0xfull) & ~0xfull;
 	srv_pkt->pad_n = send_len_pad - send_len_no_pad;
-	send_ret       = send(client->cli_fd, srv_pkt, send_len_pad, 0);
-	if (send_ret < 0) {
-		err = errno;
-		if (err == EAGAIN) {
-			/* TODO: Handle pending buffer.
-			 *
-			 * Let it fallthrough at the moment.
-			 */
-		}
 
+	client->send_c++;
+	send_ret = send(client->cli_fd, srv_pkt, send_len_pad, 0);
+	if (unlikely(send_ret < 0)) {
 		client->err_c++;
-		pr_error("send() to " PRWIU ": " PRERR, W_IU(client),
-			 PREAG(err));
+		err = errno;
+		pr_error("send() to " PRWIU ": " PRERR, W_IP(client),
+			 client->username, PREAG(err));
 		return -1;
 	}
+	prl_notice(11, "[%10" PRIu32 "] send() %ld bytes to " PRWIU,
+		   client->send_c, send_ret, W_IU(client));
 
 	return send_ret;
 }
 
 
-static bool send_server_banner(struct srv_tcp_client *client)
+static bool send_server_banner(struct srv_tcp_client *client,
+			       struct srv_tcp_state *state)
 {
 	size_t send_len;
 	uint16_t data_len;
@@ -588,16 +582,8 @@ static bool send_server_banner(struct srv_tcp_client *client)
 }
 
 
-static evt_cli_goto handle_hello(struct srv_tcp_client *client)
-{
-	if (client->is_auth)
-		return RETURN_OK;
-
-	return send_server_banner(client) ? RETURN_OK : OUT_CONN_CLOSE;
-}
-
-
-static bool send_auth_ok(struct srv_tcp_client *client)
+static bool send_auth_ok(struct srv_tcp_client *client,
+			 struct srv_tcp_state *state)
 {
 	size_t send_len;
 	uint16_t data_len;
@@ -612,7 +598,8 @@ static bool send_auth_ok(struct srv_tcp_client *client)
 }
 
 
-static bool send_auth_reject(struct srv_tcp_client *client)
+static bool send_auth_reject(struct srv_tcp_client *client,
+			     struct srv_tcp_state *state)
 {
 	size_t send_len;
 	struct srv_tcp_pkt *srv_pkt = client->send_buf.__pkt_chk;
@@ -634,18 +621,18 @@ static void auth_ok_notice(struct iface_cfg *iface,
 }
 
 
-static bool handle_auth(struct srv_tcp_client *client,
-			struct srv_tcp_state *state)
+static int handle_auth(struct srv_tcp_client *client,
+		       struct srv_tcp_state *state)
 {
-	struct auth_pkt *auth;
-	struct iface_cfg *iface;
 	struct cli_tcp_pkt *cli_pkt;
 	struct srv_tcp_pkt *srv_pkt;
 	struct srv_auth_ok *auth_ok;
+	struct iface_cfg *iface;
+	struct auth_pkt *auth;
 
 	cli_pkt = client->recv_buf.__pkt_chk;
-	srv_pkt = client->send_buf.__pkt_chk;
 	auth    = &cli_pkt->auth;
+	srv_pkt = client->send_buf.__pkt_chk;
 	auth_ok = &srv_pkt->auth_ok;
 	iface   = &auth_ok->iface;
 
@@ -661,7 +648,7 @@ static bool handle_auth(struct srv_tcp_client *client,
 		goto out_fail;
 	}
 
-	if (unlikely(!send_auth_ok(client))) {
+	if (unlikely(!send_auth_ok(client, state))) {
 		prl_notice(0, "Authentication error from " PRWIU, W_IU(client));
 		goto out_fail;
 	}
@@ -669,25 +656,24 @@ static bool handle_auth(struct srv_tcp_client *client,
 	auth_ok_notice(iface, client);
 	client->is_auth  = true;
 	client->on_idx_i = add_online_cl_idx(state, client->arr_idx);
-	return RETURN_OK;
+
+	return true;
 out_fail:
-	send_auth_reject(client);
-	return OUT_CONN_CLOSE;
+	send_auth_reject(client, state);
+	return false;
 }
 
 
-static evt_cli_goto process_client_buf(size_t recv_s,
-				       struct srv_tcp_client *client,
-				       struct srv_tcp_state *state)
+static evt_loop_goto process_client_buf(size_t recv_s,
+					struct srv_tcp_client *client,
+					struct srv_tcp_state *state)
 {
 	uint16_t pad_n;
 	uint16_t data_len;
-	uint16_t fdata_len; /* Full data length                        */
-	uint16_t cdata_len; /* Current received data length + plus pad */
-	evt_cli_goto retval = RETURN_OK;
-
-	char *recv_buf = client->recv_buf.raw;
+	uint16_t fdata_len; /* Full data length             */
+	uint16_t cdata_len; /* Current received data length */
 	struct cli_tcp_pkt *cli_pkt = client->recv_buf.__pkt_chk;
+	char *recv_buf = client->recv_buf.raw;
 
 again:
 	if (unlikely(recv_s < CLI_PKT_MIN_L)) {
@@ -697,25 +683,28 @@ again:
 		 * slow or the extra data after memmove (?)
 		 */
 		goto out;
+
 	}
 
 	pad_n     = cli_pkt->pad_n;
 	data_len  = ntohs(cli_pkt->length);
 	fdata_len = data_len + pad_n;
-	if (unlikely(data_len > CLI_PKT_DATA_L)) {
+
+	if (unlikely(fdata_len > CLI_PKT_DATA_L)) {
 		/*
-		 * data_len must never be greater than CLI_PKT_DATA_L.
-		 * Is it corrupted packet?
+		 * fdata_length must never be greater than SRV_PKT_DATA_SIZ.
+		 * Corrupted packet?
 		 */
 		prl_notice(0, "Client " PRWIU " sends invalid packet length "
 			      "(max_allowed_len = %zu; srv_pkt->length = %u; "
 			      "recv_s = %zu) CORRUPTED PACKET?", W_IU(client),
 			      CLI_PKT_DATA_L, fdata_len, recv_s);
 
-		return client->is_auth ? OUT_CONN_ERR : OUT_CONN_CLOSE;
+		return OUT_CONN_ERR;
 	}
 
-	/* Calculate current received data length */
+
+	/* Calculate current data length */
 	cdata_len = recv_s - CLI_PKT_MIN_L;
 	if (unlikely(cdata_len < fdata_len)) {
 		/*
@@ -731,38 +720,14 @@ again:
 
 	switch (cli_pkt->type) {
 	case CLI_PKT_HELLO:
-		retval = handle_hello(client);
+		if (!send_server_banner(client, state))
+			return OUT_CONN_CLOSE;
 		break;
 	case CLI_PKT_AUTH:
-		retval = handle_auth(client, state);
-		break;
-	case CLI_PKT_IFACE_ACK:
-		break;
-	case CLI_PKT_IFACE_FAIL:
-		break;
-	case CLI_PKT_IFACE_DATA:
-		break;
-	case CLI_PKT_REQSYNC:
-		break;
-	case CLI_PKT_CLOSE:
-		return OUT_CONN_CLOSE;
-	default:
-		/*
-		 * TODO: Change the state to CT_NOSYNC and
-		 *       create a recovery rountine.
-		 */
-		prl_notice(0, "Received invalid packet from " PRWIU
-			      " (type: %d)", W_IU(client), cli_pkt->type);
-
-		if (likely(!client->is_auth))
+		if (!handle_auth(client, state))
 			return OUT_CONN_CLOSE;
-
-		return OUT_CONN_ERR;
+		break;
 	}
-
-
-	if (unlikely(retval != RETURN_OK))
-		return retval;
 
 	if (likely(cdata_len > fdata_len)) {
 		/*
@@ -771,14 +736,14 @@ again:
 		 */
 		size_t cur_valid_size = CLI_PKT_MIN_L + fdata_len;
 		recv_s -= cur_valid_size;
-
 		memmove(recv_buf, recv_buf + cur_valid_size, recv_s);
 		prl_notice(5, "memmove " PRWIU " (copy_size: %zu; "
 			      "recv_s: %zu; cur_valid_size: %zu)",
 			      W_IU(client), recv_s, recv_s, cur_valid_size);
-
 		goto again;
 	}
+
+	recv_s = 0;
 out:
 	client->recv_s = recv_s;
 	return RETURN_OK;
@@ -789,18 +754,19 @@ static void handle_recv_client(int cli_fd, int map, struct srv_tcp_state *state)
 {
 	int err;
 	char *recv_buf;
-	size_t recv_s;
+	size_t recv_s; /* Current active bytes in recv_buf */
 	size_t recv_len;
 	ssize_t recv_ret;
+	uint16_t arr_idx;
 	int32_t on_idx_i;
-	struct srv_tcp_client *client;
+	struct srv_tcp_client *client = &state->clients[map];
 
-	client   = &state->clients[map];
 	recv_s   = client->recv_s;
 	recv_buf = client->recv_buf.raw;
-	recv_len = CLI_PKT_RECV_L - recv_s;
 
 	client->recv_c++;
+	recv_len = CLI_PKT_RECV_L - recv_s;
+
 	recv_ret = recv(cli_fd, recv_buf + recv_s, recv_len, 0);
 	if (unlikely(recv_ret < 0)) {
 		err = errno;
@@ -815,85 +781,43 @@ static void handle_recv_client(int cli_fd, int map, struct srv_tcp_state *state)
 		goto out_close_conn;
 	}
 
-	prl_notice(5, "[%10" PRIu32 "] recv() %ld from " PRWIU " "
-		   "(recv_s = %zu)", client->recv_c, recv_ret, W_IU(client),
-		   recv_s);
+	recv_s += (size_t)recv_ret;
+	prl_notice(5, "[%10" PRIu32 "] recv() %ld bytes from " PRWIU
+		       " (recv_s = %zu)", client->recv_c, recv_ret,
+		       W_IU(client), recv_s);
 
 	switch (process_client_buf(recv_s, client, state)) {
-	case RETURN_OK:
-		return;
-	case OUT_CONN_ERR:
-		goto out_err_c;
-	case OUT_CONN_CLOSE:
-		goto out_close_conn;
+		case RETURN_OK:
+			return;
+		case OUT_CONN_ERR:
+			goto out_err_c;
+		case OUT_CONN_CLOSE:
+			goto out_close_conn;
 	}
 
 out_err_c:
 	client->recv_s = 0;
+	if (unlikely(client->err_c++ >= MAX_ERR_C)) {
+		prl_notice(0, "Connection " PRWIU " reached the max number of "
+			   "error", W_IU(client));
+		goto out_close_conn;
+	}
+	return;
 
-	if (client->err_c++ < MAX_ERR_C)
-		return;
-
-	prl_notice(0, "Connection " PRWIU " reached the max number of error",
-		   W_IU(client));
 out_close_conn:
+	arr_idx  = client->arr_idx;
 	on_idx_i = client->on_idx_i;
+
 	epoll_delete(state->epl_fd, cli_fd);
 	close(cli_fd);
-	push_cl(&state->cl_stk, client->arr_idx);
-	tcp_client_init(client, client->arr_idx);
+	push_cl(&state->cl_stk, arr_idx);
+	tcp_client_init(client, arr_idx);
+
 	if (on_idx_i != -1)
 		remove_online_cl_idx(state, on_idx_i);
 
-	state->fds_map[cli_fd] = FDS_MAP_NOOP;
 	prl_notice(0, "Closing connection fd from " PRWIU, W_IU(client));
-}
-
-
-static int handle_event(struct srv_tcp_state *state, struct epoll_event *event)
-{
-	int fd;
-	bool is_err;
-	uint16_t map;
-	uint32_t revents;
-	uint16_t *fds_map;
-	const uint32_t errev = EPOLLERR | EPOLLHUP;
-
-	fd      = event->data.fd;
-	revents = event->events;
-	is_err  = ((revents & errev) != 0);
-	fds_map = state->fds_map;
-	map     = fds_map[fd];
-
-	switch (map) {
-	case FDS_MAP_NOOP:
-		pr_error("Got FDS_MAP_NOOP from handle_event");
-		return -1;
-	case FDS_MAP_TUN:
-		if (unlikely(is_err)) {
-			pr_error("FDS_MAP_TUN error");
-			return -1;
-		}
-		usleep(300000);
-		break;
-	case FDS_MAP_NET:
-		if (unlikely(is_err)) {
-			pr_error("FDS_MAP_NET error");
-			return -1;
-		}
-		accept_new_conn(fd, state);
-		break;
-	default:
-		if (likely((revents & EPOLL_INEVT) != 0))
-			handle_recv_client(fd, map - FDS_ADD_NUM, state);
-
-		if (unlikely((revents & EPOLLOUT) != 0)) {
-			/* TODO: Handle send() */
-		}
-		break;
-	}
-
-	return true;
+	return;
 }
 
 
@@ -904,9 +828,13 @@ static int event_loop(struct srv_tcp_state *state)
 	int retval = 0;
 	int maxevents = 32;
 	int epl_fd = state->epl_fd;
+	uint16_t *fds_map = state->fds_map;
 	struct epoll_event events[32];
 
+	const uint32_t errev = EPOLLERR | EPOLLHUP; /* Error events */
+
 	while (likely(!state->stop)) {
+
 		epl_ret = epoll_wait(epl_fd, events, maxevents, 3000);
 		if (unlikely(epl_ret == 0)) {
 			/*
@@ -932,12 +860,49 @@ static int event_loop(struct srv_tcp_state *state)
 		}
 
 		for (int i = 0; likely(i < epl_ret); i++) {
-			retval = handle_event(state, &events[i]);
-			if (retval < 0)
-				goto out;
+			struct epoll_event *evp = &events[i];
+			uint16_t map;
+			int fd = evp->data.fd;
+			uint32_t events = evp->events;
+			bool is_err = ((events & errev) != 0);
+#ifndef NDEBUG
+			if (unlikely(fd > FDS_MAP_SIZE)) {
+				pr_error("fd > FDS_MAP_SIZE");
+				pr_error("But at %s:%d", __FILE__, __LINE__);
+				abort(); /* Must be a bug */
+			}
+#endif
+			map = fds_map[fd];
+
+			switch (map) {
+			case FDS_MAP_NOOP:
+#ifndef NDEBUG
+				pr_error("But at %s:%d", __FILE__, __LINE__);
+				abort(); /* Must be a bug */
+#endif
+				break;
+			case FDS_MAP_TUN:
+				if (unlikely(is_err)) {
+					pr_error("FDS_MAP_TUN error");
+					retval = -1;
+					goto out;
+				}
+				break;
+			case FDS_MAP_NET:
+				if (unlikely(is_err)) {
+					pr_error("FDS_MAP_NET error");
+					retval = -1;
+					goto out;
+				}
+				accept_conn(fd, epl_fd, state);
+				break;
+			default:
+				map -= FDS_ADD_NUM;
+				handle_recv_client(fd, map, state);
+				break;
+			}
 		}
 	}
-
 out:
 	return retval;
 }
@@ -970,14 +935,12 @@ static void destroy_state(struct srv_tcp_state *state)
 
 	if (unlikely(clients != NULL)) {
 		while (likely(max_conn--)) {
-
 			client = clients + max_conn;
-			if (unlikely(!client->is_used))
-				continue;
-			
-			prl_notice(6, "Closing clients[%d].cli_fd (%d)",
-				   max_conn, client->cli_fd);
-			close(client->cli_fd);
+			if (client->is_used) {
+				prl_notice(6, "Closing clients[%d].cli_fd (%d)",
+					   max_conn, client->cli_fd);
+				close(client->cli_fd);
+			}
 		}
 	}
 
@@ -985,10 +948,6 @@ static void destroy_state(struct srv_tcp_state *state)
 	free(state->on_idx_arr);
 	free(state->fds_map);
 	free(state->cl_stk.arr);
-	state->clients = NULL;
-	state->on_idx_arr = NULL;
-	state->fds_map = NULL;
-	state->cl_stk.arr = NULL;
 }
 
 
@@ -1020,7 +979,7 @@ int teavpn_server_tcp_handler(struct srv_cfg *cfg)
 	retval = init_epoll(&state);
 	if (unlikely(retval < 0))
 		goto out;
-	pr_notice("Initialization Sequence Completed");
+	prl_notice(0, "Initialization Sequence Completed");
 	retval = event_loop(&state);
 out:
 	destroy_state(&state);
