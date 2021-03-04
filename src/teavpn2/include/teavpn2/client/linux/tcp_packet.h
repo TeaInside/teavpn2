@@ -35,11 +35,13 @@ struct cli_tcp_pkt {
 	};
 };
 
+#define CLI_PKT_CHK_NUM (4)
 
 typedef union _cli_tcp_pkt_buf {
 	struct cli_tcp_pkt		pkt;
-	struct cli_tcp_pkt		__pkt_chk[4];
-	char				raw[sizeof(struct cli_tcp_pkt) * 4];
+	struct cli_tcp_pkt		__pkt_chk[CLI_PKT_CHK_NUM];
+	char				raw[sizeof(struct cli_tcp_pkt)
+						* CLI_PKT_CHK_NUM];
 } cli_tcp_pkt_buf;
 
 
@@ -92,7 +94,8 @@ STATIC_ASSERT(
 
 /* union _cli_tcp_pkt_buf */
 STATIC_ASSERT(
-	sizeof(union _cli_tcp_pkt_buf) == (sizeof(struct cli_tcp_pkt) * 4),
+	sizeof(union _cli_tcp_pkt_buf) == (sizeof(struct cli_tcp_pkt) 
+		* CLI_PKT_CHK_NUM),
 	"Bad sizeof(union _cli_tcp_pkt_buf)"
 );
 
@@ -116,7 +119,7 @@ STATIC_ASSERT(
 	"Bad value of CLI_PKT_DATA_L"
 );
 STATIC_ASSERT(
-	CLI_PKT_RECV_L == (sizeof(struct cli_tcp_pkt) * 4),
+	CLI_PKT_RECV_L == (sizeof(struct cli_tcp_pkt) * CLI_PKT_CHK_NUM),
 	"Bad value of CLI_PKT_RECV_L"
 );
 

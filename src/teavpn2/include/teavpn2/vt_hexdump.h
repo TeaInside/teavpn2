@@ -13,9 +13,9 @@
     unsigned char *ptr = (unsigned char *)(PTR);            \
     printf("============ VT_HEXDUMP ============\n");       \
     printf("File\t\t: %s:%d\n", __FILE__, __LINE__);        \
-    printf("Function\t: %s()\n", __FUNCTION__);             \
+    printf("Function\t: %s()\n", __func__);                 \
     printf("Address\t\t: 0x%016lx\n", (uintptr_t)ptr);      \
-    printf("Dump size\t: %ld bytes\n", (size));             \
+    printf("Dump size\t: %zu bytes\n", (size));             \
     printf("\n");                                           \
     for (i = 0; i < ((size/16) + 1); i++) {                 \
       printf("0x%016lx|  ", (uintptr_t)(ptr + i * 16));     \

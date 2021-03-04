@@ -67,25 +67,28 @@ CCXXFLAGS := \
 	-DTEAVPN_SERVER_VERSION="\"$(TEAVPN_SERVER_VERSION)\"" \
 	-DTEAVPN_CLIENT_VERSION="\"$(TEAVPN_CLIENT_VERSION)\""
 
-
-ifdef NOTICE_STATIC_LEVEL
-CCXXFLAGS := $(CCXXFLAGS) -DNOTICE_STATIC_LEVEL="$(NOTICE_STATIC_LEVEL)"
-endif
-
-ifdef NOTICE_ALWAYS_EXEC
-CCXXFLAGS := $(CCXXFLAGS) -DNOTICE_ALWAYS_EXEC="$(NOTICE_ALWAYS_EXEC)"
-endif
-
 ifeq ($(RELEASE_MODE),1)
+	REL := --- Build release mode
 	LDFLAGS		+= $(LDFLAGS) -O3
 	CCXXFLAGS	+= -O3 -DNDEBUG
+	NOTICE_STATIC_LEVEL	= 3
+	NOTICE_ALWAYS_EXEC	= 0
 else
+	REL := --- Build debug mode
 	LDFLAGS		+= $(DEFAULT_OPTIMIZATION)
 	CCXXFLAGS	+= \
 		$(DEFAULT_OPTIMIZATION) \
 		-ggdb3 \
 		-grecord-gcc-switches \
 		-DTEAVPN_DEBUG
+endif
+
+ifdef NOTICE_STATIC_LEVEL
+	CCXXFLAGS := $(CCXXFLAGS) -DNOTICE_STATIC_LEVEL="$(NOTICE_STATIC_LEVEL)"
+endif
+
+ifdef NOTICE_ALWAYS_EXEC
+	CCXXFLAGS := $(CCXXFLAGS) -DNOTICE_ALWAYS_EXEC="$(NOTICE_ALWAYS_EXEC)"
 endif
 
 ifeq ($(OS),Windows_NT)
@@ -130,6 +133,7 @@ CFLAGS_TMP	:=
 #######################################
 
 all: $(TARGET_BIN)
+	@echo $(REL)
 
 include $(BASE_DIR)/src/teavpn2/Makefile
 include $(BASE_DIR)/src/ext/Makefile

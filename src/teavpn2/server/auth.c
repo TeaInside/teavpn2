@@ -4,8 +4,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <inih/inih.h>
+#include <teavpn2/lib/string.h>
 #include <teavpn2/server/auth.h>
-
 
 struct parse_struct {
 	bool  			is_ok;
@@ -17,8 +17,8 @@ struct parse_struct {
 };
 
 
-static int parser_handler(void *user, const char *section, const char *name,
-			  const char *value, int lineno)
+int parser_handler_czzz(void *user, const char *section, const char *name,
+			const char *value, int lineno)
 {
 	struct parse_struct *ctx = (struct parse_struct *)user;
 	struct iface_cfg *iface = ctx->iface;
@@ -37,6 +37,7 @@ static int parser_handler(void *user, const char *section, const char *name,
 		RMATCH_N("password") {
 			strncpy(ctx->tmp_pass, value, 0xffu - 1u);
 			ctx->tmp_pass[0xffu - 1u] = '\0';
+			memzero_explicit((void *)value, strnlen(value, 0xffu));
 		} else {
 			goto out_invalid_name;
 		}
@@ -94,7 +95,8 @@ static bool validate_username(char *u)
 bool teavpn_server_get_auth(struct iface_cfg *iface, struct auth_pkt *auth,
 			    struct srv_cfg *cfg)
 {
-	FILE *handle;
+	bool ret = true;
+	FILE *handle = NULL;
 	struct parse_struct ctx;
 	char *username = auth->username;
 	char *password = auth->password;
@@ -105,12 +107,14 @@ bool teavpn_server_get_auth(struct iface_cfg *iface, struct auth_pkt *auth,
 
 	if (!validate_username(username)) {
 		prl_notice(0, "Invalid username %s", username);
-		return false;
+		ret = false;
+		goto out;
 	}
 
 	if (cfg->data_dir == NULL) {
 		pr_error("cfg->data_dir is NULL");
-		return false;
+		ret = false;
+		goto out;
 	}
 
 	snprintf(ctx.user_file, sizeof(ctx.user_file) - 1, "%s/users/%s.ini",
@@ -120,21 +124,27 @@ bool teavpn_server_get_auth(struct iface_cfg *iface, struct auth_pkt *auth,
 	if (handle == NULL) {
 		prl_notice(0, "Cannot open user file: \"%s\" (%s)",
 			   ctx.user_file, strerror(errno));
-		return false;
+		ret = false;
+		goto out;
 	}
 
-	if (ini_parse_file(handle, parser_handler, &ctx) < 0) {
-		return false;
+	if (ini_parse_file(handle, parser_handler_czzz, &ctx) < 0) {
+		prl_notice(0, "Cannot parse file \"%s\"", ctx.user_file);
+		ret = false;
+		goto out;
 	}
 
 	if (strncmp(ctx.tmp_pass, password, 0xffu) != 0) {
 		prl_notice(0, "Wrong password for username %s", username);
-		return false;
+		ret = false;
+		goto out;
 	}
 
-	memset(ctx.tmp_pass, 0, sizeof(ctx.tmp_pass));
-	memset(auth->password, 0, sizeof(auth->password));
+out:
+	if (handle)
+		fclose(handle);
 
-	fclose(handle);
-	return true;
+	memzero_explicit(ctx.tmp_pass, sizeof(ctx.tmp_pass));
+	memzero_explicit(auth->password, sizeof(auth->password));
+	return ret;
 }

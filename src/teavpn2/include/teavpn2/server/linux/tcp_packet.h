@@ -47,11 +47,13 @@ struct srv_tcp_pkt {
 	};
 };
 
+#define SRV_PKT_CHK_NUM (4)
 
 typedef union _srv_tcp_pkt_buf {
 	struct srv_tcp_pkt		pkt;
-	struct srv_tcp_pkt		__pkt_chk[4];
-	char				raw[sizeof(struct srv_tcp_pkt) * 4];
+	struct srv_tcp_pkt		__pkt_chk[SRV_PKT_CHK_NUM];
+	char				raw[sizeof(struct srv_tcp_pkt)
+						* SRV_PKT_CHK_NUM];
 } srv_tcp_pkt_buf;
 
 
@@ -133,7 +135,8 @@ STATIC_ASSERT(
 
 /* union _srv_tcp_pkt_buf */
 STATIC_ASSERT(
-	sizeof(union _srv_tcp_pkt_buf) == (sizeof(struct srv_tcp_pkt) * 4),
+	sizeof(union _srv_tcp_pkt_buf) == (sizeof(struct srv_tcp_pkt)
+		* SRV_PKT_CHK_NUM),
 	"Bad sizeof(union _srv_tcp_pkt_buf)"
 );
 
@@ -157,7 +160,7 @@ STATIC_ASSERT(
 	"Bad value of SRV_PKT_DATA_L"
 );
 STATIC_ASSERT(
-	SRV_PKT_RECV_L == (sizeof(struct srv_tcp_pkt) * 4),
+	SRV_PKT_RECV_L == (sizeof(struct srv_tcp_pkt) * SRV_PKT_CHK_NUM),
 	"Bad value of SRV_PKT_RECV_L"
 );
 

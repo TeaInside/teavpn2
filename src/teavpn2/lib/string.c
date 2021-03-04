@@ -150,3 +150,8 @@ char *trunc_str(char *str, size_t n)
 	str[n] = '\0';
 	return str;
 }
+
+void *memzero_explicit(void *s, size_t n)
+{
+	return memset(s, '\0', n);
+}

@@ -1,4 +1,5 @@
 
+#include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -22,7 +23,7 @@
 #define FDS_MAP_SIZE (65535)
 #define FDS_ADD_NUM  (3)
 #define MAX_ERR_C    (15)
-#define EPOLL_INEVT  (EPOLLIN | EPOLLPRI | EPOLLRDHUP)
+#define EPOLL_INEVT  (EPOLLIN | EPOLLPRI)
 
 /* Macros for printing */
 #define W_IP(CL) ((CL)->src_ip), ((CL)->src_port)
@@ -87,6 +88,8 @@ struct srv_tcp_state {
 	int			epl_fd;	/* epoll fd		*/
 	int			tun_fd;	/* TUN/TAP fd		*/
 	int			net_fd;	/* Main TCP socket fd	*/
+	uint32_t		read_c;
+	uint32_t		write_c;
 	struct _cl_stk		cl_stk;
 	uint16_t		on_idx_n;
 	uint16_t		*on_idx_arr;
@@ -94,6 +97,7 @@ struct srv_tcp_state {
 	struct srv_cfg		*cfg;
 	struct srv_tcp_client	*clients;
 	bool			stop;
+	srv_tcp_pkt_buf		srv_pkt;
 };
 
 
@@ -164,6 +168,7 @@ static int32_t pop_cl(struct _cl_stk *cl_stk)
 static int init_state(struct srv_tcp_state *state)
 {
 	int err;
+	cpu_set_t affinity;
 	struct srv_cfg *cfg = state->cfg;
 	struct _cl_stk *cl_stk = &state->cl_stk;
 	uint16_t max_conn = cfg->sock.max_conn;
@@ -205,10 +210,27 @@ static int init_state(struct srv_tcp_state *state)
 	state->net_fd = -1;
 	state->tun_fd = -1;
 	state->epl_fd = -1;
+	state->read_c = 0;
+	state->write_c = 0;
 	state->on_idx_n = 0;
 	state->on_idx_arr = on_idx_arr;
 	state->fds_map = fds_map;
 	state->clients = clients;
+
+	CPU_ZERO(&affinity);
+	CPU_SET(0, &affinity);
+	if (sched_setaffinity(0, sizeof(cpu_set_t), &affinity) < 0) {
+		err = errno;
+		pr_error("sched_setaffinity: " PRERR, PREAG(err));
+	}
+
+	errno = 0;
+	if (nice(-20)) {
+		err = errno;
+		if (err != 0)
+			pr_error("nice: " PRERR, PREAG(err));
+	}
+
 	return 0;
 out_err_calloc:
 	err = errno;
@@ -228,7 +250,7 @@ static int init_iface(struct srv_tcp_state *state)
 
 	prl_notice(0, "Creating virtual network interface: \"%s\"...", j->dev);
 
-	fd = tun_alloc(j->dev, IFF_TUN);
+	fd = tun_alloc(j->dev, IFF_TUN | IFF_NO_PI);
 	if (unlikely(fd < 0))
 		return -1;
 	if (unlikely(fd_set_nonblock(fd) < 0))
@@ -265,22 +287,27 @@ static int socket_setup(int fd, struct srv_cfg *cfg)
 		goto out_err;
 
 	y = 1;
-	rv = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, pv, len);
-	if (unlikely(rv < 0))
-		goto out_err;
-
-	y = 1;
 	rv = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, pv, len);
 	if (unlikely(rv < 0))
 		goto out_err;
 
-	y = 1024 * 1024 * 4;
+	y = 1;
+	rv = setsockopt(fd, SOL_SOCKET, SO_INCOMING_CPU, pv, len);
+	if (unlikely(rv < 0))
+		goto out_err;
+
+	y = 1024 * 1024 * 2;
 	rv = setsockopt(fd, SOL_SOCKET, SO_RCVBUFFORCE, pv, len);
 	if (unlikely(rv < 0))
 		goto out_err;
 
-	y = 1024 * 1024 * 4;
+	y = 1024 * 1024 * 2;
 	rv = setsockopt(fd, SOL_SOCKET, SO_SNDBUFFORCE, pv, len);
+	if (unlikely(rv < 0))
+		goto out_err;
+
+	y = 30000;
+	rv = setsockopt(fd, SOL_SOCKET, SO_BUSY_POLL, pv, len);
 	if (unlikely(rv < 0))
 		goto out_err;
 
@@ -537,19 +564,16 @@ static void accept_new_conn(int net_fd, struct srv_tcp_state *state)
 
 static ssize_t send_to_client(struct srv_tcp_client *client,
 			      struct srv_tcp_pkt *srv_pkt,
-			      size_t send_len_no_pad)
+			      size_t send_len)
 {
 	int err;
 	ssize_t send_ret;
-	size_t send_len_pad;
 	int cli_fd = client->cli_fd;
 
 	client->send_c++;
-
-	send_len_pad   = (send_len_no_pad + 0xfull) & ~0xfull;
-	srv_pkt->pad_n = send_len_pad - send_len_no_pad;
-	send_ret       = send(cli_fd, srv_pkt, send_len_pad, 0);
-	if (send_ret < 0) {
+	srv_pkt->pad_n = 0;
+	send_ret       = send(cli_fd, srv_pkt, send_len, 0);
+	if (unlikely(send_ret < 0)) {
 		err = errno;
 		if (err == EAGAIN) {
 			/* TODO: Handle pending buffer.
@@ -644,7 +668,8 @@ static void auth_ok_notice(struct iface_cfg *iface,
 
 
 static evt_cli_goto handle_auth(struct srv_tcp_client *client,
-				struct srv_tcp_state *state)
+				struct srv_tcp_state *state,
+				uint16_t data_len)
 {
 	struct auth_pkt *auth;
 	struct iface_cfg *iface;
@@ -652,11 +677,16 @@ static evt_cli_goto handle_auth(struct srv_tcp_client *client,
 	struct srv_tcp_pkt *srv_pkt;
 	struct srv_auth_ok *auth_ok;
 
-	cli_pkt = client->recv_buf.__pkt_chk;
-	srv_pkt = client->send_buf.__pkt_chk;
-	auth    = &cli_pkt->auth;
-	auth_ok = &srv_pkt->auth_ok;
-	iface   = &auth_ok->iface;
+	cli_pkt   = client->recv_buf.__pkt_chk;
+	srv_pkt   = client->send_buf.__pkt_chk;
+	auth      = &cli_pkt->auth;
+	auth_ok   = &srv_pkt->auth_ok;
+	iface     = &auth_ok->iface;
+
+	if (unlikely(data_len < sizeof(struct auth_pkt))) {
+		prl_notice(0, "Invalid auth packet from " PRWIU, W_IU(client));
+		goto out_fail;
+	}
 
 	auth->username[0xffu - 1u] = '\0';
 	auth->password[0xffu - 1u] = '\0';
@@ -669,6 +699,8 @@ static evt_cli_goto handle_auth(struct srv_tcp_client *client,
 			   W_IU(client));
 		goto out_fail;
 	}
+
+	strncpy(iface->def_gateway, state->cfg->iface.ipv4, IPV4LEN - 1);
 
 	if (unlikely(!send_auth_ok(client))) {
 		prl_notice(0, "Authentication error from " PRWIU, W_IU(client));
@@ -688,6 +720,79 @@ out_fail:
 static evt_cli_goto handle_iface_ack(struct srv_tcp_client *client)
 {
 	client->iface_acked = true;
+	return RETURN_OK;
+}
+
+
+static ssize_t handle_iface_read(int tun_fd, struct srv_tcp_state *state)
+{
+	int err;
+	size_t send_len;
+	ssize_t read_ret;
+	uint16_t on_idx_n;
+	uint16_t *on_idx_arr;
+	struct srv_tcp_pkt *srv_pkt = state->srv_pkt.__pkt_chk;
+	char *buf = srv_pkt->raw_data;
+	struct srv_tcp_client *clients;
+
+	state->read_c++;
+
+	read_ret = read(tun_fd, buf, 4096);
+	if (unlikely(read_ret < 0)) {
+		err = errno;
+		if (err == EAGAIN)
+			return 0;
+
+		state->stop = true;
+		pr_error("read(fd=%d) from tun_fd: " PRERR, tun_fd, PREAG(err));
+		return -1;
+	}
+
+	send_len        = SRV_PKT_MIN_L + (uint16_t)read_ret;
+	srv_pkt->type   = SRV_PKT_IFACE_DATA;
+	srv_pkt->length = htons((uint16_t)read_ret);
+	prl_notice(5, "[%10" PRIu32 "] read(fd=%d) %ld bytes from tun_fd",
+		   state->read_c, tun_fd, read_ret);
+
+	on_idx_n   = state->on_idx_n;
+	on_idx_arr = state->on_idx_arr;
+	clients    = state->clients;
+
+#if 0
+	prl_notice(5, "Broadcasting data to %d fds", on_idx_n);
+#endif
+	for (uint16_t i = 0; likely(i < on_idx_n); i++) {
+		struct srv_tcp_client *client = &clients[on_idx_arr[i]];
+		send_to_client(client, srv_pkt, send_len);
+	}
+
+	return read_ret;
+}
+
+
+static evt_cli_goto handle_iface_write(struct srv_tcp_client *client,
+				       struct srv_tcp_state *state,
+				       uint16_t data_len)
+{
+	int err;
+	ssize_t write_ret;
+	int tun_fd = state->tun_fd;
+	struct cli_tcp_pkt *cli_pkt = client->recv_buf.__pkt_chk;
+
+	if (unlikely(!client->iface_acked))
+		return OUT_CONN_CLOSE;
+
+	state->write_c++;
+	write_ret = write(tun_fd, cli_pkt->raw_data, data_len);
+	if (unlikely(write_ret < 0)) {
+		err = errno;
+		state->stop = true;
+		pr_error("write(fd=%d) to tun_fd: " PRERR, tun_fd, PREAG(err));
+		return OUT_CONN_CLOSE;
+	}
+	prl_notice(5, "[%10" PRIu32 "] write(fd=%d) %ld bytes to tun_fd",
+		   state->write_c, tun_fd, write_ret);
+
 	return RETURN_OK;
 }
 
@@ -753,14 +858,15 @@ again:
 		retval = handle_hello(client);
 		break;
 	case CLI_PKT_AUTH:
-		retval = handle_auth(client, state);
+		retval = handle_auth(client, state, data_len);
 		break;
 	case CLI_PKT_IFACE_ACK:
 		retval = handle_iface_ack(client);
 		break;
 	case CLI_PKT_IFACE_FAIL:
-		break;
+		return OUT_CONN_CLOSE;
 	case CLI_PKT_IFACE_DATA:
+		retval = handle_iface_write(client, state, data_len);
 		break;
 	case CLI_PKT_REQSYNC:
 		break;
@@ -779,7 +885,6 @@ again:
 
 		return OUT_CONN_ERR;
 	}
-
 
 	if (unlikely(retval != RETURN_OK))
 		return retval;
@@ -861,11 +966,13 @@ out_err_c:
 		   W_IU(client));
 out_close_conn:
 	on_idx_i = client->on_idx_i;
+
 	epoll_delete(state->epl_fd, cli_fd);
 	close(cli_fd);
 	push_cl(&state->cl_stk, client->arr_idx);
 	tcp_client_init(client, client->arr_idx);
-	if (on_idx_i != -1)
+
+	if (likely(on_idx_i != -1))
 		remove_online_cl_idx(state, on_idx_i);
 
 	state->fds_map[cli_fd] = FDS_MAP_NOOP;
@@ -897,7 +1004,7 @@ static int handle_event(struct srv_tcp_state *state, struct epoll_event *event)
 			pr_error("FDS_MAP_TUN error");
 			return -1;
 		}
-		usleep(300000);
+		handle_iface_read(fd, state);
 		break;
 	case FDS_MAP_NET:
 		if (unlikely(is_err)) {
@@ -910,9 +1017,9 @@ static int handle_event(struct srv_tcp_state *state, struct epoll_event *event)
 		if (likely((revents & EPOLL_INEVT) != 0))
 			handle_recv_client(fd, map - FDS_ADD_NUM, state);
 
-		if (unlikely((revents & EPOLLOUT) != 0)) {
-			/* TODO: Handle send() */
-		}
+		// if (unlikely((revents & EPOLLOUT) != 0)) {
+		// 	/* TODO: Handle send() */
+		// }
 		break;
 	}
 
@@ -946,7 +1053,7 @@ static int event_loop(struct srv_tcp_state *state)
 			if (err == EINTR) {
 				retval = 0;
 				prl_notice(0, "Interrupted!");
-				break;
+				continue;
 			}
 
 			retval = -err;
@@ -1027,7 +1134,7 @@ int teavpn_server_tcp_handler(struct srv_cfg *cfg)
 	g_state = &state;
 	signal(SIGHUP, intr_handler);
 	signal(SIGINT, intr_handler);
-	signal(SIGPIPE, intr_handler);
+	signal(SIGPIPE, SIG_IGN);
 	signal(SIGTERM, intr_handler);
 	signal(SIGQUIT, intr_handler);
 

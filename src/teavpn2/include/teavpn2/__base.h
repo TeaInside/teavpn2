@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <teavpn2/debug.h>
+#include <teavpn2/vt_hexdump.h>
 
 #define likely(EXPR)   __builtin_expect((EXPR), 1)
 #define unlikely(EXPR) __builtin_expect((EXPR), 0)
@@ -61,6 +62,7 @@ struct iface_cfg {
 	char		dev[16];
 	char		ipv4[IPV4SLEN];
 	char		ipv4_netmask[IPV4SLEN];
+	char		def_gateway[IPV4SLEN];
 	uint16_t	mtu;
 };
 
@@ -75,37 +77,41 @@ STATIC_ASSERT(
 );
 STATIC_ASSERT(
 	offsetof(struct ver_info, ver) == 0,
-	"Bad offset of ver in struct ver_info"
+	"Bad offsetof(struct ver_info, ver)"
 );
 STATIC_ASSERT(
 	offsetof(struct ver_info, sub_ver) == 1,
-	"Bad offset of sub_ver in struct ver_info"
+	"Bad offsetof(struct ver_info, sub_ver)"
 );
 STATIC_ASSERT(
 	offsetof(struct ver_info, sub_sub_ver) == 2,
-	"Bad offset of sub_sub_ver in struct ver_info"
+	"Bad offsetof(struct ver_info, sub_sub_ver)"
 );
 STATIC_ASSERT(
 	sizeof(struct iface_cfg) == (
-		16 + (IPV4SLEN * 2) + 2
+		16 + (IPV4SLEN * 3) + 2
 	),
 	"Bad sizeof(struct iface_cfg)"
 );
 STATIC_ASSERT(
 	offsetof(struct iface_cfg, dev) == 0,
-	"Bad offset of dev in struct iface_cfg"
+	"Bad offsetof(struct iface_cfg, dev)"
 );
 STATIC_ASSERT(
 	offsetof(struct iface_cfg, ipv4) == 16,
-	"Bad offset of ipv4 in struct iface_cfg"
+	"Bad offsetof(struct iface_cfg, ipv4)"
 );
 STATIC_ASSERT(
 	offsetof(struct iface_cfg, ipv4_netmask) == (16 + IPV4SLEN),
-	"Bad offset of ipv4_netmask in struct iface_cfg"
+	"Bad offsetof(struct iface_cfg, ipv4_netmask)"
 );
 STATIC_ASSERT(
-	offsetof(struct iface_cfg, mtu) == (16 + (IPV4SLEN * 2)),
-	"Bad offset of mtu in struct iface_cfg"
+	offsetof(struct iface_cfg, def_gateway) == (16 + IPV4SLEN * 2),
+	"Bad offsetof(struct iface_cfg, def_gateway)"
+);
+STATIC_ASSERT(
+	offsetof(struct iface_cfg, mtu) == (16 + (IPV4SLEN * 3)),
+	"Bad offsetof(struct iface_cfg, mtu)"
 );
 
 
