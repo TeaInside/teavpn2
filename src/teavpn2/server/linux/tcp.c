@@ -18,6 +18,7 @@
 #include <teavpn2/server/linux/tcp.h>
 #include <teavpn2/client/linux/tcp.h>
 
+
 #define FDS_MAP_SIZE (65535)
 #define FDS_ADD_NUM  (3)
 #define MAX_ERR_C    (15)
@@ -28,6 +29,7 @@
 #define W_UN(CL) ((CL)->username)
 #define W_IU(CL) W_IP(CL), W_UN(CL)
 #define PRWIU "%s:%d (%s)"
+
 
 typedef enum __fds_map {
 	FDS_MAP_NOOP = 0,
@@ -55,6 +57,7 @@ struct srv_tcp_client {
 	bool			is_used;
 	bool			is_conn;
 	bool			is_auth;
+	bool			iface_acked;
 	char			username[255];
 	char			src_ip[IPV4LEN + 1];
 	uint16_t		src_port;
@@ -112,6 +115,7 @@ static void tcp_client_init(struct srv_tcp_client *client, uint16_t idx)
 	client->is_used     = false;
 	client->is_conn     = false;
 	client->is_auth     = false;
+	client->iface_acked = false;
 	client->username[0] = '_';
 	client->username[1] = '\0';
 	client->arr_idx     = idx;
@@ -538,10 +542,13 @@ static ssize_t send_to_client(struct srv_tcp_client *client,
 	int err;
 	ssize_t send_ret;
 	size_t send_len_pad;
+	int cli_fd = client->cli_fd;
+
+	client->send_c++;
 
 	send_len_pad   = (send_len_no_pad + 0xfull) & ~0xfull;
 	srv_pkt->pad_n = send_len_pad - send_len_no_pad;
-	send_ret       = send(client->cli_fd, srv_pkt, send_len_pad, 0);
+	send_ret       = send(cli_fd, srv_pkt, send_len_pad, 0);
 	if (send_ret < 0) {
 		err = errno;
 		if (err == EAGAIN) {
@@ -552,11 +559,13 @@ static ssize_t send_to_client(struct srv_tcp_client *client,
 		}
 
 		client->err_c++;
-		pr_error("send() to " PRWIU ": " PRERR, W_IU(client),
-			 PREAG(err));
+		pr_error("send(fd=%d) to " PRWIU ": " PRERR, cli_fd,
+			 W_IU(client), PREAG(err));
 		return -1;
 	}
 
+	prl_notice(5, "[%10" PRIu32 "] send(fd=%d) %ld bytes to " PRWIU,
+		   client->send_c, cli_fd, send_ret, W_IU(client));
 	return send_ret;
 }
 
@@ -634,8 +643,8 @@ static void auth_ok_notice(struct iface_cfg *iface,
 }
 
 
-static bool handle_auth(struct srv_tcp_client *client,
-			struct srv_tcp_state *state)
+static evt_cli_goto handle_auth(struct srv_tcp_client *client,
+				struct srv_tcp_state *state)
 {
 	struct auth_pkt *auth;
 	struct iface_cfg *iface;
@@ -673,6 +682,13 @@ static bool handle_auth(struct srv_tcp_client *client,
 out_fail:
 	send_auth_reject(client);
 	return OUT_CONN_CLOSE;
+}
+
+
+static evt_cli_goto handle_iface_ack(struct srv_tcp_client *client)
+{
+	client->iface_acked = true;
+	return RETURN_OK;
 }
 
 
@@ -727,7 +743,10 @@ again:
 		goto out;
 	}
 
-	prl_notice(5, "==== Process the packet " PRWIU, W_IU(client));
+#if 0
+	prl_notice(5, "==== Process the packet (type: %d) " PRWIU, cli_pkt->type,
+		   W_IU(client));
+#endif
 
 	switch (cli_pkt->type) {
 	case CLI_PKT_HELLO:
@@ -737,6 +756,7 @@ again:
 		retval = handle_auth(client, state);
 		break;
 	case CLI_PKT_IFACE_ACK:
+		retval = handle_iface_ack(client);
 		break;
 	case CLI_PKT_IFACE_FAIL:
 		break;
@@ -779,6 +799,7 @@ again:
 
 		goto again;
 	}
+	recv_s = 0;
 out:
 	client->recv_s = recv_s;
 	return RETURN_OK;
@@ -793,20 +814,20 @@ static void handle_recv_client(int cli_fd, int map, struct srv_tcp_state *state)
 	size_t recv_len;
 	ssize_t recv_ret;
 	int32_t on_idx_i;
-	struct srv_tcp_client *client;
+	struct srv_tcp_client *client = &state->clients[map];
 
-	client   = &state->clients[map];
+	client->recv_c++;
 	recv_s   = client->recv_s;
 	recv_buf = client->recv_buf.raw;
 	recv_len = CLI_PKT_RECV_L - recv_s;
 
-	client->recv_c++;
 	recv_ret = recv(cli_fd, recv_buf + recv_s, recv_len, 0);
 	if (unlikely(recv_ret < 0)) {
 		err = errno;
 		if (err == EAGAIN)
 			return;
-		pr_error("recv(): " PRERR " " PRWIU, PREAG(err), W_IU(client));
+		pr_error("recv(fd=%d): " PRERR " " PRWIU, cli_fd, PREAG(err),
+			 W_IU(client));
 		goto out_err_c;
 	}
 
@@ -815,9 +836,11 @@ static void handle_recv_client(int cli_fd, int map, struct srv_tcp_state *state)
 		goto out_close_conn;
 	}
 
-	prl_notice(5, "[%10" PRIu32 "] recv() %ld from " PRWIU " "
-		   "(recv_s = %zu)", client->recv_c, recv_ret, W_IU(client),
-		   recv_s);
+	recv_s += (size_t)recv_ret;
+
+	prl_notice(5, "[%10" PRIu32 "] recv(fd=%d) %ld bytes from " PRWIU " "
+		   "(recv_s = %zu)", client->recv_c, cli_fd, recv_ret,
+		   W_IU(client), recv_s);
 
 	switch (process_client_buf(recv_s, client, state)) {
 	case RETURN_OK:
@@ -893,7 +916,7 @@ static int handle_event(struct srv_tcp_state *state, struct epoll_event *event)
 		break;
 	}
 
-	return true;
+	return 0;
 }
 
 
@@ -1020,7 +1043,7 @@ int teavpn_server_tcp_handler(struct srv_cfg *cfg)
 	retval = init_epoll(&state);
 	if (unlikely(retval < 0))
 		goto out;
-	pr_notice("Initialization Sequence Completed");
+	prl_notice(0, "Initialization Sequence Completed");
 	retval = event_loop(&state);
 out:
 	destroy_state(&state);
