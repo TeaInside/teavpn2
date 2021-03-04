@@ -160,3 +160,6 @@ clean:
 
 server: $(TARGET_BIN)
 	sudo $(VG) $(VGFLAGS) ./$(TARGET_BIN) server
+
+client: $(TARGET_BIN)
+	sudo $(VG) $(VGFLAGS) ./$(TARGET_BIN) client

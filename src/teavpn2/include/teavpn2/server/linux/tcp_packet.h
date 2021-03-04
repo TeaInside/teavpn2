@@ -51,6 +51,7 @@ struct srv_tcp_pkt {
 typedef union _srv_tcp_pkt_buf {
 	struct srv_tcp_pkt		pkt;
 	struct srv_tcp_pkt		__pkt_chk[4];
+	char				raw[sizeof(struct srv_tcp_pkt) * 4];
 } srv_tcp_pkt_buf;
 
 

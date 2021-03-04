@@ -171,7 +171,7 @@ static bool send_auth(struct cli_tcp_state *state)
 {
 	uint16_t data_len;
 	size_t send_len;
-	ssize_t send_ret;	
+	ssize_t send_ret;
 	int net_fd = state->net_fd;
 	struct cli_tcp_pkt *cli_pkt = &state->cli_pkt;
 	struct auth_pkt	*auth = &cli_pkt->auth;
