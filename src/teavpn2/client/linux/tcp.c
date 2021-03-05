@@ -122,7 +122,7 @@ static int init_iface(struct cli_tcp_state *state)
 	struct cli_iface_cfg *j = &state->cfg->iface;
 
 	prl_notice(0, "Creating virtual network interface: \"%s\"...", j->dev);
-	fd = tun_alloc(j->dev, IFF_TUN | IFF_NO_PI);
+	fd = tun_alloc(j->dev, IFF_TUN);
 	if (fd < 0)
 		return -1;
 	if (fd_set_nonblock(fd) < 0)
