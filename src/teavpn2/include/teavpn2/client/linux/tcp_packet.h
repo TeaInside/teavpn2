@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <linux/ip.h>
 #include <teavpn2/auth.h>
 #include <teavpn2/__base.h>
 #include <teavpn2/client/linux/tcp_packet.h>
@@ -27,6 +28,11 @@ struct cli_tcp_pkt {
 	union {
 		char			raw_data[4096];
 		struct auth_pkt		auth;
+		struct {
+			char		tuntap[4];
+			struct iphdr	iph;
+			char		body[4096 - 4 - sizeof(struct iphdr)];
+		} ipv4_pkt;
 
 		struct {
 			char		__dummy0[4095];
@@ -81,6 +87,14 @@ STATIC_ASSERT(
 STATIC_ASSERT(
 	offsetof(struct cli_tcp_pkt, auth) == 4,
 	"Bad offsetof(struct cli_tcp_pkt, auth)"
+);
+STATIC_ASSERT(
+	offsetof(struct cli_tcp_pkt, ipv4_pkt.tuntap) == 4,
+	"Bad offsetof(struct srv_tcp_pkt, ipv4_pkt.tuntap)"
+);
+STATIC_ASSERT(
+	offsetof(struct cli_tcp_pkt, ipv4_pkt.iph) == 8,
+	"Bad offsetof(struct cli_tcp_pkt, ipv4_pkt.iph)"
 );
 STATIC_ASSERT(
 	offsetof(struct cli_tcp_pkt, __dummy0) == 4,
