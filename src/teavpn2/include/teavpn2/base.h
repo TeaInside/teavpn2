@@ -39,8 +39,8 @@
 #  define IPV6_L (INET6_ADDRSTRLEN)
 #endif
 
-#define IPV4_SL (IPV4LEN + 8) /* For safer size */
-#define IPV6_SL (IPV6LEN + 8) /* For safer size */
+#define IPV4_SL (IPV4_L + 8) /* For safer size */
+#define IPV6_SL (IPV6_L + 8) /* For safer size */
 
 #ifndef __inline
 #  define __inline inline

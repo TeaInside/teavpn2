@@ -11,6 +11,7 @@ ifeq ($(USE_CLIENT),1)
 endif
 
 include $(BASE_DIR)/src/teavpn2/lib/Makefile
+include $(BASE_DIR)/src/teavpn2/net/Makefile
 
 OBJ_TMP_CC	:= \
 	$(BASE_DIR)/src/teavpn2/license.o \
