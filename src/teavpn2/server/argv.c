@@ -13,10 +13,10 @@ struct parse_struct {
 };
 
 /* ---------------------- Default configuration values ---------------------- */
-#ifdef SERVER_DEFAULT_CONFIG_FILE
-	char d_srv_cfg_file[] = SERVER_DEFAULT_CONFIG_FILE;
+#ifdef SERVER_DEFAULT_CFG_FILE
+char d_srv_cfg_file[] = SERVER_DEFAULT_CFG_FILE;
 #else
-	char d_srv_cfg_file[] = "/etc/teavpn2/server.ini";
+char d_srv_cfg_file[] = "/etc/teavpn2/server.ini";
 #endif
 
 /* Default config for virtual network interface */

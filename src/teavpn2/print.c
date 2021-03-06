@@ -53,6 +53,7 @@ void __attribute__((format(printf, 1, 2))) __pr_error(const char *fmt, ...)
 	va_start(vl, fmt);
 	printf("[%s] Error: ", get_time(buf));
 	vprintf(fmt, vl);
+	putchar('\n');
 	va_end(vl);
 	pthread_mutex_unlock(&pr_error_mt);
 }
@@ -67,6 +68,7 @@ void __attribute__((format(printf, 1, 2))) __pr_emerg(const char *fmt, ...)
 	va_start(vl, fmt);
 	printf("[%s] Emergency: ", get_time(buf));
 	vprintf(fmt, vl);
+	putchar('\n');
 	va_end(vl);
 	pthread_mutex_unlock(&pr_emerg_mt);
 }
@@ -81,6 +83,7 @@ void __attribute__((format(printf, 1, 2))) __pr_debug(const char *fmt, ...)
 	va_start(vl, fmt);
 	printf("[%s] Debug: ", get_time(buf));
 	vprintf(fmt, vl);
+	putchar('\n');
 	va_end(vl);
 	pthread_mutex_unlock(&pr_debug_mt);
 }
@@ -95,6 +98,7 @@ void __attribute__((format(printf, 1, 2))) __pr_notice(const char *fmt, ...)
 	va_start(vl, fmt);
 	printf("[%s] ", get_time(buf));
 	vprintf(fmt, vl);
+	putchar('\n');
 	va_end(vl);
 	pthread_mutex_unlock(&pr_notice_mt);
 }

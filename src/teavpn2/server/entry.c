@@ -6,7 +6,7 @@
 static __always_inline bool validate_cfg(struct srv_cfg *cfg)
 {
 	if (cfg->data_dir == NULL) {
-		pr_error("data_dir cannot be empty!\n");
+		pr_err("data_dir cannot be empty!");
 		return false;
 	}
 	return true;

@@ -13,10 +13,10 @@ struct parse_struct {
 };
 
 /* ---------------------- Default configuration values ---------------------- */
-#ifdef CLIENT_DEFAULT_CONFIG_FILE
-	char d_cli_cfg_file[] = CLIENT_DEFAULT_CONFIG_FILE;
+#ifdef CLIENT_DEFAULT_CFG_FILE
+char d_cli_cfg_file[] = CLIENT_DEFAULT_CFG_FILE;
 #else
-	char d_cli_cfg_file[] = "/etc/teavpn2/client.ini";
+char d_cli_cfg_file[] = "/etc/teavpn2/client.ini";
 #endif
 
 
