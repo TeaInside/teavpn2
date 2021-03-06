@@ -57,7 +57,6 @@ struct ver_info {
 	uint8_t		sub_sub_ver;
 };
 
-
 struct iface_cfg {
 	char		dev[16];
 	char		ipv4[IPV4SLEN];
