@@ -70,7 +70,7 @@
 #endif
 
 
-#define struct_pad(N, SIZE) uint8_t __##N[SIZE]
+#define struct_pad(N, SIZE) uint8_t __pad##N[SIZE]
 
 
 typedef enum {
