@@ -3,24 +3,26 @@
 #include <stdlib.h>
 #include <inih/inih.h>
 #include <teavpn2/lib/arena.h>
-#include <teavpn2/server/common.h>
+#include <teavpn2/client/common.h>
 
 
-extern uint8_t __notice_level;
-extern char d_srv_cfg_file[];
+extern int8_t __notice_level;
+extern char d_cli_cfg_file[];
 
 struct parse_struct {
 	bool  		exec;
-	struct srv_cfg	*cfg;
+	struct cli_cfg	*cfg;
 };
 
 static int parser_handler(void *user, const char *section, const char *name,
 			  const char *value, int lineno)
 {
 	struct parse_struct *ctx = (struct parse_struct *)user;
-	struct srv_cfg *cfg = ctx->cfg;
-	struct srv_sock_cfg *sock = &cfg->sock;
-	struct srv_iface_cfg *iface = &cfg->iface;
+	struct cli_cfg *cfg = ctx->cfg;
+	struct cli_sock_cfg *sock = &cfg->sock;
+	struct cli_iface_cfg *iface = &cfg->iface;
+	struct cli_auth_cfg *auth = &cfg->auth;
+
 
 	/* Section match */
 	#define RMATCH_S(STR) if (unlikely(!strcmp(section, (STR))))
@@ -33,7 +35,7 @@ static int parser_handler(void *user, const char *section, const char *name,
 			cfg->data_dir = ar_strndup(value, 255);
 		} else
 		RMATCH_N("verbose_level") {
-			__notice_level = (uint8_t)atoi(value);
+			__notice_level = (int8_t)atoi(value);
 		} else {
 			goto out_invalid_name;
 		}
@@ -58,17 +60,11 @@ static int parser_handler(void *user, const char *section, const char *name,
 				goto out_err;
 			}
 		} else
-		RMATCH_N("bind_addr") {
-			sock->bind_addr = ar_strndup(value, 32);
+		RMATCH_N("server_addr") {
+			sock->server_addr = ar_strndup(value, 32);
 		} else
-		RMATCH_N("bind_port") {
-			sock->bind_port = (uint16_t)atoi(ar_strndup(value, 6));
-		} else
-		RMATCH_N("max_conn") {
-			sock->max_conn = (uint16_t)atoi(ar_strndup(value, 6));
-		} else
-		RMATCH_N("backlog") {
-			sock->backlog = (int)atoi(ar_strndup(value, 6));
+		RMATCH_N("server_port") {
+			sock->server_port = (uint16_t)atoi(ar_strndup(value, 6));
 		} else {
 			goto out_invalid_name;
 		}
@@ -79,20 +75,16 @@ static int parser_handler(void *user, const char *section, const char *name,
 		} else
 		RMATCH_N("mtu") {
 			iface->mtu = (uint16_t)atoi(ar_strndup(value, 6));
+		} else {
+			goto out_invalid_name;
+		}
+	} else
+	RMATCH_S("auth") {
+		RMATCH_N("username") {
+			auth->username = ar_strndup(value, 255);
 		} else
-		RMATCH_N("ipv4") {
-			iface->ipv4 = ar_strndup(value, IPV4_L + 1);
-		} else
-		RMATCH_N("ipv4_netmask") {
-			iface->ipv4_netmask = ar_strndup(value, IPV4_L + 1);
-#ifdef TEAVPN_IPV6_SUPPORT
-		} else
-		RMATCH_N("ipv6") {
-			iface->ipv6 = ar_strndup(value, IPV6_L + 1);
-		} else
-		RMATCH_N("ipv6_netmask") {
-			iface->ipv6_netmask = ar_strndup(value, IPV6_L + 1);
-#endif
+		RMATCH_N("password") {
+			auth->password = ar_strndup(value, 255);
 		} else {
 			goto out_invalid_name;
 		}
@@ -113,8 +105,7 @@ out_err:
 	return false;
 }
 
-
-int teavpn_server_cfg_parse(struct srv_cfg *cfg)
+int teavpn_client_cfg_parse(struct cli_cfg *cfg)
 {
 	int retval = 0;
 	FILE *fhandle = NULL;
@@ -129,7 +120,7 @@ int teavpn_server_cfg_parse(struct srv_cfg *cfg)
 	fhandle = fopen(cfg_file, "r");
 	if (fhandle == NULL) {
 		int tmp = errno;
-		if (strcmp(cfg_file, d_srv_cfg_file) == 0)
+		if (strcmp(cfg_file, d_cli_cfg_file) == 0)
 			return 0;
 
 		pr_error("Cannot open config file: %s (%s)", cfg_file,

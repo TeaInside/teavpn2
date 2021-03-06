@@ -16,7 +16,7 @@ int teavpn_client_entry(int argc, char *argv[])
 
 	switch (cfg.sock.type) {
 	case SOCK_TCP:
-		//return teavpn_client_tcp(&cfg);
+		return teavpn_client_tcp(&cfg);
 	case SOCK_UDP:
 		pr_error("UDP socket is not supported at the moment");
 		return -ESOCKTNOSUPPORT;

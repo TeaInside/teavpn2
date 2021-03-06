@@ -6,7 +6,7 @@
 #include <teavpn2/server/common.h>
 
 
-extern uint8_t __notice_level;
+extern int8_t __notice_level;
 extern char d_srv_cfg_file[];
 
 struct parse_struct {
@@ -33,7 +33,7 @@ static int parser_handler(void *user, const char *section, const char *name,
 			cfg->data_dir = ar_strndup(value, 255);
 		} else
 		RMATCH_N("verbose_level") {
-			__notice_level = (uint8_t)atoi(value);
+			__notice_level = (int8_t)atoi(value);
 		} else {
 			goto out_invalid_name;
 		}
@@ -81,17 +81,17 @@ static int parser_handler(void *user, const char *section, const char *name,
 			iface->mtu = (uint16_t)atoi(ar_strndup(value, 6));
 		} else
 		RMATCH_N("ipv4") {
-			iface->ipv4 = ar_strndup(value, IPV4_L + 1);
+			iface->ipv4 = ar_strndup(value, IPV4LEN + 1);
 		} else
 		RMATCH_N("ipv4_netmask") {
-			iface->ipv4_netmask = ar_strndup(value, IPV4_L + 1);
+			iface->ipv4_netmask = ar_strndup(value, IPV4LEN + 1);
 #ifdef TEAVPN_IPV6_SUPPORT
 		} else
 		RMATCH_N("ipv6") {
-			iface->ipv6 = ar_strndup(value, IPV6_L + 1);
+			iface->ipv6 = ar_strndup(value, IPV6LEN + 1);
 		} else
 		RMATCH_N("ipv6_netmask") {
-			iface->ipv6_netmask = ar_strndup(value, IPV6_L + 1);
+			iface->ipv6_netmask = ar_strndup(value, IPV6LEN + 1);
 #endif
 		} else {
 			goto out_invalid_name;

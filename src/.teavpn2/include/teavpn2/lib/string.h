@@ -4,7 +4,6 @@
 
 #include <stddef.h>
 
-
 char *escapeshellarg(char *alloc, const char *str, size_t len, size_t *res_len);
 char *trim_len(char *head, size_t len, size_t *res_len);
 char *trim_len_cpy(char *head, size_t len, size_t *res_len);

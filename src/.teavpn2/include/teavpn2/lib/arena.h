@@ -4,8 +4,7 @@
 
 #include <stddef.h>
 
-
-void ar_init(char *ar, size_t size);
+void ar_init(char *ar, size_t ar_size);
 size_t ar_unused_size();
 void *ar_alloc(size_t len);
 void *ar_strdup(const char *str);

@@ -28,13 +28,12 @@ int teavpn_server_entry(int argc, char *argv[])
 
 	switch (cfg.sock.type) {
 	case SOCK_TCP:
-		return 0;
-		// return teavpn_server_tcp(&cfg);
+		return teavpn_server_tcp(&cfg);
 	case SOCK_UDP:
-		pr_err("UDP socket is not supported at the moment");
+		pr_error("UDP socket is not supported at the moment");
 		return -ESOCKTNOSUPPORT;
 	default:
-		pr_err("Invalid socket type: %u", cfg.sock.type);
+		pr_error("Invalid socket type: %u", cfg.sock.type);
 		return -EINVAL;
 	}
 }

@@ -2,19 +2,18 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-#include <teavpn2/base.h>
 #include <teavpn2/lib/arena.h>
 
 
 static char   *__ar_addr = NULL;
-static size_t __ar_size  = 0;
-static size_t __ar_pos   = 0;
+static size_t __ar_size = 0;
+static size_t __ar_pos = 0;
 
 
-void ar_init(char *ar, size_t size)
+void ar_init(char *ar, size_t ar_size)
 {
 	__ar_addr = ar;
-	__ar_size = size;
+	__ar_size = ar_size;
 	__ar_pos = 0;
 }
 
@@ -30,7 +29,7 @@ static __always_inline void *internal_ar_alloc(size_t len)
 	char *ret = &__ar_addr[__ar_pos];
 
 	__ar_pos += len;
-	TASSERT(__ar_size > __ar_pos);
+	assert(__ar_size > __ar_pos);
 	return (void *)ret;
 }
 

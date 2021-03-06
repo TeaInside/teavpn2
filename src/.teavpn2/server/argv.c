@@ -205,8 +205,8 @@ int teavpn_server_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 {
 	struct parse_struct ctx;
 
-	ctx.app = argv[0];
-	ctx.cfg = cfg;
+	ctx.app  = argv[0];
+	ctx.cfg  = cfg;
 	init_default_cfg(cfg);
 	if (getopt_handler(argc - 1, argv + 1, &ctx) < 0)
 		return -1;

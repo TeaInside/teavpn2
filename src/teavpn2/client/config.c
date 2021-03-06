@@ -6,7 +6,7 @@
 #include <teavpn2/client/common.h>
 
 
-extern int8_t __notice_level;
+extern uint8_t __notice_level;
 extern char d_cli_cfg_file[];
 
 struct parse_struct {
