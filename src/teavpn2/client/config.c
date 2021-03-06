@@ -25,23 +25,23 @@ static int parser_handler(void *user, const char *section, const char *name,
 
 
 	/* Section match */
-	#define RMATCH_S(STR) if (unlikely(!strcmp(section, (STR))))
+	#define rmatch_s(STR) if (unlikely(!strcmp(section, (STR))))
 
 	/* Name match */
-	#define RMATCH_N(STR) if (unlikely(!strcmp(name, (STR))))
+	#define rmatch_n(STR) if (unlikely(!strcmp(name, (STR))))
 
-	RMATCH_S("basic") {
-		RMATCH_N("data_dir") {
+	rmatch_s("basic") {
+		rmatch_n("data_dir") {
 			cfg->data_dir = ar_strndup(value, 255);
 		} else
-		RMATCH_N("verbose_level") {
+		rmatch_n("verbose_level") {
 			__notice_level = (int8_t)atoi(value);
 		} else {
 			goto out_invalid_name;
 		}
 	} else
-	RMATCH_S("socket") {
-		RMATCH_N("sock_type") {
+	rmatch_s("socket") {
+		rmatch_n("sock_type") {
 			union {
 				char		targ[4];
 				uint32_t	int_rep;
@@ -56,47 +56,47 @@ static int parser_handler(void *user, const char *section, const char *name,
 			if (!memcmp(tmp.targ, "udp", 4)) {
 				sock->type = SOCK_UDP;
 			} else {
-				pr_error("Invalid socket type \"%s\"", value);
+				pr_err("Invalid socket type \"%s\"", value);
 				goto out_err;
 			}
 		} else
-		RMATCH_N("server_addr") {
+		rmatch_n("server_addr") {
 			sock->server_addr = ar_strndup(value, 32);
 		} else
-		RMATCH_N("server_port") {
+		rmatch_n("server_port") {
 			sock->server_port = (uint16_t)atoi(ar_strndup(value, 6));
 		} else {
 			goto out_invalid_name;
 		}
 	} else
-	RMATCH_S("iface") {
-		RMATCH_N("dev") {
+	rmatch_s("iface") {
+		rmatch_n("dev") {
 			iface->dev  = ar_strndup(value, 16);
 		} else {
 			goto out_invalid_name;
 		}
 	} else
-	RMATCH_S("auth") {
-		RMATCH_N("username") {
+	rmatch_s("auth") {
+		rmatch_n("username") {
 			auth->username = ar_strndup(value, 255);
 		} else
-		RMATCH_N("password") {
+		rmatch_n("password") {
 			auth->password = ar_strndup(value, 255);
 		} else {
 			goto out_invalid_name;
 		}
 	} else {
-		pr_error("Invalid section \"%s\" on line %d", section, lineno);
+		pr_err("Invalid section \"%s\" on line %d", section, lineno);
 		goto out_err;
 	}
 
 	return true;
 
-	#undef RMATCH_N
-	#undef RMATCH_S
+	#undef rmatch_n
+	#undef rmatch_s
 out_invalid_name:
-	pr_error("Invalid name \"%s\" in section \"%s\" on line %d", name,
-		 section, lineno);
+	pr_err("Invalid name \"%s\" in section \"%s\" on line %d", name,
+	       section, lineno);
 out_err:
 	ctx->exec = false;
 	return false;
@@ -104,6 +104,7 @@ out_err:
 
 int teavpn_client_cfg_parse(struct cli_cfg *cfg)
 {
+	int err;
 	int retval = 0;
 	FILE *fhandle = NULL;
 	struct parse_struct ctx;
@@ -116,13 +117,13 @@ int teavpn_client_cfg_parse(struct cli_cfg *cfg)
 
 	fhandle = fopen(cfg_file, "r");
 	if (fhandle == NULL) {
-		int tmp = errno;
 		if (strcmp(cfg_file, d_cli_cfg_file) == 0)
 			return 0;
 
-		pr_error("Cannot open config file: %s (%s)", cfg_file,
-			 strerror(tmp));
-		return -tmp;
+		err = errno;
+		pr_err("Can't open config file: %s " PRERF, cfg_file,
+		       PREAR(err));
+		return -err;
 	}
 
 	if (ini_parse_file(fhandle, parser_handler, &ctx) < 0) {
@@ -132,7 +133,7 @@ int teavpn_client_cfg_parse(struct cli_cfg *cfg)
 
 	if (!ctx.exec) {
 		retval = -EINVAL;
-		pr_error("Error loading config file!");
+		pr_err("Error loading config file \"%s\"!", cfg_file);
 		goto out;
 	}
 
