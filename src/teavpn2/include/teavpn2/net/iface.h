@@ -1,6 +1,6 @@
 
-#ifndef __TEAVPN2__NET__IFACE_H
-#define __TEAVPN2__NET__IFACE_H
+#ifndef TEAVPN2__NET__IFACE_H
+#define TEAVPN2__NET__IFACE_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -25,4 +25,4 @@ struct iface_cfg {
 
 bool teavpn_iface_up(struct iface_cfg *iface);
 
-#endif /* #ifndef __TEAVPN2__NET__IFACE_H */
+#endif /* #ifndef TEAVPN2__NET__IFACE_H */

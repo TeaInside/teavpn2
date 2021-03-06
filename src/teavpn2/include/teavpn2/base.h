@@ -1,6 +1,6 @@
 
-#ifndef __TEAVPN2__BASE_H
-#define __TEAVPN2__BASE_H
+#ifndef TEAVPN2__BASE_H
+#define TEAVPN2__BASE_H
 
 #include <errno.h>
 #include <assert.h>
@@ -42,6 +42,11 @@
 #define IPV4_SL (IPV4_L + 8) /* For safer size */
 #define IPV6_SL (IPV6_L + 8) /* For safer size */
 
+#if defined(__clang__)
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Wreserved-id-macro"
+#endif
+
 #ifndef __inline
 #  define __inline inline
 #endif
@@ -54,6 +59,20 @@
 #  define __no_inline __attribute__((noinline))
 #endif
 
+#if defined(__clang__)
+#  pragma clang diagnostic pop
+#endif
+
+#if __has_attribute(__fallthrough__)
+#  define fallthrough __attribute__((__fallthrough__))
+#else
+#  define fallthrough do {} while (0)  /* fallthrough */
+#endif
+
+
+#define struct_pad(N, SIZE) uint8_t __##N[SIZE]
+
+
 typedef enum {
 	SOCK_TCP = 0,
 	SOCK_UDP = 1
@@ -64,4 +83,4 @@ void teavpn_print_version(void);
 
 #define TEAVPN2_VERSION VERSION "." PATCHLEVEL "." SUBLEVEL EXTRAVERSION
 
-#endif /* #ifndef __TEAVPN2__BASE_H */
+#endif /* #ifndef TEAVPN2__BASE_H */

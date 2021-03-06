@@ -29,7 +29,7 @@ char d_srv_ipv4_netmask[] = "255.255.255.0";
 sock_type d_srv_sock_type = SOCK_TCP;
 char d_srv_bind_addr[] = "0.0.0.0";
 uint16_t d_srv_bind_port = 55555u;
-int d_srv_max_conn = 10;
+uint16_t d_srv_max_conn = 10;
 int d_srv_backlog = 5;
 /* -------------------------------------------------------------------------- */
 

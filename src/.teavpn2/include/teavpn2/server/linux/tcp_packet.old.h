@@ -1,6 +1,6 @@
 
-#ifndef __TEAVPN2__SERVER__LINUX__TCP_PACKET_H
-#define __TEAVPN2__SERVER__LINUX__TCP_PACKET_H
+#ifndef TEAVPN2__SERVER__LINUX__TCP_PACKET_H
+#define TEAVPN2__SERVER__LINUX__TCP_PACKET_H
 
 #include <stdint.h>
 #include <stddef.h>
@@ -116,4 +116,4 @@ STATIC_ASSERT(offsetof(struct srv_tcp_pkt, auth_ok) == 4,
 #define SRV_PKT_DATA_SIZ (SRV_PKT_END_OFF - SRV_PKT_MIN_RSIZ)
 #define SRV_PKT_RSIZE	 (offsetof(struct srv_tcp_pkt, __end_extra))
 
-#endif /* #ifndef __TEAVPN2__SERVER__LINUX__TCP_PACKET_H */
+#endif /* #ifndef TEAVPN2__SERVER__LINUX__TCP_PACKET_H */

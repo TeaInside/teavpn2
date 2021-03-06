@@ -15,8 +15,8 @@ SERVER_DEFAULT_CFG_FILE = config/server.ini
 CLIENT_DEFAULT_CFG_FILE = config/client.ini
 
 TARGET_BIN = teavpn2
-CC	:= cc
-CXX	:= c++
+CC	:= clang
+CXX	:= clang++
 LD	:= $(CXX)
 VG	:= valgrind
 
@@ -25,20 +25,41 @@ BASE_DIR := $(strip $(patsubst %/, %, $(BASE_DIR)))
 BASE_DEP_DIR := $(BASE_DIR)/.deps
 MAKEFILE_FILE := $(lastword $(MAKEFILE_LIST))
 
-WARN_FLAGS	:= \
-	-Wall \
-	-Wextra \
-	-Wstrict-aliasing=3 \
-	-Wformat \
-	-Wformat-security \
-	-Wformat-signedness \
-	-Wsequence-point \
-	-Wduplicated-cond \
-	-Wduplicated-branches \
-	-Wunsafe-loop-optimizations \
-	-Wstack-usage=2097152 \
-	-Wimplicit-fallthrough
+CC_BUILTIN_CONSTANTS := $(shell $(CC) -dM -E - < /dev/null)
+CXX_BUILTIN_CONSTANTS := $(shell $(CXX) -dM -E - < /dev/null)
 
+ifneq (,$(findstring __GNUC__,$(CC_BUILTIN_CONSTANTS)))
+	ifneq (,$(findstring __clang__,$(CC_BUILTIN_CONSTANTS)))
+		# Clang
+		WARN_FLAGS	:= \
+			-Wall \
+			-Werror \
+			-Wextra \
+			-Weverything \
+			-Wformat \
+			-Wformat-security \
+			-Wsequence-point \
+			-Wimplicit-fallthrough
+	else
+		# Pure GCC
+		WARN_FLAGS	:= \
+			-Wall \
+			-Werror \
+			-Wextra \
+			-Wstrict-aliasing=3 \
+			-Wformat \
+			-Wformat-security \
+			-Wformat-signedness \
+			-Wsequence-point \
+			-Wduplicated-cond \
+			-Wduplicated-branches \
+			-Wunsafe-loop-optimizations \
+			-Wstack-usage=2097152 \
+			-Wimplicit-fallthrough
+	endif
+else
+$(error I want GCC!)
+endif
 
 USE_CLIENT	:= 1
 USE_SERVER	:= 1
@@ -112,13 +133,20 @@ else
 	endif
 endif
 
-
 CCXXFLAGS := \
 	$(CCXXFLAGS) \
 	-DNOTICE_MAX_LEVEL="$(NOTICE_MAX_LEVEL)" \
 	-DNOTICE_ALWAYS_EXEC="$(NOTICE_ALWAYS_EXEC)" \
 	-DDEFAULT_NOTICE_LEVEL="$(DEFAULT_NOTICE_LEVEL)"
 
+ifeq ($(SANITIZE),1)
+	REL += with sanitize
+	CCXXFLAGS := \
+		$(CCXXFLAGS) \
+		-fsanitize=undefined \
+		-fno-sanitize-recover=undefined
+	LIB_LDFLAGS += -lubsan
+endif
 
 ifeq ($(OS),Windows_NT)
 	CCXXFLAGS += -DWIN32
@@ -172,7 +200,7 @@ CXXFLAGS	:= $(INCLUDE_DIR) $(CXXFLAGS) $(CCXXFLAGS)
 
 $(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC)
 	@echo "   LD		" "$(@)"
-	@$(LD) $(LDFLAGS) $(OBJ_CC) $(OBJ_PRE_CC) -o "$@" $(LIB_LDFLAGS)
+	$(LD) $(LDFLAGS) $(OBJ_CC) $(OBJ_PRE_CC) -o "$@" $(LIB_LDFLAGS)
 	@chmod a+x teavpn2 || true
 
 $(DEP_DIRS):

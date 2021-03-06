@@ -19,7 +19,7 @@ void ar_init(char *ar, size_t size)
 }
 
 
-size_t ar_unused_size()
+size_t ar_unused_size(void)
 {
 	return __ar_size - __ar_pos;
 }

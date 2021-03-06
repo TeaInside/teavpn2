@@ -1,6 +1,6 @@
 
-#ifndef __TEAVPN2__PRINT_H
-#define __TEAVPN2__PRINT_H
+#ifndef TEAVPN2__PRINT_H
+#define TEAVPN2__PRINT_H
 
 #include <string.h>
 #include <stdint.h>
@@ -74,4 +74,4 @@ do {							\
 
 #include <teavpn2/base.h>
 
-#endif /* #ifndef __TEAVPN2__PRINT_H */
+#endif /* #ifndef TEAVPN2__PRINT_H */

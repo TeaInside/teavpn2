@@ -1,7 +1,7 @@
 
 
-#ifndef __TEAVPN2__GLOBAL__COMMON_H
-#define __TEAVPN2__GLOBAL__COMMON_H
+#ifndef TEAVPN2__GLOBAL__COMMON_H
+#define TEAVPN2__GLOBAL__COMMON_H
 
 #include <errno.h>
 #include <stdio.h>
@@ -51,4 +51,4 @@ typedef enum {
 	SOCK_UDP = 2
 } sock_type;
 
-#endif /* #ifndef __TEAVPN2__GLOBAL__COMMON_H */
+#endif /* #ifndef TEAVPN2__GLOBAL__COMMON_H */

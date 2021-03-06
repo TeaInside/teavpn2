@@ -1,16 +1,7 @@
 
 #include <stdio.h>
-#include <teavpn2/server/common.h>
+#include <teavpn2/client/common.h>
 
-extern char d_cli_cfg_file[];
-
-/* Default config for virtual network interface */
-extern char d_cli_dev[];
-
-/* Default config for socket */
-extern sock_type d_cli_sock_type;
-extern char d_cli_server_addr[];
-extern uint16_t d_cli_server_port;
 
 void teavpn_client_show_help(const char *app)
 {

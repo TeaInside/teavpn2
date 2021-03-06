@@ -3,8 +3,8 @@
 # error This header file must only be used for Linux
 #endif
 
-#ifndef __TEAVPN2__SERVER__LINUX__TCP_H
-#define __TEAVPN2__SERVER__LINUX__TCP_H
+#ifndef TEAVPN2__SERVER__LINUX__TCP_H
+#define TEAVPN2__SERVER__LINUX__TCP_H
 
 #include <poll.h>
 #include <pthread.h>
@@ -73,4 +73,4 @@ struct srv_tcp_state {
 
 int teavpn_tcp_server(struct srv_cfg *cfg);
 
-#endif /* #ifndef __TEAVPN2__SERVER__LINUX__TCP_H */
+#endif /* #ifndef TEAVPN2__SERVER__LINUX__TCP_H */

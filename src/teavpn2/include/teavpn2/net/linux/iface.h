@@ -1,6 +1,6 @@
 
-#ifndef __TEAVPN2__NET__LINUX__IFACE_H
-#define __TEAVPN2__NET__LINUX__IFACE_H
+#ifndef TEAVPN2__NET__LINUX__IFACE_H
+#define TEAVPN2__NET__LINUX__IFACE_H
 
 #include <stdbool.h>
 #include <linux/if.h>
@@ -9,6 +9,6 @@
 
 
 int fd_set_nonblock(int fd);
-int tun_alloc(const char *dev, int flags);
+int tun_alloc(const char *dev, short flags);
 
-#endif /* #ifndef __TEAVPN2__NET__LINUX__IFACE_H */
+#endif /* #ifndef TEAVPN2__NET__LINUX__IFACE_H */

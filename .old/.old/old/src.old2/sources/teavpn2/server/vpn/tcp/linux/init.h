@@ -1,11 +1,11 @@
 
-#ifndef SRC_TEAVPN2__SERVER__TEAVPN2__TCP__LINUX_H
+#ifndef SRC_TEAVPN2__SERVERTEAVPN2__TCP__LINUX_H
 #  error This file must be included from \
          src/sources/teavpn2/server/teavpn2/tcp/linux.h
 #endif
 
-#ifndef SRC_TEAVPN2__SERVER__TEAVPN2__TCP__LINUX__INIT_H
-#define SRC_TEAVPN2__SERVER__TEAVPN2__TCP__LINUX__INIT_H
+#ifndef SRC_TEAVPN2__SERVERTEAVPN2__TCP__LINUX__INIT_H
+#define SRC_TEAVPN2__SERVERTEAVPN2__TCP__LINUX__INIT_H
 
 /**
  * @param tcp_state *state
@@ -142,4 +142,4 @@ tsrv_init_channel_tcp(tcp_channel **chan_p, const uint16_t n)
   return true;
 }
 
-#endif /* #ifndef SRC_TEAVPN2__SERVER__TEAVPN2__TCP__LINUX__INIT_H */
+#endif /* #ifndef SRC_TEAVPN2__SERVERTEAVPN2__TCP__LINUX__INIT_H */

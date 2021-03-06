@@ -11,6 +11,7 @@ extern char d_srv_cfg_file[];
 
 struct parse_struct {
 	bool  		exec;
+	struct_pad(0, sizeof(struct srv_cfg *) - sizeof(bool));
 	struct srv_cfg	*cfg;
 };
 

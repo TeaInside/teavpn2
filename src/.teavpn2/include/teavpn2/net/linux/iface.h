@@ -1,6 +1,6 @@
 
-#ifndef __TEAVPN2__NET__LINUX__IFACE_H
-#define __TEAVPN2__NET__LINUX__IFACE_H
+#ifndef TEAVPN2__NET__LINUX__IFACE_H
+#define TEAVPN2__NET__LINUX__IFACE_H
 
 #include <stdbool.h>
 #include <linux/if.h>
@@ -12,4 +12,4 @@ int tun_alloc(const char *dev, int flags);
 int fd_set_nonblock(int fd);
 bool raise_up_iface(struct iface_rd_cfg *iface);
 
-#endif /* #ifndef __TEAVPN2__NET__LINUX__IFACE_H */
+#endif /* #ifndef TEAVPN2__NET__LINUX__IFACE_H */

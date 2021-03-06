@@ -51,7 +51,7 @@ int main(int argc, char *argv[])
 		return 0;
 	} else
 	if ((strncmp(argv[1], "--license", 9) == 0) && (argc == 3)) {
-		return print_license(atoi(argv[2]));
+		return print_license((unsigned short)atoi(argv[2]));
 	}
 
 	printf("Invalid argument: \"%s\"\n", argv[1]);

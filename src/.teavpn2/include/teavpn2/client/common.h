@@ -1,6 +1,6 @@
 
-#ifndef __TEAVPN2__CLIENT__COMMON_H
-#define __TEAVPN2__CLIENT__COMMON_H
+#ifndef TEAVPN2__CLIENT__COMMON_H
+#define TEAVPN2__CLIENT__COMMON_H
 
 #include <teavpn2/__base.h>
 
@@ -38,4 +38,4 @@ void teavpn_client_show_help(const char *app);
 void teavpn_client_show_version(void);
 int teavpn_client_tcp(struct cli_cfg *cfg);
 
-#endif /* #ifndef __TEAVPN2__CLIENT__COMMON_H */
+#endif /* #ifndef TEAVPN2__CLIENT__COMMON_H */

@@ -1,6 +1,6 @@
 
-#ifndef __TEAVPN2__VT_HEXDUMP_H
-#define __TEAVPN2__VT_HEXDUMP_H
+#ifndef TEAVPN2__VT_HEXDUMP_H
+#define TEAVPN2__VT_HEXDUMP_H
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,4 +37,4 @@ do {									\
 
 #include <teavpn2/base.h>
 
-#endif /* #ifndef __TEAVPN2__VT_HEXDUMP_H */
+#endif /* #ifndef TEAVPN2__VT_HEXDUMP_H */

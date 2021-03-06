@@ -1,6 +1,6 @@
 
-#ifndef __TEAVPN2__HELPERS__ARENA_H
-#define __TEAVPN2__HELPERS__ARENA_H
+#ifndef TEAVPN2__HELPERS__ARENA_H
+#define TEAVPN2__HELPERS__ARENA_H
 
 #include <stddef.h>
 
@@ -10,4 +10,4 @@ void *ar_alloc(size_t len);
 void *ar_strdup(const char *str);
 void *ar_strndup(const char *str, size_t inlen);
 
-#endif /* #ifndef __TEAVPN2__HELPERS__ARENA_H */
+#endif /* #ifndef TEAVPN2__HELPERS__ARENA_H */

@@ -53,12 +53,20 @@ static char* rstrip(char* s)
     return s;
 }
 
+typedef union _ret_char {
+    char *chr;
+    const char* cchr;
+} ret_char;
+
 /* Return pointer to first non-whitespace char in given string. */
 static char* lskip(const char* s)
 {
+    ret_char ret;
     while (*s && isspace((unsigned char)(*s)))
         s++;
-    return (char*)s;
+
+    ret.cchr = s;
+    return ret.chr;
 }
 
 /* Return pointer to first char (of chars) or inline comment in given string,
@@ -66,6 +74,7 @@ static char* lskip(const char* s)
    be prefixed by a whitespace character to register as a comment. */
 static char* find_chars_or_comment(const char* s, const char* chars)
 {
+    ret_char ret;
 #if INI_ALLOW_INLINE_COMMENTS
     int was_space = 0;
     while (*s && (!chars || !strchr(chars, *s)) &&
@@ -78,7 +87,8 @@ static char* find_chars_or_comment(const char* s, const char* chars)
         s++;
     }
 #endif
-    return (char*)s;
+    ret.cchr = s;
+    return ret.chr;
 }
 
 /* Similar to strncpy, but ensures dest (size bytes) is

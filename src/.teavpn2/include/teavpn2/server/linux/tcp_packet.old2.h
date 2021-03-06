@@ -1,6 +1,6 @@
 
-#ifndef __TEAVPN2__SERVER__LINUX__TCP_PACKET_H
-#define __TEAVPN2__SERVER__LINUX__TCP_PACKET_H
+#ifndef TEAVPN2__SERVER__LINUX__TCP_PACKET_H
+#define TEAVPN2__SERVER__LINUX__TCP_PACKET_H
 
 #include <stdint.h>
 #include <stddef.h>
@@ -182,4 +182,4 @@ STATIC_ASSERT(
 	"Bad value of SRV_PKT_RECV_L"
 );
 
-#endif /* #ifndef __TEAVPN2__SERVER__LINUX__TCP_PACKET_H */
+#endif /* #ifndef TEAVPN2__SERVER__LINUX__TCP_PACKET_H */

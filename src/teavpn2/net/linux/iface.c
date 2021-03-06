@@ -20,7 +20,7 @@
  *        IFF_NO_PI - Do not provide packet information
  *        IFF_MULTI_QUEUE - Create a queue of multiqueue device
  */
-int tun_alloc(const char *dev, int flags)
+int tun_alloc(const char *dev, short flags)
 {
 	int fd;
 	int err;

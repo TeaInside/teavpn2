@@ -1,6 +1,6 @@
 
-#ifndef __TEAVPN2____BASE_H
-#define __TEAVPN2____BASE_H
+#ifndef TEAVPN2____BASE_H
+#define TEAVPN2____BASE_H
 
 #include <errno.h>
 #include <stdint.h>
@@ -119,4 +119,4 @@ typedef enum {
 	SOCK_UDP = 1
 } sock_type;
 
-#endif /* #ifndef __TEAVPN2____BASE_H */
+#endif /* #ifndef TEAVPN2____BASE_H */

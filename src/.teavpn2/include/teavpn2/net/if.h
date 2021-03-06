@@ -1,6 +1,6 @@
 
-#ifndef __TEAVPN2__IF_H
-#define __TEAVPN2__IF_H
+#ifndef TEAVPN2__IF_H
+#define TEAVPN2__IF_H
 
 #include <teavpn2/__base.h>
 

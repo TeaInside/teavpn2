@@ -6,11 +6,9 @@
 #include <teavpn2/client/common.h>
 
 
-extern uint8_t __notice_level;
-extern char d_cli_cfg_file[];
-
 struct parse_struct {
-	bool  		exec;
+	bool		exec;
+	struct_pad(0, sizeof(struct cli_cfg *) - sizeof(bool));
 	struct cli_cfg	*cfg;
 };
 
@@ -35,7 +33,7 @@ static int parser_handler(void *user, const char *section, const char *name,
 			cfg->data_dir = ar_strndup(value, 255);
 		} else
 		rmatch_n("verbose_level") {
-			__notice_level = (int8_t)atoi(value);
+			__notice_level = (uint8_t)atoi(value);
 		} else {
 			goto out_invalid_name;
 		}

@@ -1,6 +1,6 @@
 
-#ifndef __TEAVPN2__AUTH_H
-#define __TEAVPN2__AUTH_H
+#ifndef TEAVPN2__AUTH_H
+#define TEAVPN2__AUTH_H
 
 #include <teavpn2/__base.h>
 
@@ -15,4 +15,4 @@ STATIC_ASSERT(
 	"Bad sizeof(struct auth_pkt)"
 );
 
-#endif /* #ifndef __TEAVPN2__AUTH_H */
+#endif /* #ifndef TEAVPN2__AUTH_H */

@@ -56,7 +56,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n\
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\
 ";
 
-const char invalid[] = "Invalid license index\n";
+static const char invalid[] = "Invalid license index\n";
 
 int print_license(unsigned short i)
 {
