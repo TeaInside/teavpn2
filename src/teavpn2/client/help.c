@@ -53,9 +53,3 @@ void teavpn_client_show_help(const char *app)
 	printf("\n");
 	printf("This software is licensed under the GPL-v3 license.\n");
 }
-
-
-void teavpn_client_show_version(void)
-{
-	puts("TeaVPN Client " TEAVPN_CLIENT_VERSION);
-}

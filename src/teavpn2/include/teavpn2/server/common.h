@@ -37,6 +37,5 @@ int teavpn_server_entry(int argc, char *argv[]);
 int teavpn_server_cfg_parse(struct srv_cfg *cfg);
 int teavpn_server_argv_parse(int argc, char *argv[], struct srv_cfg *cfg);
 void teavpn_server_show_help(const char *app);
-void teavpn_server_show_version(void);
 
 #endif /* #ifndef __TEAVPN2__SERVER__COMMON_H */

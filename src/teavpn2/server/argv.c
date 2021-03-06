@@ -34,23 +34,6 @@ int d_srv_backlog = 5;
 /* -------------------------------------------------------------------------- */
 
 
-/*
- * ---- Short technical overview about config ---- 
- *
- * Note that cfg->cfg_file is a pointer (`char *`). If it contains an empty
- * string then the app takes default config value and override it with command
- * line arguments.
- * 
- * If cfg->cfg_file contains non empty string, it will open a file with name
- * taken from such a string. If the file does not exists, it will check the file
- * name, whether it is equals to d_srv_cfg_file or not, if it is equal, then
- * it does nothing and continue the execution like when cfg->cfg_file contains
- * and empty string, but if it is not equal to d_srv_cfg_file, then it errors
- * and extis immediately.
- *
- */
-
-
 static __always_inline void init_default_cfg(struct srv_cfg *cfg)
 {
 	struct srv_sock_cfg *sock = &cfg->sock;
@@ -129,7 +112,7 @@ static __always_inline int getopt_handler(int argc, char *argv[],
 			teavpn_server_show_help(ctx->app);
 			goto out_exit;
 		case 'v':
-			teavpn_server_show_version();
+			teavpn_print_version();
 			goto out_exit;
 		case 'c':
 			cfg->cfg_file = trunc_str(optarg, 255);

@@ -6,7 +6,6 @@
 
 
 struct cli_iface_cfg {
-	uint16_t	mtu;		/* Virtual interface MTU     */
 	char		*dev;		/* Virtual interface name    */
 };
 
@@ -35,6 +34,5 @@ int teavpn_client_entry(int argc, char *argv[]);
 int teavpn_client_cfg_parse(struct cli_cfg *cfg);
 int teavpn_client_argv_parse(int argc, char *argv[], struct cli_cfg *cfg);
 void teavpn_client_show_help(const char *app);
-void teavpn_client_show_version(void);
 
 #endif /* #ifndef __TEAVPN2__CLIENT__COMMON_H */

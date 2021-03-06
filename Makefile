@@ -1,16 +1,15 @@
 
 #
 # @author Ammar Faizi <ammarfaizi2@gmail.com> https://www.facebook.com/ammarfaizi2
-# @license GNU GPL-v3
+# @license GNU GPL-v2
 #
-# TeaVPN2
+# TeaVPN2 - Fast and Free VPN Software
 #
 
 VERSION = 0
 PATCHLEVEL = 0
 SUBLEVEL = 1
-EXTRAVERSION = -rc2
-
+EXTRAVERSION = -rc1
 
 TARGET_BIN = teavpn2
 CC	:= cc
@@ -65,8 +64,10 @@ CCXXFLAGS := \
 	-fstack-protector-strong \
 	-pedantic-errors \
 	-D_GNU_SOURCE \
-	-DTEAVPN_SERVER_VERSION="\"$(TEAVPN_SERVER_VERSION)\"" \
-	-DTEAVPN_CLIENT_VERSION="\"$(TEAVPN_CLIENT_VERSION)\""
+	-DVERSION=\"$(VERSION)\" \
+	-DPATCHLEVEL=\"$(PATCHLEVEL)\" \
+	-DSUBLEVEL=\"$(SUBLEVEL)\" \
+	-DEXTRAVERSION=\"$(EXTRAVERSION)\"
 
 ifeq ($(RELEASE_MODE),1)
 	REL := --- Build release mode

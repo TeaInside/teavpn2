@@ -26,6 +26,7 @@ uint8_t __notice_level = 3;
 
 static __always_inline char *get_time(char *buf)
 {
+	size_t len;
 	char *time_chr;
 	time_t rawtime;
 	struct tm *timeinfo;
@@ -34,8 +35,9 @@ static __always_inline char *get_time(char *buf)
 	time(&rawtime);
 	timeinfo = localtime(&rawtime);
 	time_chr = asctime(timeinfo);
-	strncpy(buf, time_chr, 31);
-	buf[31] = '\0';
+	len = strnlen(time_chr, 32) - 1;
+	memcpy(buf, time_chr, len);
+	buf[len] = '\0';
 	pthread_mutex_unlock(&get_time_mt);
 
 	return buf;

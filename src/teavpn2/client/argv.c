@@ -21,7 +21,6 @@ struct parse_struct {
 
 
 /* Default config for virtual network interface */
-uint16_t d_cli_mtu = 1500;
 char d_cli_dev[] = "teavpn2";
 
 
@@ -30,21 +29,6 @@ sock_type d_cli_sock_type = SOCK_TCP;
 uint16_t d_cli_server_port = 55555;
 /* -------------------------------------------------------------------------- */
 
-/*
- * ---- Short technical overview about config ---- 
- *
- * Note that cfg->cfg_file is a pointer (`char *`). If it contains an empty
- * string then the app takes default config value and override it with command
- * line arguments.
- * 
- * If cfg->cfg_file contains non empty string, it will open a file with name
- * taken from such a string. If the file does not exists, it will check the file
- * name, whether it is equals to d_cli_cli_cfg_file or not, if it is equal, then
- * it does nothing and continue the execution like when cfg->cfg_file contains
- * and empty string, but if it is not equal to d_cli_cli_cfg_file, then it errors
- * and extis immediately.
- *
- */
 
 static __always_inline void init_default_cfg(struct cli_cfg *cfg)
 {
@@ -56,7 +40,6 @@ static __always_inline void init_default_cfg(struct cli_cfg *cfg)
 	cfg->data_dir = NULL;
 
 	/* Virtual network interface. */
-	iface->mtu = d_cli_mtu;
 	iface->dev = d_cli_dev;
 
 	/* Socket config. */
@@ -80,7 +63,6 @@ static const struct option long_opt[] = {
 	{"data-dir",      required_argument, 0, 'D'},
 
 	/* Virtual network interface */
-	{"mtu",           required_argument, 0, 'm'},
 	{"dev",           required_argument, 0, 'd'},
 
 	/* Socket */
@@ -95,7 +77,7 @@ static const struct option long_opt[] = {
 	{0, 0, 0, 0}
 };
 
-static const char short_opt[] = "hvc:D:d:m:s:H:P:u:p:";
+static const char short_opt[] = "hvc:D:d:s:H:P:u:p:";
 
 static __always_inline int getopt_handler(int argc, char *argv[],
 					  struct parse_struct *cx)
@@ -117,16 +99,13 @@ static __always_inline int getopt_handler(int argc, char *argv[],
 			teavpn_client_show_help(cx->app);
 			goto out_exit;
 		case 'v':
-			teavpn_client_show_version();
+			teavpn_print_version();
 			goto out_exit;
 		case 'c':
 			cfg->cfg_file = trunc_str(optarg, 255);
 			break;
 		case 'D':
 			cfg->data_dir = trunc_str(optarg, 255);
-			break;
-		case 'm':
-			iface->mtu = (uint16_t)atoi(optarg);
 			break;
 		case 'd':
 			iface->dev = trunc_str(optarg, 255);

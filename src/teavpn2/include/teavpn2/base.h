@@ -59,4 +59,9 @@ typedef enum {
 	SOCK_UDP = 1
 } sock_type;
 
+int print_license(unsigned short i);
+void teavpn_print_version(void);
+
+#define TEAVPN2_VERSION VERSION "." PATCHLEVEL "." SUBLEVEL EXTRAVERSION
+
 #endif /* #ifndef __TEAVPN2__BASE_H */

@@ -72,9 +72,6 @@ static int parser_handler(void *user, const char *section, const char *name,
 	RMATCH_S("iface") {
 		RMATCH_N("dev") {
 			iface->dev  = ar_strndup(value, 16);
-		} else
-		RMATCH_N("mtu") {
-			iface->mtu = (uint16_t)atoi(ar_strndup(value, 6));
 		} else {
 			goto out_invalid_name;
 		}

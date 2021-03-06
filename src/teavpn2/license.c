@@ -1,25 +1,27 @@
 
 #include <stdio.h>
+#include <teavpn2/base.h>
+
 
 static const char teavpn2[] = "\n\
-    https://github.com/TeaInside/teavpn2\n\
+https://github.com/TeaInside/teavpn2\n\
 \n\
-    TeaVPN2 - Fast and Free VPN Software\n\
-    Copyright (C) 2021  Ammar Faizi\n\
+TeaVPN2 - Fast and Free VPN Software\n\
+Copyright (C) 2021  Ammar Faizi\n\
 \n\
-    This program is free software; you can redistribute it and/or modify\n\
-    it under the terms of the GNU General Public License as published by\n\
-    the Free Software Foundation; either version 2 of the License, or\n\
-    (at your option) any later version.\n\
+This program is free software; you can redistribute it and/or modify\n\
+it under the terms of the GNU General Public License as published by\n\
+the Free Software Foundation; either version 2 of the License, or\n\
+(at your option) any later version.\n\
 \n\
-    This program is distributed in the hope that it will be useful,\n\
-    but WITHOUT ANY WARRANTY; without even the implied warranty of\n\
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n\
-    GNU General Public License for more details.\n\
+This program is distributed in the hope that it will be useful,\n\
+but WITHOUT ANY WARRANTY; without even the implied warranty of\n\
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n\
+GNU General Public License for more details.\n\
 \n\
-    You should have received a copy of the GNU General Public License along\n\
-    with this program; if not, write to the Free Software Foundation, Inc.,\n\
-    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.\n\
+You should have received a copy of the GNU General Public License along\n\
+with this program; if not, write to the Free Software Foundation, Inc.,\n\
+51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.\n\
 ";
 
 
@@ -56,15 +58,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\
 
 const char invalid[] = "Invalid license index\n";
 
-void print_license(unsigned short i)
+int print_license(unsigned short i)
 {
+	int retval = 0;
 	const char *p = NULL;
 
 	switch (i) {
 	case 0: p = teavpn2; break;
 	case 1: p = inih; break;
-	default: p = invalid; break;
+	default:
+		p = invalid;
+		retval = 1;
+		break;
 	}
 
 	puts(p);
+	return retval;
 }
