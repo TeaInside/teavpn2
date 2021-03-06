@@ -1,6 +1,6 @@
 
 #include <string.h>
-#include <teavpn2/server/common.h>
+#include <teavpn2/server/tcp.h>
 
 
 static __always_inline bool validate_cfg(struct srv_cfg *cfg)
@@ -28,8 +28,7 @@ int teavpn_server_entry(int argc, char *argv[])
 
 	switch (cfg.sock.type) {
 	case SOCK_TCP:
-		return 0;
-		// return teavpn_server_tcp(&cfg);
+		return teavpn_server_tcp(&cfg);
 	case SOCK_UDP:
 		pr_err("UDP socket is not supported at the moment");
 		return -ESOCKTNOSUPPORT;
