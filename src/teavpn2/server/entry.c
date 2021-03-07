@@ -2,11 +2,16 @@
 #include <string.h>
 #include <teavpn2/server/common.h>
 
-#if defined(__linux__)
-# include <teavpn2/server/linux/tcp.h>
-#else
-# error Target environment is not supported at the moment.
-#endif
+
+static __always_inline bool validate_cfg(struct srv_cfg *cfg)
+{
+	if (cfg->data_dir == NULL) {
+		pr_error("data_dir cannot be empty!\n");
+		return false;
+	}
+	return true;
+}
+
 
 int teavpn_server_entry(int argc, char *argv[])
 {
@@ -16,20 +21,19 @@ int teavpn_server_entry(int argc, char *argv[])
 
 	if (teavpn_server_argv_parse(argc, argv, &cfg) < 0)
 		return 1;
-
 	if (teavpn_server_cfg_parse(&cfg) < 0)
+		return 1;
+	if (!validate_cfg(&cfg))
 		return 1;
 
 	switch (cfg.sock.type) {
 	case SOCK_TCP:
-		return teavpn_tcp_server(&cfg);
-
+		return teavpn_server_tcp(&cfg);
 	case SOCK_UDP:
 		pr_error("UDP socket is not supported at the moment");
 		return -ESOCKTNOSUPPORT;
-
 	default:
-		pr_error("Invalid socket type: %d", cfg.sock.type);
+		pr_error("Invalid socket type: %u", cfg.sock.type);
 		return -EINVAL;
 	}
 }

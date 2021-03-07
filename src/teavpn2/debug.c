@@ -2,20 +2,23 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
-#include <teavpn2/global/helpers/debug.h>
-
+#include <pthread.h>
+#include <teavpn2/debug.h>
 
 #if defined(__linux__)
-# include <pthread.h>
-static pthread_mutex_t get_time_mt  = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t pr_error_mt  = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t pr_notice_mt = PTHREAD_MUTEX_INITIALIZER;
+#  include <pthread.h>
+// static pthread_mutex_t get_time_mt  = PTHREAD_MUTEX_INITIALIZER;
+// static pthread_mutex_t pr_error_mt  = PTHREAD_MUTEX_INITIALIZER;
+// static pthread_mutex_t pr_notice_mt = PTHREAD_MUTEX_INITIALIZER;
+#  define pthread_mutex_lock(MUT) /* Do nothing */
+#  define pthread_mutex_unlock(MUT) /* Do nothing */
 #else
-#define pthread_mutex_lock(MUT) /* Do nothing */
-#define pthread_mutex_unlock(MUT) /* Do nothing */
+#  define pthread_mutex_lock(MUT) /* Do nothing */
+#  define pthread_mutex_unlock(MUT) /* Do nothing */
 #endif
 
-int8_t __notice_level = 5;
+
+int8_t __notice_level = 8;
 
 
 static __always_inline char *get_time(char *buf)

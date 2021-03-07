@@ -6,8 +6,11 @@
 # TeaVPN2
 #
 
-TEAVPN_SERVER_VERSION = 0.0.1
-TEAVPN_CLIENT_VERSION = 0.0.1
+TARGET_BIN	= teavpn2
+TEAVPN_SERVER_VERSION	= 0.0.1
+TEAVPN_CLIENT_VERSION	= 0.0.1
+SERVER_DEFAULT_CONFIG_FILE	= config/server.ini
+CLIENT_DEFAULT_CONFIG_FILE	= config/client.ini
 
 CC	:= cc
 CXX	:= c++
@@ -30,10 +33,10 @@ WARN_FLAGS	:= \
 	-Wduplicated-cond \
 	-Wduplicated-branches \
 	-Wunsafe-loop-optimizations \
-	-Wstack-usage=2097152
+	-Wstack-usage=2097152 \
+	-Wimplicit-fallthrough
 
 
-TARGET_BIN	:= teavpn2
 USE_CLIENT	:= 1
 USE_SERVER	:= 1
 
@@ -65,15 +68,27 @@ CCXXFLAGS := \
 	-DTEAVPN_CLIENT_VERSION="\"$(TEAVPN_CLIENT_VERSION)\""
 
 ifeq ($(RELEASE_MODE),1)
+	REL := --- Build release mode
 	LDFLAGS		+= $(LDFLAGS) -O3
 	CCXXFLAGS	+= -O3 -DNDEBUG
+	NOTICE_STATIC_LEVEL	= 3
+	NOTICE_ALWAYS_EXEC	= 0
 else
+	REL := --- Build debug mode
 	LDFLAGS		+= $(DEFAULT_OPTIMIZATION)
 	CCXXFLAGS	+= \
 		$(DEFAULT_OPTIMIZATION) \
 		-ggdb3 \
 		-grecord-gcc-switches \
 		-DTEAVPN_DEBUG
+endif
+
+ifdef NOTICE_STATIC_LEVEL
+	CCXXFLAGS := $(CCXXFLAGS) -DNOTICE_STATIC_LEVEL="$(NOTICE_STATIC_LEVEL)"
+endif
+
+ifdef NOTICE_ALWAYS_EXEC
+	CCXXFLAGS := $(CCXXFLAGS) -DNOTICE_ALWAYS_EXEC="$(NOTICE_ALWAYS_EXEC)"
 endif
 
 ifeq ($(OS),Windows_NT)
@@ -113,9 +128,12 @@ endif
 # Force these to be a simple variable
 OBJ_CC		:=
 OBJ_PRE_CC	:=
+OBJ_TMP_CC	:=
+CFLAGS_TMP	:=
 #######################################
 
 all: $(TARGET_BIN)
+	@echo $(REL)
 
 include $(BASE_DIR)/src/teavpn2/Makefile
 include $(BASE_DIR)/src/ext/Makefile
@@ -126,6 +144,7 @@ CXXFLAGS	:= $(INCLUDE_DIR) $(CXXFLAGS) $(CCXXFLAGS)
 $(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC)
 	@echo "   LD		" "$(@)"
 	@$(LD) $(LDFLAGS) $(OBJ_CC) $(OBJ_PRE_CC) -o "$@" $(LIB_LDFLAGS)
+	@chmod a+x teavpn2 || true
 
 $(DEP_DIRS):
 	@echo "   MKDIR	" "$(@:$(BASE_DIR)/%=%)"
@@ -142,3 +161,9 @@ $(OBJ_PRE_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
 
 clean:
 	@rm -rfv $(DEP_DIRS) $(OBJ_CC) $(OBJ_PRE_CC) $(TARGET_BIN)
+
+server: $(TARGET_BIN)
+	sudo $(VG) $(VGFLAGS) ./$(TARGET_BIN) server
+
+client: $(TARGET_BIN)
+	sudo $(VG) $(VGFLAGS) ./$(TARGET_BIN) client

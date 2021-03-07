@@ -1,0 +1,22 @@
+
+INCLUDE_DIR	+= -I$(BASE_DIR)/src/teavpn2/include
+DEP_DIRS	+= $(BASE_DEP_DIR)/src/teavpn2
+
+ifeq ($(USE_SERVER),1)
+	include $(BASE_DIR)/src/teavpn2/server/Makefile
+endif
+
+ifeq ($(USE_CLIENT),1)
+	include $(BASE_DIR)/src/teavpn2/client/Makefile
+endif
+
+include $(BASE_DIR)/src/teavpn2/helpers/Makefile
+
+OBJ_TMP_CC	:= \
+	$(BASE_DIR)/src/teavpn2/main.o
+
+OBJ_PRE_CC	+= $(OBJ_TMP_CC)
+
+$(OBJ_TMP_CC):
+	@echo "   CC		" "$(@:$(BASE_DIR)/%=%)"
+	@$(CC) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)
