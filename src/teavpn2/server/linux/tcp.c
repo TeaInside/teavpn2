@@ -487,7 +487,7 @@ static void *thread_handler(void *_state_p)
 	prl_notice(3, "Thread has been spawned!");
 	pthread_mutex_unlock(&state->mutex);
 
-	/* Let's wait until the main process wake up */
+	/* Let's wait until the main process wakes up */
 	while (state->mutex_own == true)
 		usleep(10000);
 
@@ -592,6 +592,40 @@ static ssize_t handle_iface_read(int tun_fd, struct srv_tcp_state *state)
 }
 
 
+static bool resolve_new_conn(int cli_fd, struct sockaddr_in *addr,
+			     struct srv_tcp_state *state)
+{
+	(void)cli_fd;
+	(void)addr;
+	(void)state;
+	return true;
+}
+
+
+static int accept_new_conn(int net_fd, struct srv_tcp_state *state)
+{
+	int err;
+	int cli_fd;
+	struct sockaddr_in addr;
+	socklen_t addrlen = sizeof(struct sockaddr_in);
+
+	memset(&addr, 0, addrlen);
+	cli_fd = accept(net_fd, &addr, &addrlen);
+	if (unlikely(cli_fd < 0)) {
+		err = errno;
+		if (err == EAGAIN)
+			return 0;
+		pr_err("accept: " PRERF, PREAR(err));
+		return -1;
+	}
+
+	if (unlikely(!resolve_new_conn(cli_fd, &addr, state)))
+		close(cli_fd);
+
+	return 0;
+}
+
+
 static int handle_event(struct srv_tcp_state *state, struct epoll_event *event)
 {
 	int fd;
@@ -609,6 +643,7 @@ static int handle_event(struct srv_tcp_state *state, struct epoll_event *event)
 			return -1;
 		}
 		/* TODO: accept new connection */
+		accept_new_conn(fd, state);
 	}
 
 	if (likely(fd == state->tun_fd)) {
@@ -726,7 +761,7 @@ static void destroy_state(struct srv_tcp_state *state)
 			if (unlikely(!client->is_used))
 				goto clear;
 			
-			prl_notice(6, "Closing clients[%d].cli_fd (%d)",
+			prl_notice(0, "Closing clients[%d].cli_fd (%d)",
 				   max_conn, client->cli_fd);
 			close(client->cli_fd);
 
