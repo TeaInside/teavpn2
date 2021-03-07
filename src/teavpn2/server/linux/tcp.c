@@ -453,7 +453,7 @@ static int init_epoll(struct srv_tcp_state *state)
 	if (unlikely(ept_fd < 0))
 		goto out_create_err;
 
-	ret = epoll_add(ept_fd, state->pipe_fd[1], EPOLL_INEVT)	;
+	ret = epoll_add(ept_fd, state->pipe_fd[1], EPOLL_INEVT);
 	if (unlikely(ret < 0))
 		goto out_err;
 
@@ -690,12 +690,12 @@ static void destroy_state(struct srv_tcp_state *state)
 
 	if (likely(pipe_fd[0] != -1)) {
 		prl_notice(0, "Closing state->pipe_fd[0] (%d)", pipe_fd[0]);
-		close(pipe_fd[0]);	
+		close(pipe_fd[0]);
 	}
 
 	if (likely(pipe_fd[1] != -1)) {
 		prl_notice(0, "Closing state->pipe_fd[1] (%d)", pipe_fd[1]);
-		close(pipe_fd[1]);	
+		close(pipe_fd[1]);
 	}
 
 	if (likely(net_fd != -1)) {
