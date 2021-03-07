@@ -25,4 +25,8 @@ struct iface_cfg {
 
 bool teavpn_iface_up(struct iface_cfg *iface);
 
+#if defined(__linux__)
+#  include <teavpn2/net/linux/iface.h>
+#endif
+
 #endif /* #ifndef TEAVPN2__NET__IFACE_H */

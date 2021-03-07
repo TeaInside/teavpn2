@@ -1,4 +1,5 @@
 
+#include <unistd.h>
 #include <arpa/inet.h>
 #include <teavpn2/net/iface.h>
 #include <teavpn2/lib/shell.h>
@@ -9,17 +10,44 @@
 #define IPV4_SLI (IPV4_SL + 1)
 #define IPV4_ELI (IPV4_EL + 1)
 
-#define EXEC_CMD(OUT, BUF, CMD, ...)				\
-do {								\
-	snprintf((BUF), sizeof((BUF)), (CMD), __VA_ARGS__);	\
-	pr_notice("Executing: %s", (BUF));			\
-	*(OUT) = system((BUF));					\
+#define EXEC_CMD(OUT, BUF, IP, CMD, ...)				\
+do {									\
+	char __cbuf[sizeof((BUF)) * 2];					\
+	snprintf((BUF), sizeof((BUF)), (CMD), __VA_ARGS__);		\
+	snprintf((__cbuf), sizeof(__cbuf), "%s %s", IP, ((BUF)));	\
+	pr_notice("Executing: %s", (__cbuf));				\
+	*(OUT) = system((__cbuf));					\
 } while (0)
 
 
 static __always_inline char *simple_esc_arg(char *buf, const char *str)
 {
 	return escapeshellarg(buf, str, strlen(str), NULL);
+}
+
+
+static __always_inline const char *find_ip_cmd(void)
+{
+	int ret;
+	static const char * const ip_bin[] = {
+		"/bin/ip",
+		"/sbin/ip",
+		"/usr/bin/ip",
+		"/usr/sbin/ip",
+		"/usr/local/bin/ip",
+		"/usr/local/sbin/ip"
+	};
+
+	for (size_t i = 0; i < (sizeof(ip_bin) / sizeof(*ip_bin)); i++) {
+		errno = 0;
+		ret = access(ip_bin[i], R_OK | X_OK);
+		prl_notice(0, "Locating %s: %s", ip_bin[i], strerror(errno));
+		if (ret == 0)
+			return ip_bin[i];
+	}
+
+	pr_err("Cannot find ip bin executable file");
+	return NULL;
 }
 
 
@@ -52,6 +80,7 @@ bool teavpn_iface_up(struct iface_cfg *iface)
 
 	uint8_t cidr;
 	char cbuf[256];
+	const char *ip;
 
 	strncpy(uipv4, iface->ipv4, IPV4_SL);
 	strncpy(uipv4_nm, iface->ipv4_netmask, IPV4_SL);
@@ -126,14 +155,16 @@ bool teavpn_iface_up(struct iface_cfg *iface)
 	simple_esc_arg(eipv4_bc, uipv4_bc);
 	simple_esc_arg(edev, iface->dev);
 
-	#define IP "/sbin/ip "
+	ip = find_ip_cmd();
+	if (ip == NULL)
+		return false;
 
-	EXEC_CMD(&ret, cbuf, IP "link set dev %s up mtu %d", edev, iface->mtu);
+	EXEC_CMD(&ret, cbuf, ip, "link set dev %s up mtu %d", edev, iface->mtu);
 
 	if (unlikely(ret != 0))
 		return false;
 
-	EXEC_CMD(&ret, cbuf, IP "addr add dev %s %s broadcast %s", edev, eipv4,
+	EXEC_CMD(&ret, cbuf, ip, "addr add dev %s %s broadcast %s", edev, eipv4,
 		 eipv4_bc);
 
 	if (unlikely(ret != 0))
@@ -145,17 +176,20 @@ bool teavpn_iface_up(struct iface_cfg *iface)
 		char *ipv4_pub = iface->ipv4_pub;
 		char *erdgw = eipv4;		/* Reuse buffer */
 		char *eipv4_pub = eipv4_nw;	/* Reuse buffer */
+		char tmpbuf[128];
+
+		snprintf(tmpbuf, sizeof(tmpbuf), "%s route show", ip);
 
 		/* Get real default gateway */
-		shell_exec(IP "route show", cbuf, sizeof(cbuf) - 1, NULL);
+		shell_exec(tmpbuf, cbuf, sizeof(cbuf) - 1, NULL);
 
 		rdgw = cbuf;
 		rdgw[sizeof(cbuf) - 1] = '\0';
 		rdgw = strstr(rdgw, "default via ");
 
 		if (unlikely(rdgw == NULL)) {
-			pr_err("Can't find default gateway from command: "
-			       IP "route show");
+			pr_err("Can't find default gateway from command: %s "
+			       "route show", ip);
 			return false;
 		}
 
@@ -169,7 +203,7 @@ bool teavpn_iface_up(struct iface_cfg *iface)
 		simple_esc_arg(eipv4_pub, ipv4_pub);
 
 		/* We have the real default gateway in rdgw */
-		EXEC_CMD(&ret, cbuf, IP "route add %s/32 via %s", eipv4_pub,
+		EXEC_CMD(&ret, cbuf, ip, "route add %s/32 via %s", eipv4_pub,
 			 erdgw);
 
 		if (unlikely(ret != 0))
@@ -177,17 +211,17 @@ bool teavpn_iface_up(struct iface_cfg *iface)
 
 
 		if (likely(*iface->ipv4_dgateway != '\0')) {
-			char *edgw  = eipv4;	/* Reuse buffer */
+			char *edgw = eipv4;	/* Reuse buffer */
 
 			simple_esc_arg(edgw, iface->ipv4_dgateway);
 
-			EXEC_CMD(&ret, cbuf, IP "route add 0.0.0.0/1 via %s",
+			EXEC_CMD(&ret, cbuf, ip, "route add 0.0.0.0/1 via %s",
 				 edgw);
 
 			if (unlikely(ret != 0))
 				return false;
 
-			EXEC_CMD(&ret, cbuf, IP "route add 128.0.0.0/1 via %s",
+			EXEC_CMD(&ret, cbuf, ip, "route add 128.0.0.0/1 via %s",
 				 edgw);
 
 			if (unlikely(ret != 0))

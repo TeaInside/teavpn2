@@ -54,22 +54,22 @@ do {							\
 } while (0)
 
 
-#define prl_em_notice(LEVEL, ...)		\
-do {						\
-	if ((LEVEL) <= __notice_level) {	\
-		pr_notice(__VA_ARGS__);		\
-	}					\
+#define prl_em_notice(LEVEL, ...)			\
+do {							\
+	if (likely((LEVEL) <= __notice_level)) {	\
+		pr_notice(__VA_ARGS__);			\
+	}						\
 } while (0)
 
 
-#define prl_notice(LEVEL, ...)				\
-do {							\
-	if (NOTICE_ALWAYS_EXEC) {			\
-		pr_notice(__VA_ARGS__);			\
-	} else						\
-	if ((LEVEL) <= (NOTICE_MAX_LEVEL)) {		\
-		prl_em_notice(LEVEL, __VA_ARGS__);	\
-	}						\
+#define prl_notice(LEVEL, ...)					\
+do {								\
+	if (NOTICE_ALWAYS_EXEC) {				\
+		pr_notice(__VA_ARGS__);				\
+	} else							\
+	if (likely((LEVEL) <= (NOTICE_MAX_LEVEL))) {		\
+		prl_em_notice(LEVEL, __VA_ARGS__);		\
+	}							\
 } while (0)
 
 #include <teavpn2/base.h>

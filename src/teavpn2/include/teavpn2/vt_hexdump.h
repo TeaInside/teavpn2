@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stddef.h>
 
 
 #define CHDOT(C) (((32 <= (C)) && ((C) <= 126)) ? (C) : '.')
@@ -12,7 +13,7 @@
 do {									\
 	size_t i, j, k = 0, l, size = (size_t)(SIZE);			\
 	uint8_t *ptr = (uint8_t *)(PTR);				\
-	printf("============ VT_HEXDUMP ============\n");		\
+	printf("================== VT_HEXDUMP ==================\n");	\
 	printf("File\t\t: %s:%d\n", __FILE__, __LINE__);		\
 	printf("Function\t: %s()\n", __func__);				\
 	printf("Address\t\t: 0x%016lx\n", (uintptr_t)ptr);		\
@@ -32,7 +33,8 @@ do {									\
 		}							\
 		printf("|\n");						\
 	}								\
-	printf("=====================================\n");		\
+	printf("================================================\n");	\
+	fflush(stdout);							\
 } while (0)
 
 #include <teavpn2/base.h>

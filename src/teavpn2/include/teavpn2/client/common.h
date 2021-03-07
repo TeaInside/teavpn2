@@ -11,10 +11,10 @@ struct cli_iface_cfg {
 
 
 struct cli_sock_cfg {
-	char		*server_addr;	/* Server address        */
-	uint16_t	server_port;	/* Server port           */
-	struct_pad(0, sizeof(sock_type) - sizeof(uint16_t));
 	sock_type	type;		/* Socket type (TCP/UDP) */
+	uint16_t	server_port;	/* Server port           */
+	struct_pad(0, 2);
+	char		*server_addr;	/* Server address        */
 };
 
 

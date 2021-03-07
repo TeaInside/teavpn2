@@ -85,6 +85,9 @@ void teavpn_print_version(void);
 static_assert(sizeof(char) == 1, "Bad sizeof(char)");
 static_assert(sizeof(short) == 2, "Bad sizeof(short)");
 static_assert(sizeof(int) == 4, "Bad sizeof(int)");
+static_assert(sizeof(unsigned char) == 1, "Bad sizeof(unsigned char)");
+static_assert(sizeof(unsigned short) == 2, "Bad sizeof(unsigned short)");
+static_assert(sizeof(unsigned int) == 4, "Bad sizeof(unsigned int)");
 
 static_assert(sizeof(bool) == 1, "Bad sizeof(bool)");
 
@@ -99,5 +102,9 @@ static_assert(sizeof(uint32_t) == 4, "Bad sizeof(uint32_t)");
 
 static_assert(sizeof(int64_t) == 8, "Bad sizeof(int64_t)");
 static_assert(sizeof(uint64_t) == 8, "Bad sizeof(uint64_t)");
+
+/* We only support 32-bit and 64-bit pointer size. */
+static_assert((sizeof(void *) == 8) || (sizeof(void *) == 4),
+	      "Bad sizeof(void *)");
 
 #endif /* #ifndef TEAVPN2__BASE_H */

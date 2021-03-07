@@ -25,16 +25,25 @@ int tun_alloc(const char *dev, short flags)
 	int fd;
 	int err;
 	struct ifreq ifr;
+	static bool retried = false;
+	static const char *dtf = "/dev/net/tun";
 
 	if (unlikely((dev == NULL) || (*dev == '\0'))) {
 		pr_error("tun_alloc(): dev cannot be empty");
 		return -EINVAL;
 	}
 
-	fd = open("/dev/net/tun", O_RDWR);
+	fd = open(dtf, O_RDWR);
 	if (unlikely(fd < 0)) {
 		err = errno;
-		pr_error("open(\"/dev/net/tun\", O_RDWR): " PRERF, PREAR(err));
+		pr_err("open(\"%s\", O_RDWR): " PRERF, dtf, PREAR(err));
+		if ((!retried) && (err == ENOENT)) {
+			dtf = "/dev/tun";
+			retried = !retried;
+			prl_notice(0, "Set fallback to /dev/tun");
+			return tun_alloc(dtf, flags);
+		}
+
 		return -err;
 	}
 
@@ -44,8 +53,9 @@ int tun_alloc(const char *dev, short flags)
 	ifr.ifr_flags = flags;
 
 	if (unlikely(ioctl(fd, TUNSETIFF, &ifr) < 0)) {
+		close(fd);
 		err = errno;
-		pr_error("ioctl(%d, TUNSETIFF, &ifr): " PRERF, fd, PREAR(err));
+		pr_err("ioctl(%d, TUNSETIFF, &ifr): " PRERF, fd, PREAR(err));
 		return -err;
 	}
 
@@ -68,15 +78,14 @@ int fd_set_nonblock(int fd)
 	flags = fcntl(fd, F_GETFL, 0);
 	if (unlikely(flags < 0)) {
 		err = errno;
-		pr_error("fcntl(%d, F_GETFL, 0): " PRERF, fd, PREAR(err));
+		pr_err("fcntl(%d, F_GETFL, 0): " PRERF, fd, PREAR(err));
 		return -err;
 	}
 	
 	flags = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 	if (unlikely(flags < 0)) {
 		err = errno;
-		pr_error("fcntl(%d, F_SETFL, %d): " PRERF, fd, flags,
-			 PREAR(err));
+		pr_err("fcntl(%d, F_SETFL, %d): " PRERF, fd, flags, PREAR(err));
 		return -err;
 	}
 
@@ -86,11 +95,10 @@ int fd_set_nonblock(int fd)
 	flags = 1;
 	if (ioctl(fd, FIONBIO, &flags) < 0) {
 		err = errno;
-		pr_error("ioctl(%d, FIONBIO, &flags): " PRERF, fd, PREAR(err));
+		pr_err("ioctl(%d, FIONBIO, &flags): " PRERF, fd, PREAR(err));
 		return -err;
 	}
 
 	return 0;
 #endif
 }
-

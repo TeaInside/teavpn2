@@ -105,7 +105,7 @@ ifeq ($(RELEASE_MODE),1)
 	CCXXFLAGS	+= -O3 -DNDEBUG
 
 	ifndef NOTICE_MAX_LEVEL
-		NOTICE_MAX_LEVEL = 3
+		NOTICE_MAX_LEVEL = 4
 	endif
 
 	ifndef NOTICE_ALWAYS_EXEC
@@ -113,7 +113,7 @@ ifeq ($(RELEASE_MODE),1)
 	endif
 
 	ifndef DEFAULT_NOTICE_LEVEL
-		DEFAULT_NOTICE_LEVEL = 3
+		DEFAULT_NOTICE_LEVEL = 4
 	endif
 else
 	REL := --- Build debug mode
@@ -129,7 +129,7 @@ else
 	endif
 
 	ifndef NOTICE_ALWAYS_EXEC
-		NOTICE_ALWAYS_EXEC = 0
+		NOTICE_ALWAYS_EXEC = 1
 	endif
 
 	ifndef DEFAULT_NOTICE_LEVEL
