@@ -76,7 +76,7 @@ static int parser_handler(void *user, const char *section, const char *name,
 	} else
 	rmatch_s("auth") {
 		rmatch_n("username") {
-			auth->username = ar_strndup(value, 255);
+			auth->username = ar_strndup(value, 64);
 		} else
 		rmatch_n("password") {
 			auth->password = ar_strndup(value, 255);

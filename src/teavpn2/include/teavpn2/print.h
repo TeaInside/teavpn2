@@ -67,7 +67,7 @@ do {							\
 	if (NOTICE_ALWAYS_EXEC) {			\
 		pr_notice(__VA_ARGS__);			\
 	} else						\
-	if ((LEVEL) <= NOTICE_MAX_LEVEL) {		\
+	if ((LEVEL) <= (NOTICE_MAX_LEVEL)) {		\
 		prl_em_notice(LEVEL, __VA_ARGS__);	\
 	}						\
 } while (0)

@@ -139,7 +139,7 @@ static __always_inline int getopt_handler(int argc, char *argv[],
 			sock->server_port = (uint16_t)atoi(optarg);
 			break;
 		case 'u':
-			auth->username = trunc_str(optarg, 255);
+			auth->username = trunc_str(optarg, 64);
 			break;
 		case 'p':
 			auth->password = ar_strndup(optarg, 255);

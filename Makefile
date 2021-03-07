@@ -28,6 +28,10 @@ MAKEFILE_FILE := $(lastword $(MAKEFILE_LIST))
 CC_BUILTIN_CONSTANTS := $(shell $(CC) -dM -E - < /dev/null)
 CXX_BUILTIN_CONSTANTS := $(shell $(CXX) -dM -E - < /dev/null)
 
+ifeq (,$(findstring __GNUC__,$(CXX_BUILTIN_CONSTANTS)))
+$(error I want __GNUC__!)
+endif
+
 ifneq (,$(findstring __GNUC__,$(CC_BUILTIN_CONSTANTS)))
 	ifneq (,$(findstring __clang__,$(CC_BUILTIN_CONSTANTS)))
 		# Clang
@@ -58,7 +62,7 @@ ifneq (,$(findstring __GNUC__,$(CC_BUILTIN_CONSTANTS)))
 			-Wimplicit-fallthrough
 	endif
 else
-$(error I want GCC!)
+$(error I want __GNUC__!)
 endif
 
 USE_CLIENT	:= 1
@@ -100,11 +104,11 @@ ifeq ($(RELEASE_MODE),1)
 	LDFLAGS		+= $(LDFLAGS) -O3
 	CCXXFLAGS	+= -O3 -DNDEBUG
 
-	ifdef NOTICE_MAX_LEVEL
+	ifndef NOTICE_MAX_LEVEL
 		NOTICE_MAX_LEVEL = 3
 	endif
 
-	ifdef NOTICE_ALWAYS_EXEC
+	ifndef NOTICE_ALWAYS_EXEC
 		NOTICE_ALWAYS_EXEC = 0
 	endif
 
@@ -120,16 +124,16 @@ else
 		-grecord-gcc-switches \
 		-DTEAVPN_DEBUG
 
-	ifdef NOTICE_MAX_LEVEL
+	ifndef NOTICE_MAX_LEVEL
 		NOTICE_MAX_LEVEL = 10
 	endif
 
-	ifdef NOTICE_ALWAYS_EXEC
+	ifndef NOTICE_ALWAYS_EXEC
 		NOTICE_ALWAYS_EXEC = 0
 	endif
 
 	ifndef DEFAULT_NOTICE_LEVEL
-		DEFAULT_NOTICE_LEVEL = 3
+		DEFAULT_NOTICE_LEVEL = 5
 	endif
 endif
 
@@ -200,7 +204,7 @@ CXXFLAGS	:= $(INCLUDE_DIR) $(CXXFLAGS) $(CCXXFLAGS)
 
 $(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC)
 	@echo "   LD		" "$(@)"
-	$(LD) $(LDFLAGS) $(OBJ_CC) $(OBJ_PRE_CC) -o "$@" $(LIB_LDFLAGS)
+	@$(LD) $(LDFLAGS) $(OBJ_CC) $(OBJ_PRE_CC) -o "$@" $(LIB_LDFLAGS)
 	@chmod a+x teavpn2 || true
 
 $(DEP_DIRS):

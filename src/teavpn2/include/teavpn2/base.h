@@ -69,9 +69,7 @@
 #  define fallthrough do {} while (0)  /* fallthrough */
 #endif
 
-
-#define struct_pad(N, SIZE) uint8_t __pad##N[SIZE]
-
+#define struct_pad(N, SIZE) uint8_t __pad__##N[SIZE]
 
 typedef enum {
 	SOCK_TCP = 0,
@@ -82,5 +80,24 @@ int print_license(unsigned short i);
 void teavpn_print_version(void);
 
 #define TEAVPN2_VERSION VERSION "." PATCHLEVEL "." SUBLEVEL EXTRAVERSION
+
+
+static_assert(sizeof(char) == 1, "Bad sizeof(char)");
+static_assert(sizeof(short) == 2, "Bad sizeof(short)");
+static_assert(sizeof(int) == 4, "Bad sizeof(int)");
+
+static_assert(sizeof(bool) == 1, "Bad sizeof(bool)");
+
+static_assert(sizeof(int8_t) == 1, "Bad sizeof(int8_t)");
+static_assert(sizeof(uint8_t) == 1, "Bad sizeof(uint8_t)");
+
+static_assert(sizeof(int16_t) == 2, "Bad sizeof(int16_t)");
+static_assert(sizeof(uint16_t) == 2, "Bad sizeof(uint16_t)");
+
+static_assert(sizeof(int32_t) == 4, "Bad sizeof(int32_t)");
+static_assert(sizeof(uint32_t) == 4, "Bad sizeof(uint32_t)");
+
+static_assert(sizeof(int64_t) == 8, "Bad sizeof(int64_t)");
+static_assert(sizeof(uint64_t) == 8, "Bad sizeof(uint64_t)");
 
 #endif /* #ifndef TEAVPN2__BASE_H */
