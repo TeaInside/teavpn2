@@ -641,8 +641,8 @@ static evt_cli_goto handle_hello(struct tcp_client *client,
 	/* Wrong data length */
 	if (data_len != sizeof(cmp_ver)) {
 		prl_notice(0, "Client " PRWIU " sends invalid hello data "
-			   "length (expected: %u; got: %u)", W_IU(client),
-			   (uint16_t)sizeof(cmp_ver), (uint16_t)data_len);
+			   "length (expected: %zu; got: %u)", W_IU(client),
+			   sizeof(cmp_ver), data_len);
 		return OUT_CONN_CLOSE;
 	}
 
@@ -704,6 +704,11 @@ static evt_cli_goto handle_client_pkt(tcli_pkt *cli_pkt,
 	case TCLI_PKT_CLOSE:
 		goto out;
 	}
+
+	/*
+	 * I don't put default on switch statement to shut
+	 * the clang warning up!
+	 */
 
 	/* default: */
 	/*

@@ -56,7 +56,10 @@ do {							\
 
 #define prl_em_notice(LEVEL, ...)			\
 do {							\
-	if (likely((LEVEL) <= __notice_level)) {	\
+	if (LEVEL == 0) {				\
+		pr_notice(__VA_ARGS__);			\
+	} else						\
+	if (likely((LEVEL) < __notice_level)) {		\
 		pr_notice(__VA_ARGS__);			\
 	}						\
 } while (0)

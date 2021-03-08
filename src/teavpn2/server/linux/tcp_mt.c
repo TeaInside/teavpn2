@@ -1,4 +1,10 @@
 
+/*
+ * Multithreading draft.
+ *
+ * Don't use! This has not been finished and doesn't work at the moment.
+ */
+
 #include <unistd.h>
 #include <signal.h>
 #include <pthread.h>

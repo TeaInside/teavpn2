@@ -19,11 +19,11 @@ int teavpn_server_entry(int argc, char *argv[])
 
 	memset(&cfg, 0, sizeof(cfg));
 
-	if (teavpn_server_argv_parse(argc, argv, &cfg) < 0)
+	if (unlikely(teavpn_server_argv_parse(argc, argv, &cfg) < 0))
 		return 1;
-	if (teavpn_server_cfg_parse(&cfg) < 0)
+	if (unlikely(teavpn_server_cfg_parse(&cfg) < 0))
 		return 1;
-	if (!validate_cfg(&cfg))
+	if (unlikely(!validate_cfg(&cfg)))
 		return 1;
 
 	switch (cfg.sock.type) {

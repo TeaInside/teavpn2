@@ -335,6 +335,13 @@ static int send_hello(struct cli_tcp_state *state)
 }
 
 
+static evt_srv_goto handle_welcome(struct cli_tcp_state *state)
+{
+	(void)state;
+	return RETURN_OK;
+}
+
+
 static evt_srv_goto handle_server_pkt(tsrv_pkt *srv_pkt, uint16_t data_len,
 				      struct cli_tcp_state *state)
 {
@@ -346,8 +353,22 @@ static evt_srv_goto handle_server_pkt(tsrv_pkt *srv_pkt, uint16_t data_len,
 
 	switch (srv_pkt->type) {
 	case TSRV_PKT_WELCOME:
+		/*
+		 * Server will send us welcome packet if the
+		 * version is supported by the TeaVPN2 server.
+		 *
+		 * See also: send_hello()
+		 */
+		retval = handle_welcome(state);
 		goto out;
 	case TSRV_PKT_AUTH_OK:
+		/*
+		 * Authentication success!
+		 *
+		 * We must have private IP information from
+		 * this **AUTH OK** packet.
+		 */
+		retval = handle_auth_ok();
 		goto out;
 	case TSRV_PKT_AUTH_REJECT:
 		goto out;
@@ -361,6 +382,35 @@ static evt_srv_goto handle_server_pkt(tsrv_pkt *srv_pkt, uint16_t data_len,
 		goto out;
 	}
 
+	/*
+	 * I don't put default on switch statement to shut
+	 * the clang warning up!
+	 */
+
+	/* default: */
+	/*
+	 * TODO: Change the state to CT_NOSYNC and
+	 *       create a recovery rountine.
+	 */
+
+	if ((NOTICE_MAX_LEVEL) >= 5) {
+		/*
+		 * Something is wrong!
+		 *
+		 * Let's debug this by hand by seeing the
+		 * hexdump result.
+		 */
+		VT_HEXDUMP(srv_pkt, sizeof(*srv_pkt));
+		panic("CORRUPTED PACKET!");
+	}
+
+	prl_notice(0, "Received invalid packet type from server (type: %d)",
+		   srv_pkt->type);
+
+	if (likely(!state->is_auth))
+		return OUT_CONN_CLOSE;
+
+	return OUT_CONN_ERR;
 out:
 	return retval;
 }
@@ -524,6 +574,10 @@ static int handle_event(struct cli_tcp_state *state, struct epoll_event *event)
 	is_err  = ((revents & errev) != 0);
 
 	if (fd == state->net_fd) {
+		if (unlikely(is_err)) {
+			pr_err("tun_fd wait error");
+			return -1;
+		}
 		handle_recv_server(fd, state);
 	} else
 	if (fd == state->tun_fd) {
