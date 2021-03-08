@@ -40,9 +40,26 @@ typedef struct _tsrv_pkt {
 	union {
 		char			raw_data[4096];
 		struct tsrv_aok_pkt	auth_ok;
+
+		struct {
+			char		__dummy0[4095];
+			char		__end;
+		};
 	};
 } tsrv_pkt;
 
+#define UTSRV_MUL 4
+
+typedef union _utsrv_pkt {
+	tsrv_pkt		srv_pkt;
+	tsrv_pkt		__pkt_chk[UTSRV_MUL];
+	char			raw_buf[sizeof(tsrv_pkt) * UTSRV_MUL];
+} utsrv_pkt;
+
+
+#define TSRV_PKT_MIN_L	(offsetof(tsrv_pkt, raw_data[0]))
+#define TSRV_PKT_MAX_L	(offsetof(tsrv_pkt, __end))
+#define TSRV_PKT_RECV_L	(offsetof(utsrv_pkt, __pkt_chk[UTSRV_MUL - 1]))
 
 static_assert(sizeof(tsrv_pkt_type) == 1, "Bad sizeof(tsrv_pkt_type)");
 

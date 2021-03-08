@@ -295,6 +295,7 @@ static int send_hello(struct cli_tcp_state *state)
 	/*
 	 * Tell the server what my version is.
 	 */
+	memset(&hlo_pkt->v, 0, sizeof(hlo_pkt->v));
 	hlo_pkt->v.ver       = VERSION;
 	hlo_pkt->v.patch_lvl = PATCHLEVEL;
 	hlo_pkt->v.sub_lvl   = SUBLEVEL;
@@ -305,9 +306,97 @@ static int send_hello(struct cli_tcp_state *state)
 	cli_pkt->type   = TCLI_PKT_HELLO;
 	cli_pkt->npad   = 0;
 	cli_pkt->length = htons(data_len);
-	send_len        = CLI_PKT_MIN_L + data_len;
+	send_len        = TCLI_PKT_MIN_L + data_len;
 
 	return (send_to_server(state, cli_pkt, send_len) > 0) ? 0 : -1;
+}
+
+
+static int handle_recv_server(int net_fd, struct cli_tcp_state *state)
+{
+	int err;
+	size_t recv_s;
+	char *recv_buf;
+	size_t recv_len;
+	ssize_t recv_ret;
+
+	recv_s   = state->recv_s;
+	recv_len = TCLI_PKT_RECV_L - recv_s;
+	recv_buf = state->srv_pkt.raw_buf;
+
+
+	return 0;
+}
+
+
+static int handle_event(struct cli_tcp_state *state, struct epoll_event *event)
+{
+	int fd;
+	bool is_err;
+	uint32_t revents;
+	const uint32_t errev = EPOLLERR | EPOLLHUP;
+
+	fd      = event->data.fd;
+	revents = event->events;
+	is_err  = ((revents & errev) != 0);
+
+	if (fd == state->net_fd) {
+		return handle_recv_server(fd, state);
+	} else
+	if (fd == state->tun_fd) {
+		
+	}
+
+	return 0;
+}
+
+
+static int event_loop(struct cli_tcp_state *state)
+{
+	int err;
+	int retval = 0;
+	int maxevents = 32;
+
+	int epl_ret;
+	int epl_fd = state->epl_fd;
+	struct epoll_event events[2];
+
+
+	while (likely(!state->stop)) {
+		epl_ret = epoll_wait(epl_fd, events, maxevents, 3000);
+		if (unlikely(epl_ret == 0)) {
+			/*
+			 * epoll reached timeout.
+			 *
+			 * TODO: Do something meaningful here...
+			 * Maybe keep alive ping to clients?
+			 */
+			continue;
+		}
+
+
+		if (unlikely(epl_ret < 0)) {
+			err = errno;
+			if (err == EINTR) {
+				retval = 0;
+				prl_notice(0, "Interrupted!");
+				continue;
+			}
+
+			retval = -err;
+			pr_error("epoll_wait(): " PRERF, PREAR(err));
+			break;
+		}
+
+		for (int i = 0; likely(i < epl_ret); i++) {
+			retval = handle_event(state, &events[i]);
+			if (unlikely(retval < 0))
+				goto out;
+		}
+	}
+
+out:
+	return retval;
 }
 
 
@@ -365,6 +454,8 @@ int teavpn_client_tcp_handler(struct cli_cfg *cfg)
 	retval = send_hello(&state);
 	if (unlikely(retval < 0))
 		goto out;
+	prl_notice(0, "Waiting for server welcome...");
+	retval = event_loop(&state);
 out:
 	destroy_state(&state);
 	return retval;

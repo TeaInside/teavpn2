@@ -45,7 +45,7 @@ typedef struct _tcli_pkt {
 		struct tcli_hello_pkt	hello_pkt;
 		struct tcli_auth_pkt	auth_pkt;
 
-		union {
+		struct {
 			char		__dummy0[4095];
 			char		__end;
 		};
@@ -57,12 +57,13 @@ typedef struct _tcli_pkt {
 typedef union _utcli_pkt {
 	tcli_pkt		cli_pkt;
 	tcli_pkt		__pkt_chk[UTCLI_MUL];
-	char			raw_data[sizeof(tcli_pkt) * UTCLI_MUL];
+	char			raw_buf[sizeof(tcli_pkt) * UTCLI_MUL];
 } utcli_pkt;
 
 
-#define CLI_PKT_MIN_L	(offsetof(tcli_pkt, raw_data[0]))
-#define CLI_PKT_RECV_L	(offsetof(utcli_pkt, __pkt_chk[UTCLI_MUL - 1]))
+#define TCLI_PKT_MIN_L	(offsetof(tcli_pkt, raw_data[0]))
+#define TCLI_PKT_MAX_L	(offsetof(tcli_pkt, __end))
+#define TCLI_PKT_RECV_L	(offsetof(utcli_pkt, __pkt_chk[UTCLI_MUL - 1]))
 
 static_assert(sizeof(tcli_pkt_type) == 1, "Bad sizeof(tcli_pkt_type)");
 

@@ -24,6 +24,16 @@
 #define W_IU(CL) W_IP(CL), W_UN(CL)
 #define PRWIU "%s:%d (%s)"
 
+// #define IPM_ADD		(0x1u)
+#define IPM_MAP_NOP	(0x0u)
+
+typedef enum _evt_cli_goto {
+	RETURN_OK	= 0,
+	OUT_CONN_ERR	= 1,
+	OUT_CONN_CLOSE	= 2,
+} evt_cli_goto;
+
+
 struct tcp_client {
 	int			cli_fd;		/* Client TCP file descriptor */
 	uint32_t		recv_c;		/* sys_recv counter           */
@@ -71,13 +81,13 @@ struct srv_tcp_state {
 	int			tun_fd;		/* TUN/TAP fd                 */
 	struct _cl_stk		cl_stk;		/* Stack for slot resolution  */
 	uint16_t		*epl_map;	/* Epoll map to client slot   */
-	struct tcp_client	*(*ipm)[256];	/* IP address map             */
+	uint16_t		(*ipm)[256];	/* IP address map             */
 	struct tcp_client	*clients;	/* Client slot                */
 	struct srv_cfg		*cfg;		/* Config                     */
 	uint32_t		read_c;		/* Number of read()           */
-	tsrv_pkt		send_buf;	/* Server packet to send()    */
+	utsrv_pkt		send_buf;	/* Server packet to send()    */
 	bool			stop;		/* Stop the event loop?       */
-	struct_pad(0, 7);
+	struct_pad(0, 3);
 	struct _bc_arr		br_arr;		/* Broadcast array            */
 };
 
@@ -150,7 +160,7 @@ static int init_state(struct srv_tcp_state *state)
 	uint16_t *epl_map = NULL;
 	uint16_t *stack_arr = NULL;
 	struct tcp_client *clients = NULL;
-	struct tcp_client *(*ipm)[256] = NULL;
+	uint16_t (*ipm)[256] = NULL;
 
 	max_conn = state->cfg->sock.max_conn;
 
@@ -166,7 +176,7 @@ static int init_state(struct srv_tcp_state *state)
 	if (unlikely(epl_map == NULL))
 		goto out_err;
 
-	ipm = calloc(256u, sizeof(struct tcp_client *[256u]));
+	ipm = calloc(256u, sizeof(uint16_t [256u]));
 	if (unlikely(ipm == NULL))
 		goto out_err;
 
@@ -186,7 +196,7 @@ static int init_state(struct srv_tcp_state *state)
 
 	for (uint16_t i = 0; i < 256u; i++) {
 		for (uint16_t j = 0; j < 256u; j++) {
-			ipm[i][j] = NULL;
+			ipm[i][j] = IPM_MAP_NOP;
 		}
 	}
 
@@ -423,7 +433,7 @@ static ssize_t handle_iface_read(int tun_fd, struct srv_tcp_state *state)
 {
 	int err;
 	ssize_t read_ret;
-	tsrv_pkt *srv_pkt = &state->send_buf;
+	tsrv_pkt *srv_pkt = state->send_buf.__pkt_chk;
 
 	state->read_c++;
 
@@ -548,22 +558,250 @@ static void accept_new_conn(int net_fd, struct srv_tcp_state *state)
 }
 
 
+static ssize_t send_to_client(struct tcp_client *client,
+			      struct srv_tcp_state *state,
+			      size_t len)
+{
+	int err;
+	int cli_fd = client->cli_fd;
+	ssize_t send_ret;
+	tsrv_pkt *srv_pkt = state->send_buf.__pkt_chk;
+
+	client->send_c++;
+
+	send_ret = send(cli_fd, srv_pkt, len, 0);
+	if (unlikely(send_ret < 0)) {
+		err = errno;
+		if (err == EAGAIN) {
+			/*
+			 * TODO: Handle pending buffer
+			 *
+			 * For now, let it fallthrough to error.
+			 */
+		}
+
+		pr_err("send(fd=%d)" PRERF, cli_fd, PREAR(err));
+		return -1;
+	}
+
+	prl_notice(5, "[%10" PRIu32 "] send(fd=%d) %ld bytes to " PRWIU,
+		   client->send_c, cli_fd, send_ret, W_IU(client));
+
+	return send_ret;
+}
+
+
+static bool send_close(struct tcp_client *client, struct srv_tcp_state *state)
+{
+	size_t send_len;
+	tsrv_pkt *srv_pkt = state->send_buf.__pkt_chk;
+
+	srv_pkt->type   = TSRV_PKT_CLOSE;
+	srv_pkt->npad   = 0;
+	srv_pkt->length = 0;
+	send_len        = TSRV_PKT_MIN_L;
+
+	return send_to_client(client, state, send_len) > 0;
+}
+
+
+static bool send_welcome(struct tcp_client *client, struct srv_tcp_state *state)
+{
+	size_t send_len;
+	tsrv_pkt *srv_pkt = state->send_buf.__pkt_chk;
+
+	srv_pkt->type   = TSRV_PKT_WELCOME;
+	srv_pkt->npad   = 0;
+	srv_pkt->length = 0;
+	send_len        = TSRV_PKT_MIN_L;
+
+	return send_to_client(client, state, send_len) > 0;
+}
+
+
+static evt_cli_goto handle_hello(struct tcp_client *client,
+				 struct srv_tcp_state *state,
+				 uint16_t data_len)
+{
+	tcli_pkt *cli_pkt;
+	struct tcli_hello_pkt *hlo_pkt;
+	version_t cmp_ver = {
+		.ver       = VERSION,
+		.patch_lvl = PATCHLEVEL,
+		.sub_lvl   = SUBLEVEL,
+		.extra     = EXTRAVERSION
+	};
+
+
+	/* Ignore auth packet from authenticated client */
+	if (unlikely(client->is_auth))
+		return RETURN_OK;
+
+	/* Wrong data length */
+	if (data_len != sizeof(cmp_ver)) {
+		prl_notice(0, "Client " PRWIU " sends invalid hello data "
+			   "length (expected: %u; got: %u)", W_IU(client),
+			   (uint16_t)sizeof(cmp_ver), (uint16_t)data_len);
+		return OUT_CONN_CLOSE;
+	}
+
+	cli_pkt = client->cli_pkt.__pkt_chk;
+	hlo_pkt = &cli_pkt->hello_pkt;
+
+	if (memcmp(&hlo_pkt->v, &cmp_ver, sizeof(cmp_ver)) != 0) {
+
+		/* For safe print, in case client sends non null-terminated */
+		hlo_pkt->v.extra[sizeof(hlo_pkt->v.extra) - 1] = '\0';
+
+		pr_err("Invalid client version from " PRWIU
+		       "(got: %u.%u.%u%s; expected: %u.%u.%u%s)",
+		       W_IU(client),
+		       hlo_pkt->v.ver,
+		       hlo_pkt->v.patch_lvl,
+		       hlo_pkt->v.sub_lvl,
+		       hlo_pkt->v.extra,
+		       cmp_ver.ver,
+		       cmp_ver.patch_lvl,
+		       cmp_ver.sub_lvl,
+		       cmp_ver.extra);
+
+
+		send_close(client, state);
+
+		return OUT_CONN_CLOSE;
+	}
+
+	return (send_welcome(client, state) > 0) ? RETURN_OK : OUT_CONN_CLOSE;
+}
+
+
+static evt_cli_goto handle_client_pkt(tcli_pkt *cli_pkt,
+				      struct tcp_client *client,
+				      uint16_t data_len,
+				      struct srv_tcp_state *state)
+{
+	(void)client;
+	(void)state;
+	(void)data_len;
+	evt_cli_goto retval = RETURN_OK;
+
+	switch (cli_pkt->type) {
+	case TCLI_PKT_HELLO:
+		retval = handle_hello(client, state, data_len);
+		break;
+	case TCLI_PKT_AUTH:
+		break;
+	case TCLI_PKT_IFACA_ACK:
+		break;
+	case TCLI_PKT_IFACE_DATA:
+		break;
+	case TCLI_PKT_REQSYNC:
+		break;
+	case TCLI_PKT_PING:
+		break;
+	case TCLI_PKT_CLOSE:
+		break;
+	}
+
+	return retval;
+}
+
+
+static evt_cli_goto process_client_buf(size_t recv_s, struct tcp_client *client,
+				       struct srv_tcp_state *state)
+{
+	uint16_t npad;
+	uint16_t data_len;
+	uint16_t fdata_len; /* Full data length                        */
+	uint16_t cdata_len; /* Current received data length + plus pad */
+	evt_cli_goto retval;
+
+	tcli_pkt *cli_pkt = client->cli_pkt.__pkt_chk;
+	char *recv_buf = cli_pkt->raw_data;
+
+again:
+	if (unlikely(recv_s < TCLI_PKT_MIN_L)) {
+		/*
+		 * We haven't received the type and length of packet.
+		 * It very unlikely happens, maybe connection is too
+		 * slow or the extra data after memmove (?)
+		 */
+		goto out;
+	}
+
+	npad      = cli_pkt->npad;
+	data_len  = ntohs(cli_pkt->length);
+	fdata_len = data_len + npad;
+	if (unlikely(data_len > TCLI_PKT_MAX_L)) {
+		/*
+		 * data_len must never be greater than CLI_PKT_DATA_L.
+		 * Is it corrupted packet?
+		 */
+		prl_notice(0, "Client " PRWIU " sends invalid packet length "
+			      "(max_allowed_len = %zu; srv_pkt->length = %u; "
+			      "recv_s = %zu) CORRUPTED PACKET?", W_IU(client),
+			      TCLI_PKT_MAX_L, fdata_len, recv_s);
+
+		return client->is_auth ? OUT_CONN_ERR : OUT_CONN_CLOSE;
+	}
+
+
+	/* Calculate current received data length */
+	cdata_len = (uint16_t)recv_s - (uint16_t)TCLI_PKT_MIN_L;
+	if (unlikely(cdata_len < fdata_len)) {
+		/*
+		 * We've received the type and length of packet.
+		 *
+		 * However, the packet has not been fully received.
+		 * So let's wait for the next cycle to process it.
+		 */
+		goto out;
+	}
+
+	retval = handle_client_pkt(cli_pkt, client, data_len, state);
+	if (unlikely(retval != RETURN_OK))
+		return retval;
+
+	if (likely(cdata_len > fdata_len)) {
+		/*
+		 * We have extra packet on the tail, must memmove to
+		 * the head before we run out of buffer.
+		 */
+		size_t cur_valid_size = TCLI_PKT_MIN_L + fdata_len;
+		recv_s -= cur_valid_size;
+
+		memmove(recv_buf, recv_buf + cur_valid_size, recv_s);
+
+		prl_notice(5, "memmove " PRWIU " (copy_size: %zu; "
+			      "recv_s: %zu; cur_valid_size: %zu)",
+			      W_IU(client), recv_s, recv_s, cur_valid_size);
+
+		goto again;
+	}
+
+	recv_s = 0;
+out:
+	client->recv_s = recv_s;
+	return RETURN_OK;
+}
+
+
 static void handle_recv_client(int cli_fd, uint16_t map_to,
 			       struct srv_tcp_state *state)
 {
 	int err;
 	size_t recv_s;
+	char *recv_buf;
 	size_t recv_len;
 	ssize_t recv_ret;
-	tcli_pkt *cli_pkt;
 	struct tcp_client *client;
 
 	client   = &state->clients[map_to];
 	recv_s   = client->recv_s;
-	cli_pkt  = client->cli_pkt.__pkt_chk;
-	recv_len = CLI_PKT_RECV_L - recv_s;
+	recv_len = TCLI_PKT_RECV_L - recv_s;
+	recv_buf = client->cli_pkt.raw_buf;
 
-	recv_ret = recv(cli_fd, cli_pkt->raw_data, recv_len, 0);
+	recv_ret = recv(cli_fd, recv_buf + recv_s, recv_len, 0);
 	if (unlikely(recv_ret < 0)) {
 		err = errno;
 		if (err == EAGAIN)
@@ -578,7 +816,22 @@ static void handle_recv_client(int cli_fd, uint16_t map_to,
 		goto out_close_conn;
 	}
 
+	recv_s += (size_t)recv_ret;
+
+	prl_notice(5, "recv(fd=%d) %ld bytes from " PRWIU " (recv_s = %zu)",
+		   cli_fd, recv_ret, W_IU(client), recv_s);
+
+	switch (process_client_buf(recv_s, client, state)) {
+	case RETURN_OK:
+		return;
+	case OUT_CONN_ERR:
+		goto out_err_c;
+	case OUT_CONN_CLOSE:
+		goto out_close_conn;
+	}
+
 	return;
+
 out_err_c:
 	client->recv_s = 0;
 
