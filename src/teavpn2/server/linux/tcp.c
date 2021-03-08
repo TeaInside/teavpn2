@@ -226,7 +226,7 @@ static int socket_setup(int fd, struct srv_cfg *cfg)
 	if (unlikely(rv < 0))
 		goto out_err;
 
-	y = 5000;
+	y = 30000;
 	rv = setsockopt(fd, SOL_SOCKET, SO_BUSY_POLL, pv, len);
 	if (unlikely(rv < 0))
 		goto out_err;
