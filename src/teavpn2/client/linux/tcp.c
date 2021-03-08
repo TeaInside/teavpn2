@@ -1,4 +1,5 @@
 
+#include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
 #include <pthread.h>
@@ -334,6 +335,37 @@ static int send_hello(struct cli_tcp_state *state)
 }
 
 
+static evt_srv_goto handle_server_pkt(tsrv_pkt *srv_pkt, uint16_t data_len,
+				      struct cli_tcp_state *state)
+{
+	(void)srv_pkt;
+	(void)data_len;
+	(void)state;
+
+	evt_srv_goto retval = RETURN_OK;
+
+	switch (srv_pkt->type) {
+	case TSRV_PKT_WELCOME:
+		goto out;
+	case TSRV_PKT_AUTH_OK:
+		goto out;
+	case TSRV_PKT_AUTH_REJECT:
+		goto out;
+	case TSRV_PKT_IFACE_DATA:
+		goto out;
+	case TSRV_PKT_REQSYNC:
+		goto out;
+	case TSRV_PKT_PING:
+		goto out;
+	case TSRV_PKT_CLOSE:
+		goto out;
+	}
+
+out:
+	return retval;
+}
+
+
 static evt_srv_goto process_server_buf(size_t recv_s,
 				       struct cli_tcp_state *state)
 {
@@ -378,7 +410,7 @@ again:
 		prl_notice(0, "Server sends invalid packet length "
 			      "(max_allowed_len = %zu; srv_pkt->length = %u; "
 			      "recv_s = %zu) CORRUPTED PACKET?", TSRV_PKT_MAX_L,
-			      fdata_len, recv_s);
+			      data_len, recv_s);
 
 		return state->is_auth ? OUT_CONN_ERR : OUT_CONN_CLOSE;
 	}
@@ -396,8 +428,7 @@ again:
 		goto out;
 	}
 
-	// retval = handle_client_pkt(cli_pkt, client, data_len, state);
-	retval = RETURN_OK;
+	retval = handle_server_pkt(srv_pkt, data_len, state);
 	if (unlikely(retval != RETURN_OK))
 		return retval;
 

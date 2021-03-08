@@ -1,4 +1,5 @@
 
+#include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
 #include <stdalign.h>
@@ -689,21 +690,47 @@ static evt_cli_goto handle_client_pkt(tcli_pkt *cli_pkt,
 	switch (cli_pkt->type) {
 	case TCLI_PKT_HELLO:
 		retval = handle_hello(client, state, data_len);
-		break;
+		goto out;
 	case TCLI_PKT_AUTH:
-		break;
+		goto out;
 	case TCLI_PKT_IFACA_ACK:
-		break;
+		goto out;
 	case TCLI_PKT_IFACE_DATA:
-		break;
+		goto out;
 	case TCLI_PKT_REQSYNC:
-		break;
+		goto out;
 	case TCLI_PKT_PING:
-		break;
+		goto out;
 	case TCLI_PKT_CLOSE:
-		break;
+		goto out;
 	}
 
+	/* default: */
+	/*
+	 * TODO: Change the state to CT_NOSYNC and
+	 *       create a recovery rountine.
+	 */
+
+	if ((NOTICE_MAX_LEVEL) >= 5) {
+		/*
+		 * Something is wrong!
+		 *
+		 * Let's debug this by hand by seeing the
+		 * hexdump result.
+		 */
+		VT_HEXDUMP(cli_pkt, sizeof(*cli_pkt));
+		panic("CORRUPTED PACKET!");
+	}
+
+	prl_notice(0, "Received invalid packet type from " PRWIU " (type: %d)",
+		   W_IU(client), cli_pkt->type);
+
+	if (likely(!client->is_auth))
+		return OUT_CONN_CLOSE;
+
+	return OUT_CONN_ERR;
+
+out:
 	return retval;
 }
 
@@ -737,6 +764,20 @@ process_again:
 	data_len  = ntohs(cli_pkt->length);
 	fdata_len = data_len + npad;
 	if (unlikely(data_len > TCLI_PKT_MAX_L)) {
+
+
+		if ((NOTICE_MAX_LEVEL) >= 5) {
+			/*
+			 * Something is wrong!
+			 *
+			 * Let's debug this by hand by seeing the
+			 * hexdump result.
+			 */
+			VT_HEXDUMP(cli_pkt, sizeof(*cli_pkt));
+			panic("CORRUPTED PACKET!");
+		}
+
+
 		/*
 		 * `data_len` must **never be greater** than TCLI_PKT_MAX_L.
 		 *
@@ -750,9 +791,9 @@ process_again:
 		 * - Bug on something we haven't yet known.
 		 */
 		prl_notice(0, "Client " PRWIU " sends invalid packet length "
-			      "(max_allowed_len = %zu; srv_pkt->length = %u; "
+			      "(max_allowed_len = %zu; cli_pkt->length = %u; "
 			      "recv_s = %zu) CORRUPTED PACKET?", W_IU(client),
-			      TCLI_PKT_MAX_L, fdata_len, recv_s);
+			      TCLI_PKT_MAX_L, data_len, recv_s);
 
 		/*
 		 * If the client has been authenticated, let's give them
