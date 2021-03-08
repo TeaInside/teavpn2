@@ -46,37 +46,19 @@ static void interrupt_handler(int sig)
 
 static int init_state(struct cli_tcp_state *state)
 {
-	(void)state;
+	state->pid        = -1;
+	state->tcpu       = set_cpu_init();
+	state->epm_fd     = -1;
+	state->ept_fd     = -1;
+	state->net_fd     = -1;
+	state->tun_fd     = -1;
+	state->pipe_fd[0] = -1;
+	state->pipe_fd[1] = -1;
+	state->stop       = false;
+	state->reconn     = true;
+	state->mutex_own  = false;
+	state->reconn_c   = 0;
 	return 0;
-	// int err;
-	// cpu_set_t affinity;
-
-	// state->stop = false;
-	// state->is_auth = false;
-	// state->net_fd = -1;
-	// state->tun_fd = -1;
-	// state->epl_fd = -1;
-	// state->send_c = 0;
-	// state->recv_c = 0;
-	// state->recv_s = 0;
-	// state->read_c = 0;
-	// state->write_c = 0;
-
-	// CPU_ZERO(&affinity);
-	// CPU_SET(0, &affinity);
-	// if (sched_setaffinity(0, sizeof(cpu_set_t), &affinity) < 0) {
-	// 	err = errno;
-	// 	pr_error("sched_setaffinity: " PRERR, PREAG(err));
-	// }
-
-	// errno = 0;
-	// if (nice(-20)) {
-	// 	err = errno;
-	// 	if (err != 0)
-	// 		pr_error("nice: " PRERR, PREAG(err));
-	// }
-
-	// return 0;
 }
 
 
