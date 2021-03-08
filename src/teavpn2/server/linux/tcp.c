@@ -10,7 +10,7 @@
 #include <teavpn2/net/tcp_pkt.h>
 
 
-#define MAX_ERR_C	(0x0u)
+#define MAX_ERR_C	(0xfu)
 #define EPT_MAP_SIZE	(0xffffu)
 #define EPT_MAP_NOP	(0xffffu)	/* Unused map (nop = no operation for index) */
 #define EPT_MAP_TO_TUN	(0x0u)
@@ -24,7 +24,7 @@
 #define W_IU(CL) W_IP(CL), W_UN(CL)
 #define PRWIU "%s:%d (%s)"
 
-// #define IPM_ADD		(0x1u)
+#define IPM_ADD		(0x1u)
 #define IPM_MAP_NOP	(0x0u)
 
 typedef enum _evt_cli_goto {
@@ -48,7 +48,7 @@ struct tcp_client {
 	uint16_t		src_port;	/* Source port                */
 	struct_pad(0, 4);
 	size_t			recv_s;		/* Active bytes in recv_buf   */
-	utcli_pkt		cli_pkt;
+	utcli_pkt		recv_buf;
 };
 
 
@@ -81,7 +81,7 @@ struct srv_tcp_state {
 	int			tun_fd;		/* TUN/TAP fd                 */
 	struct _cl_stk		cl_stk;		/* Stack for slot resolution  */
 	uint16_t		*epl_map;	/* Epoll map to client slot   */
-	uint16_t		(*ipm)[256];	/* IP address map             */
+	uint16_t		(*ipm)[256];	/* IP addr map to client slot */
 	struct tcp_client	*clients;	/* Client slot                */
 	struct srv_cfg		*cfg;		/* Config                     */
 	uint32_t		read_c;		/* Number of read()           */
@@ -645,7 +645,7 @@ static evt_cli_goto handle_hello(struct tcp_client *client,
 		return OUT_CONN_CLOSE;
 	}
 
-	cli_pkt = client->cli_pkt.__pkt_chk;
+	cli_pkt = client->recv_buf.__pkt_chk;
 	hlo_pkt = &cli_pkt->hello_pkt;
 
 	if (memcmp(&hlo_pkt->v, &cmp_ver, sizeof(cmp_ver)) != 0) {
@@ -683,6 +683,7 @@ static evt_cli_goto handle_client_pkt(tcli_pkt *cli_pkt,
 	(void)client;
 	(void)state;
 	(void)data_len;
+	(void)IPM_ADD;
 	evt_cli_goto retval = RETURN_OK;
 
 	switch (cli_pkt->type) {
@@ -716,15 +717,18 @@ static evt_cli_goto process_client_buf(size_t recv_s, struct tcp_client *client,
 	uint16_t cdata_len; /* Current received data length + plus pad */
 	evt_cli_goto retval;
 
-	tcli_pkt *cli_pkt = client->cli_pkt.__pkt_chk;
-	char *recv_buf = cli_pkt->raw_data;
+	tcli_pkt *cli_pkt = client->recv_buf.__pkt_chk;
+	char *recv_buf = client->recv_buf.raw_buf;
 
-again:
+process_again:
 	if (unlikely(recv_s < TCLI_PKT_MIN_L)) {
 		/*
-		 * We haven't received the type and length of packet.
-		 * It very unlikely happens, maybe connection is too
-		 * slow or the extra data after memmove (?)
+		 * We can't continue to process the packet at this point,
+		 * because we have not received the `type of packet` and
+		 * the `length of packet`.
+		 *
+		 * Kick out!
+		 * Let's wait for the next cycle.
 		 */
 		goto out;
 	}
@@ -734,15 +738,38 @@ again:
 	fdata_len = data_len + npad;
 	if (unlikely(data_len > TCLI_PKT_MAX_L)) {
 		/*
-		 * data_len must never be greater than CLI_PKT_DATA_L.
-		 * Is it corrupted packet?
+		 * `data_len` must **never be greater** than TCLI_PKT_MAX_L.
+		 *
+		 * If we reach this block, then it must be corrupted packet!
+		 *
+		 * BTW, there are several possibilities here:
+		 * - Client has been compromised to intentionally send broken
+		 *   packet (it's very unlikely, uh...).
+		 * - Packet has been corrupted when it was on the way (maybe
+		 *   ISP problem?).
+		 * - Bug on something we haven't yet known.
 		 */
 		prl_notice(0, "Client " PRWIU " sends invalid packet length "
 			      "(max_allowed_len = %zu; srv_pkt->length = %u; "
 			      "recv_s = %zu) CORRUPTED PACKET?", W_IU(client),
 			      TCLI_PKT_MAX_L, fdata_len, recv_s);
 
-		return client->is_auth ? OUT_CONN_ERR : OUT_CONN_CLOSE;
+		/*
+		 * If the client has been authenticated, let's give them
+		 * a chance for the next several cycles until `client->err_c`
+		 * reaches the max number of its allowed value.
+		 *
+		 * So we only **directly drop** unauthenticated client :)
+		 */
+		return (
+			client->is_auth ?
+
+			/* Add error counter */
+			OUT_CONN_ERR :
+
+			/* Drop the connection */
+			OUT_CONN_CLOSE
+		);
 	}
 
 
@@ -750,7 +777,7 @@ again:
 	cdata_len = (uint16_t)recv_s - (uint16_t)TCLI_PKT_MIN_L;
 	if (unlikely(cdata_len < fdata_len)) {
 		/*
-		 * We've received the type and length of packet.
+		 * **We really have received** the type and length of packet.
 		 *
 		 * However, the packet has not been fully received.
 		 * So let's wait for the next cycle to process it.
@@ -776,7 +803,7 @@ again:
 			      "recv_s: %zu; cur_valid_size: %zu)",
 			      W_IU(client), recv_s, recv_s, cur_valid_size);
 
-		goto again;
+		goto process_again;
 	}
 
 	recv_s = 0;
@@ -799,7 +826,7 @@ static void handle_recv_client(int cli_fd, uint16_t map_to,
 	client   = &state->clients[map_to];
 	recv_s   = client->recv_s;
 	recv_len = TCLI_PKT_RECV_L - recv_s;
-	recv_buf = client->cli_pkt.raw_buf;
+	recv_buf = client->recv_buf.raw_buf;
 
 	recv_ret = recv(cli_fd, recv_buf + recv_s, recv_len, 0);
 	if (unlikely(recv_ret < 0)) {

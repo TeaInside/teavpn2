@@ -5,14 +5,20 @@
 #include <stdalign.h>
 #include <sys/epoll.h>
 #include <netinet/tcp.h>
-#include <sys/sysinfo.h>
 #include <teavpn2/base.h>
 #include <teavpn2/net/iface.h>
 #include <teavpn2/client/tcp.h>
 #include <teavpn2/net/tcp_pkt.h>
 
-
+#define MAX_ERR_C	(0xfu)
 #define EPOLL_IN_EVT	(EPOLLIN | EPOLLPRI)
+
+
+typedef enum _evt_cli_goto {
+	RETURN_OK	= 0,
+	OUT_CONN_ERR	= 1,
+	OUT_CONN_CLOSE	= 2,
+} evt_srv_goto;
 
 
 struct cli_tcp_state {
@@ -20,16 +26,18 @@ struct cli_tcp_state {
 	int			epl_fd;		/* Epoll fd                   */
 	int			net_fd;		/* Main TCP socket fd         */
 	int			tun_fd;		/* TUN/TAP fd                 */
+	bool			is_auth;	/* Is authenticated?          */
 	bool			stop;		/* Stop the event loop?       */
 	bool			reconn;		/* Reconnect if conn dropped? */
 	uint8_t			reconn_c;	/* Reconnect count            */
-	struct_pad(0, 5);
+	uint8_t			err_c;		/* Error count                */
+	struct_pad(0, 3);
 	struct cli_cfg		*cfg;		/* Config                     */
 	uint32_t		send_c;		/* Number of send()           */
 	uint32_t		recv_c;		/* Number of recv()           */
 	size_t			recv_s;		/* Active bytes in recv_buf   */
-	tsrv_pkt		recv_buf;	/* Server packet from recv()  */
-	tcli_pkt		send_buf;	/* Client packet to send()    */
+	utsrv_pkt		recv_buf;	/* Server packet from recv()  */
+	utcli_pkt		send_buf;	/* Client packet to send()    */
 };
 
 
@@ -58,6 +66,7 @@ static int init_state(struct cli_tcp_state *state)
 	state->send_c   = 0;
 	state->recv_c   = 0;
 	state->recv_s   = 0;
+	state->is_auth  = false;
 
 	prl_notice(0, "My PID is %d", state->pid);
 
@@ -215,6 +224,19 @@ static int epoll_add(int epl_fd, int fd, uint32_t events)
 }
 
 
+static int epoll_delete(int epl_fd, int fd)
+{
+	int err;
+
+	if (unlikely(epoll_ctl(epl_fd, EPOLL_CTL_DEL, fd, NULL) < 0)) {
+		err = errno;
+		pr_error("epoll_ctl(EPOLL_CTL_DEL): " PRERF, PREAR(err));
+		return -1;
+	}
+	return 0;
+}
+
+
 static int init_epoll(struct cli_tcp_state *state)
 {
 	int err;
@@ -289,7 +311,7 @@ static int send_hello(struct cli_tcp_state *state)
 
 	prl_notice(2, "Sending hello packet to server...");
 
-	cli_pkt = &state->send_buf;
+	cli_pkt = state->send_buf.__pkt_chk;
 	hlo_pkt = &cli_pkt->hello_pkt;
 
 	/*
@@ -312,7 +334,98 @@ static int send_hello(struct cli_tcp_state *state)
 }
 
 
-static int handle_recv_server(int net_fd, struct cli_tcp_state *state)
+static evt_srv_goto process_server_buf(size_t recv_s,
+				       struct cli_tcp_state *state)
+{
+	uint16_t npad;
+	uint16_t data_len;
+	uint16_t fdata_len; /* Full data length                        */
+	uint16_t cdata_len; /* Current received data length + plus pad */
+	evt_srv_goto retval;
+
+	tsrv_pkt *srv_pkt = state->recv_buf.__pkt_chk;
+	char *recv_buf = srv_pkt->raw_data;
+
+again:
+	if (unlikely(recv_s < TSRV_PKT_MIN_L)) {
+		/*
+		 * We can't continue to process the packet at this point,
+		 * because we have not received the `type of packet` and
+		 * the `length of packet`.
+		 *
+		 * Kick out!
+		 * Let's wait for the next cycle.
+		 */
+		goto out;
+	}
+
+	npad      = srv_pkt->npad;
+	data_len  = ntohs(srv_pkt->length);
+	fdata_len = data_len + npad;
+	if (unlikely(data_len > TSRV_PKT_MAX_L)) {
+		/*
+		 * `data_len` must **never be greater** than TSRV_PKT_MAX_L.
+		 *
+		 * If we reach this block, then it must be corrupted packet!
+		 *
+		 * BTW, there are several possibilities here:
+		 * - Server has been compromised to intentionally send broken
+		 *   packet (it's very unlikely, uh...).
+		 * - Packet has been corrupted when it was on the way (maybe
+		 *   ISP problem?).
+		 * - Bug on something we haven't yet known.
+		 */
+		prl_notice(0, "Server sends invalid packet length "
+			      "(max_allowed_len = %zu; srv_pkt->length = %u; "
+			      "recv_s = %zu) CORRUPTED PACKET?", TSRV_PKT_MAX_L,
+			      fdata_len, recv_s);
+
+		return state->is_auth ? OUT_CONN_ERR : OUT_CONN_CLOSE;
+	}
+
+
+	/* Calculate current received data length */
+	cdata_len = (uint16_t)recv_s - (uint16_t)TSRV_PKT_MIN_L;
+	if (unlikely(cdata_len < fdata_len)) {
+		/*
+		 * **We really have received** the type and length of packet.
+		 *
+		 * However, the packet has not been fully received.
+		 * So let's wait for the next cycle to process it.
+		 */
+		goto out;
+	}
+
+	// retval = handle_client_pkt(cli_pkt, client, data_len, state);
+	retval = RETURN_OK;
+	if (unlikely(retval != RETURN_OK))
+		return retval;
+
+	if (likely(cdata_len > fdata_len)) {
+		/*
+		 * We have extra packet on the tail, must memmove to
+		 * the head before we run out of buffer.
+		 */
+		size_t cur_valid_size = TCLI_PKT_MIN_L + fdata_len;
+		recv_s -= cur_valid_size;
+
+		memmove(recv_buf, recv_buf + cur_valid_size, recv_s);
+
+		prl_notice(5, "memmove (copy_size: %zu; recv_s: %zu; "
+			      "cur_valid_size: %zu)", recv_s, recv_s,
+			      cur_valid_size);
+
+		goto again;
+	}
+
+	recv_s = 0;
+out:
+	state->recv_s = recv_s;
+	return RETURN_OK;
+}
+
+
+static void handle_recv_server(int net_fd, struct cli_tcp_state *state)
 {
 	int err;
 	size_t recv_s;
@@ -322,10 +435,49 @@ static int handle_recv_server(int net_fd, struct cli_tcp_state *state)
 
 	recv_s   = state->recv_s;
 	recv_len = TCLI_PKT_RECV_L - recv_s;
-	recv_buf = state->srv_pkt.raw_buf;
+	recv_buf = state->recv_buf.raw_buf;
+	recv_ret = recv(net_fd, recv_buf + recv_s, recv_len, 0);
+	if (unlikely(recv_ret < 0)) {
+		err = errno;
+		if (err == EAGAIN)
+			return;
+		pr_err("recv(fd=%d): " PRERF, net_fd, PREAR(err));
+		goto out_err_c;
+	}
 
+	if (unlikely(recv_ret == 0)) {
+		prl_notice(0, "Server has closed its connection");
+		goto out_close_conn;
+	}
 
-	return 0;
+	recv_s += (size_t)recv_ret;
+
+	prl_notice(5, "recv(fd=%d) %ld bytes from server (recv_s = %zu)",
+		   net_fd, recv_ret, recv_s);
+
+	switch (process_server_buf(recv_s, state)) {
+	case RETURN_OK:
+		return;
+	case OUT_CONN_ERR:
+		goto out_err_c;
+	case OUT_CONN_CLOSE:
+		goto out_close_conn;
+	}
+
+	return;
+
+out_err_c:
+	state->recv_s = 0;
+
+	if (state->err_c++ < MAX_ERR_C)
+		return;
+
+	prl_notice(0, "Reached the max number of error, closing...");
+
+out_close_conn:
+	epoll_delete(state->epl_fd, net_fd);
+	state->stop = true;
+	prl_notice(0, "Stopping event loop...");
 }
 
 
@@ -341,7 +493,7 @@ static int handle_event(struct cli_tcp_state *state, struct epoll_event *event)
 	is_err  = ((revents & errev) != 0);
 
 	if (fd == state->net_fd) {
-		return handle_recv_server(fd, state);
+		handle_recv_server(fd, state);
 	} else
 	if (fd == state->tun_fd) {
 		
