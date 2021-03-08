@@ -14,6 +14,7 @@ include $(BASE_DIR)/src/teavpn2/lib/Makefile
 include $(BASE_DIR)/src/teavpn2/net/Makefile
 
 OBJ_TMP_CC	:= \
+	$(BASE_DIR)/src/teavpn2/cpu.o \
 	$(BASE_DIR)/src/teavpn2/license.o \
 	$(BASE_DIR)/src/teavpn2/main.o \
 	$(BASE_DIR)/src/teavpn2/print.o

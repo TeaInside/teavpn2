@@ -78,6 +78,7 @@ typedef enum {
 
 int print_license(unsigned short i);
 void teavpn_print_version(void);
+int set_cpu_init(void);
 
 #define TEAVPN2_VERSION VERSION "." PATCHLEVEL "." SUBLEVEL EXTRAVERSION
 
