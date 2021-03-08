@@ -48,6 +48,9 @@ typedef struct _tcli_pkt {
 } tcli_pkt;
 
 
+#define CLI_PKT_MIN_L (offsetof(tcli_pkt, raw_data[0]))
+
+
 static_assert(sizeof(tcli_pkt_type) == 1, "Bad sizeof(tcli_pkt_type)");
 
 static_assert(sizeof(struct tcli_hello_pkt) == sizeof(version_t),

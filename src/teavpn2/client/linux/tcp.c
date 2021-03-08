@@ -25,6 +25,11 @@ struct cli_tcp_state {
 	uint8_t			reconn_c;	/* Reconnect count            */
 	struct_pad(0, 5);
 	struct cli_cfg		*cfg;		/* Config                     */
+	uint32_t		send_c;		/* Number of send()           */
+	uint32_t		recv_c;		/* Number of recv()           */
+	size_t			recv_s;		/* Active bytes in recv_buf   */
+	tsrv_pkt		recv_buf;	/* Server packet from recv()  */
+	tcli_pkt		send_buf;	/* Client packet to send()    */
 };
 
 
@@ -50,6 +55,9 @@ static int init_state(struct cli_tcp_state *state)
 	state->stop     = false;
 	state->reconn   = true;
 	state->reconn_c = 0;
+	state->send_c   = 0;
+	state->recv_c   = 0;
+	state->recv_s   = 0;
 
 	prl_notice(0, "My PID is %d", state->pid);
 
@@ -241,6 +249,68 @@ out_err:
 }
 
 
+static ssize_t send_to_server(struct cli_tcp_state *state, tcli_pkt *cli_pkt,
+			      size_t len)
+{
+	int err;
+	int net_fd = state->net_fd;
+	ssize_t send_ret;
+
+	state->send_c++;
+
+	send_ret = send(net_fd, cli_pkt, len, 0);
+	if (unlikely(send_ret < 0)) {
+		err = errno;
+		if (err == EAGAIN) {
+			/*
+			 * TODO: Handle pending buffer
+			 *
+			 * For now, let it fallthrough to error.
+			 */
+		}
+
+		pr_err("send(fd=%d)" PRERF, net_fd, PREAR(err));
+		return -1;
+	}
+
+	prl_notice(5, "[%10" PRIu32 "] send(fd=%d) %ld bytes to server",
+		   state->send_c, net_fd, send_ret);
+
+	return send_ret;
+}
+
+
+static int send_hello(struct cli_tcp_state *state)
+{
+	size_t send_len;
+	uint16_t data_len;
+	tcli_pkt *cli_pkt;
+	struct tcli_hello_pkt *hlo_pkt;
+
+	prl_notice(2, "Sending hello packet to server...");
+
+	cli_pkt = &state->send_buf;
+	hlo_pkt = &cli_pkt->hello_pkt;
+
+	/*
+	 * Tell the server what my version is.
+	 */
+	hlo_pkt->v.ver       = VERSION;
+	hlo_pkt->v.patch_lvl = PATCHLEVEL;
+	hlo_pkt->v.sub_lvl   = SUBLEVEL;
+	strncpy(hlo_pkt->v.extra, EXTRAVERSION, sizeof(hlo_pkt->v.extra) - 1);
+	hlo_pkt->v.extra[sizeof(hlo_pkt->v.extra) - 1] = '\0';
+
+	data_len        = sizeof(struct tcli_hello_pkt);
+	cli_pkt->type   = TCLI_PKT_HELLO;
+	cli_pkt->npad   = 0;
+	cli_pkt->length = htons(data_len);
+	send_len        = CLI_PKT_MIN_L + data_len;
+
+	return (send_to_server(state, cli_pkt, send_len) > 0) ? 0 : -1;
+}
+
+
 static void destroy_state(struct cli_tcp_state *state)
 {
 	int epl_fd = state->epl_fd;
@@ -290,6 +360,9 @@ int teavpn_client_tcp_handler(struct cli_cfg *cfg)
 	if (unlikely(retval < 0))
 		goto out;
 	retval = init_epoll(&state);
+	if (unlikely(retval < 0))
+		goto out;
+	retval = send_hello(&state);
 	if (unlikely(retval < 0))
 		goto out;
 out:

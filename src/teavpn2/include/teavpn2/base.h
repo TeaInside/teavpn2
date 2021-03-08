@@ -80,7 +80,16 @@ int print_license(unsigned short i);
 void teavpn_print_version(void);
 int set_cpu_init(void);
 
-#define TEAVPN2_VERSION VERSION "." PATCHLEVEL "." SUBLEVEL EXTRAVERSION
+#define STR(a) #a
+#define XSTR(a) STR(a)
+
+#define TEAVPN2_VERSION \
+	XSTR(VERSION) \
+	"." \
+	XSTR(PATCHLEVEL) \
+	"." \
+	XSTR(SUBLEVEL) \
+	EXTRAVERSION
 
 
 static_assert(sizeof(char) == 1, "Bad sizeof(char)");
