@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include <stdalign.h>
 #include <sys/epoll.h>
+#include <arpa/inet.h>
 #include <netinet/tcp.h>
 #include <teavpn2/base.h>
 #include <teavpn2/net/iface.h>

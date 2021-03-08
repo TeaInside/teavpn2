@@ -4,6 +4,7 @@
 #include <signal.h>
 #include <stdalign.h>
 #include <sys/epoll.h>
+#include <arpa/inet.h>
 #include <netinet/tcp.h>
 #include <teavpn2/base.h>
 #include <teavpn2/net/iface.h>
@@ -639,7 +640,7 @@ static evt_cli_goto handle_hello(struct tcp_client *client,
 		return RETURN_OK;
 
 	/* Wrong data length */
-	if (data_len != sizeof(cmp_ver)) {
+	if (unlikely(data_len != sizeof(cmp_ver))) {
 		prl_notice(0, "Client " PRWIU " sends invalid hello data "
 			   "length (expected: %zu; got: %u)", W_IU(client),
 			   sizeof(cmp_ver), data_len);
@@ -649,7 +650,7 @@ static evt_cli_goto handle_hello(struct tcp_client *client,
 	cli_pkt = client->recv_buf.__pkt_chk;
 	hlo_pkt = &cli_pkt->hello_pkt;
 
-	if (memcmp(&hlo_pkt->v, &cmp_ver, sizeof(cmp_ver)) != 0) {
+	if (unlikely(memcmp(&hlo_pkt->v, &cmp_ver, sizeof(cmp_ver)) != 0)) {
 
 		/* For safe print, in case client sends non null-terminated */
 		hlo_pkt->v.extra[sizeof(hlo_pkt->v.extra) - 1] = '\0';
