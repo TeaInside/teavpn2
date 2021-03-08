@@ -33,15 +33,16 @@ int tun_alloc(const char *dev, short flags)
 		return -EINVAL;
 	}
 
-	fd = open(dtf, O_RDWR);
+	fd = open(dtf, O_RDWR | O_NONBLOCK);
 	if (unlikely(fd < 0)) {
 		err = errno;
 		pr_err("open(\"%s\", O_RDWR): " PRERF, dtf, PREAR(err));
+
 		if ((!retried) && (err == ENOENT)) {
 			dtf = "/dev/tun";
 			retried = !retried;
 			prl_notice(0, "Set fallback to /dev/tun");
-			return tun_alloc(dtf, flags);
+			return tun_alloc(dev, flags);
 		}
 
 		return -err;
