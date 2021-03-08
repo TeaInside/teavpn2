@@ -7,8 +7,10 @@
 #include <teavpn2/base.h>
 #include <teavpn2/net/iface.h>
 #include <teavpn2/server/tcp.h>
+#include <teavpn2/net/tcp_pkt.h>
 
 
+#define MAX_ERR_C	(0x0u)
 #define EPT_MAP_SIZE	(0xffffu)
 #define EPT_MAP_NOP	(0xffffu)	/* Unused map (nop = no operation for index) */
 #define EPT_MAP_TO_TUN	(0x0u)
@@ -34,6 +36,9 @@ struct tcp_client {
 	uint8_t			err_c;		/* Error counter              */
 	char			src_ip[IPV4_L];	/* Source IP                  */
 	uint16_t		src_port;	/* Source port                */
+	struct_pad(0, 4);
+	size_t			recv_s;		/* Active bytes in recv_buf   */
+	utcli_pkt		cli_pkt;
 };
 
 
@@ -48,18 +53,32 @@ struct _cl_stk {
 };
 
 
+struct _bc_arr {
+	/*
+	 * Broadcast array
+	 */
+	uint16_t		n;
+	struct_pad(0, 6);
+	/* Contains indexes map to client slots */
+	uint16_t		*arr;
+};
+
+
 struct srv_tcp_state {
 	pid_t			pid;		/* Main process PID           */
 	int			epl_fd;		/* Epoll fd                   */
 	int			net_fd;		/* Main TCP socket fd         */
 	int			tun_fd;		/* TUN/TAP fd                 */
-	bool			stop;		/* Stop the event loop?       */
-	struct_pad(0, 7);
 	struct _cl_stk		cl_stk;		/* Stack for slot resolution  */
 	uint16_t		*epl_map;	/* Epoll map to client slot   */
 	struct tcp_client	*(*ipm)[256];	/* IP address map             */
 	struct tcp_client	*clients;	/* Client slot                */
 	struct srv_cfg		*cfg;		/* Config                     */
+	uint32_t		read_c;		/* Number of read()           */
+	tsrv_pkt		send_buf;	/* Server packet to send()    */
+	bool			stop;		/* Stop the event loop?       */
+	struct_pad(0, 7);
+	struct _bc_arr		br_arr;		/* Broadcast array            */
 };
 
 
@@ -80,7 +99,7 @@ static int32_t push_cl(struct _cl_stk *cl_stk, uint16_t val)
 {
 	uint16_t sp = cl_stk->sp;
 
-	assert(sp > 0);
+	TASSERT(sp > 0);
 	cl_stk->arr[--sp] = val;
 	cl_stk->sp = sp;
 	return (int32_t)val;
@@ -94,7 +113,7 @@ static int32_t pop_cl(struct _cl_stk *cl_stk)
 	uint16_t max_sp = cl_stk->max_sp;
 
 	/* sp must never be higher than max_sp */
-	assert(sp <= max_sp);
+	TASSERT(sp <= max_sp);
 
 	if (unlikely(sp == max_sp)) {
 		/* There is nothing on the stack */
@@ -119,6 +138,7 @@ static void tcp_client_init(struct tcp_client *client, uint16_t sidx)
 	client->is_auth  = false;
 	client->is_conn  = false;
 	client->err_c    = 0;
+	client->recv_s   = 0;
 }
 
 
@@ -350,6 +370,19 @@ static int epoll_add(int epl_fd, int fd, uint32_t events)
 }
 
 
+static int epoll_delete(int epl_fd, int fd)
+{
+	int err;
+
+	if (unlikely(epoll_ctl(epl_fd, EPOLL_CTL_DEL, fd, NULL) < 0)) {
+		err = errno;
+		pr_error("epoll_ctl(EPOLL_CTL_DEL): " PRERF, PREAR(err));
+		return -1;
+	}
+	return 0;
+}
+
+
 static int init_epoll(struct srv_tcp_state *state)
 {
 	int err;
@@ -386,20 +419,38 @@ out_err:
 }
 
 
-static void handle_iface_read(int tun_fd, struct srv_tcp_state *state)
+static ssize_t handle_iface_read(int tun_fd, struct srv_tcp_state *state)
 {
-	(void)tun_fd;
-	(void)state;
+	int err;
+	ssize_t read_ret;
+	tsrv_pkt *srv_pkt = &state->send_buf;
+
+	state->read_c++;
+
+	read_ret = read(tun_fd, srv_pkt->raw_data, 4096);
+	if (unlikely(read_ret < 0)) {
+		err = errno;
+		if (err == EAGAIN)
+			return 0;
+
+		pr_err("read(fd=%d /* tun_fd */)" PRERF, tun_fd, PREAR(err));
+		return -1;
+	}
+
+	prl_notice(5, "[%10" PRIu32 "] read(fd=%d) %ld bytes from tun_fd",
+		   state->read_c, tun_fd, read_ret);
+
+	/*
+	 * TODO: Broadcast the packet to corresponding client(s)
+	 */
+
+	return read_ret;
 }
 
 
 static bool resolve_new_conn(int cli_fd, struct sockaddr_in *addr,
 			     struct srv_tcp_state *state)
 {
-	(void)cli_fd;
-	(void)addr;
-	(void)state;
-
 	int err;
 	uint16_t idx;
 	uint16_t sport;
@@ -437,8 +488,8 @@ static bool resolve_new_conn(int cli_fd, struct sockaddr_in *addr,
 	idx = (uint16_t)ret_idx;
 	err = epoll_add(state->epl_fd, cli_fd, EPOLL_IN_EVT);
 	if (unlikely(err < 0)) {
-		pr_error("Cannot accept new connection from %s:%u because of "
-			 "error on epoll_add()", sip, sport);
+		pr_err("Cannot accept new connection from %s:%u because of "
+		       "error on epoll_add()", sip, sport);
 		return false;
 	}
 
@@ -446,7 +497,7 @@ static bool resolve_new_conn(int cli_fd, struct sockaddr_in *addr,
 	/*
 	 * state->epl_map[cli_fd] must not be in use
 	 */
-	assert(state->epl_map[cli_fd] == EPT_MAP_NOP);
+	TASSERT(state->epl_map[cli_fd] == EPT_MAP_NOP);
 
 
 	/*
@@ -465,7 +516,7 @@ static bool resolve_new_conn(int cli_fd, struct sockaddr_in *addr,
 	strncpy(client->src_ip, sip, IPV4_L - 1);
 	client->src_ip[IPV4_L - 1] = '\0';
 
-	assert(client->sidx == idx);
+	TASSERT(client->sidx == idx);
 
 	prl_notice(0, "New connection from " PRWIU " (fd:%d)", W_IU(client),
 		   cli_fd);
@@ -497,6 +548,61 @@ static void accept_new_conn(int net_fd, struct srv_tcp_state *state)
 }
 
 
+static void handle_recv_client(int cli_fd, uint16_t map_to,
+			       struct srv_tcp_state *state)
+{
+	int err;
+	size_t recv_s;
+	size_t recv_len;
+	ssize_t recv_ret;
+	tcli_pkt *cli_pkt;
+	struct tcp_client *client;
+
+	client   = &state->clients[map_to];
+	recv_s   = client->recv_s;
+	cli_pkt  = client->cli_pkt.__pkt_chk;
+	recv_len = CLI_PKT_RECV_L - recv_s;
+
+	recv_ret = recv(cli_fd, cli_pkt->raw_data, recv_len, 0);
+	if (unlikely(recv_ret < 0)) {
+		err = errno;
+		if (err == EAGAIN)
+			return;
+		pr_err("recv(fd=%d): " PRERF " " PRWIU, cli_fd, PREAR(err),
+		       W_IU(client));
+		goto out_err_c;
+	}
+
+	if (unlikely(recv_ret == 0)) {
+		prl_notice(0, PRWIU " has closed its connection", W_IU(client));
+		goto out_close_conn;
+	}
+
+	return;
+out_err_c:
+	client->recv_s = 0;
+
+	if (client->err_c++ < MAX_ERR_C)
+		return;
+
+	prl_notice(0, "Connection " PRWIU " reached the max number of error",
+		   W_IU(client));
+
+out_close_conn:
+	epoll_delete(state->epl_fd, cli_fd);
+	close(cli_fd);
+
+	/* Restore the slot into the stack */
+	push_cl(&state->cl_stk, client->sidx);
+
+	/* Reset client state */
+	tcp_client_init(client, client->sidx);
+
+	state->epl_map[cli_fd] = EPT_MAP_NOP;
+	prl_notice(0, "Closing connection fd from " PRWIU, W_IU(client));
+}
+
+
 static int handle_event(struct srv_tcp_state *state, struct epoll_event *event)
 {
 	int fd;
@@ -505,6 +611,8 @@ static int handle_event(struct srv_tcp_state *state, struct epoll_event *event)
 	uint32_t revents;
 	uint16_t *epl_map = state->epl_map;
 	const uint32_t errev = EPOLLERR | EPOLLHUP;
+	const uint32_t inev  = EPOLL_IN_EVT;
+	const uint32_t outev = EPOLLOUT;
 
 	fd      = event->data.fd;
 	revents = event->events;
@@ -517,7 +625,8 @@ static int handle_event(struct srv_tcp_state *state, struct epoll_event *event)
 			pr_err("tun_fd wait error");
 			return -1;
 		}
-		handle_iface_read(fd, state);
+		if (unlikely(handle_iface_read(fd, state) < 0))
+			return -1;
 		break;
 	case EPT_MAP_TO_NET:
 		if (unlikely(is_err)) {
@@ -528,6 +637,12 @@ static int handle_event(struct srv_tcp_state *state, struct epoll_event *event)
 		break;
 	default:
 		map_to -= EPT_MAP_ADD;
+		if (likely((revents & inev) != 0))
+			handle_recv_client(fd, map_to, state);
+
+		if (unlikely((revents & outev) != 0)) {
+			/* TODO: Handle send() */
+		}
 		break;
 	}
 
