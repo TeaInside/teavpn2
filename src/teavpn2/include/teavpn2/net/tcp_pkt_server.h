@@ -50,16 +50,16 @@ typedef struct _tsrv_pkt {
 
 #define UTSRV_MUL 4
 
-typedef union _utsrv_pkt {
+typedef union _utsrv_pkt_t {
 	tsrv_pkt		srv_pkt;
 	tsrv_pkt		__pkt_chk[UTSRV_MUL];
 	char			raw_buf[sizeof(tsrv_pkt) * UTSRV_MUL];
-} utsrv_pkt;
+} utsrv_pkt_t;
 
 
 #define TSRV_PKT_MIN_L	(offsetof(tsrv_pkt, raw_data[0]))
 #define TSRV_PKT_MAX_L	(offsetof(tsrv_pkt, __end))
-#define TSRV_PKT_RECV_L	(offsetof(utsrv_pkt, __pkt_chk[UTSRV_MUL - 1]))
+#define TSRV_PKT_RECV_L	(offsetof(utsrv_pkt_t, __pkt_chk[UTSRV_MUL - 1]))
 
 static_assert(sizeof(tsrv_pkt_type) == 1, "Bad sizeof(tsrv_pkt_type)");
 

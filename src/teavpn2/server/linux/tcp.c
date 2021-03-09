@@ -14,7 +14,7 @@
 
 #define MAX_ERR_C	(0xfu)
 #define EPT_MAP_SIZE	(0xffffu)
-#define EPT_MAP_NOP	(0xffffu)	/* Unused map (nop = no operation for index) */
+#define EPT_MAP_NOP	(0xffffu)	/* Unused map */
 #define EPT_MAP_TO_TUN	(0x0u)
 #define EPT_MAP_TO_NET	(0x1u)
 #define EPT_MAP_ADD	(0x2u)
@@ -29,11 +29,11 @@
 #define IPM_ADD		(0x1u)
 #define IPM_MAP_NOP	(0x0u)
 
-typedef enum _evt_cli_goto {
+typedef enum _evt_cli_goto_t {
 	RETURN_OK	= 0,
 	OUT_CONN_ERR	= 1,
 	OUT_CONN_CLOSE	= 2,
-} evt_cli_goto;
+} evt_cli_goto_t;
 
 
 struct tcp_client {
@@ -50,7 +50,7 @@ struct tcp_client {
 	uint16_t		src_port;	/* Source port                */
 	struct_pad(0, 4);
 	size_t			recv_s;		/* Active bytes in recv_buf   */
-	utcli_pkt		recv_buf;
+	utcli_pkt_t		recv_buf;
 };
 
 
@@ -87,7 +87,7 @@ struct srv_tcp_state {
 	struct tcp_client	*clients;	/* Client slot                */
 	struct srv_cfg		*cfg;		/* Config                     */
 	uint32_t		read_c;		/* Number of read()           */
-	utsrv_pkt		send_buf;	/* Server packet to send()    */
+	utsrv_pkt_t		send_buf;	/* Server packet to send()    */
 	bool			stop;		/* Stop the event loop?       */
 	struct_pad(0, 3);
 	struct _bc_arr		br_arr;		/* Broadcast array            */
@@ -232,36 +232,55 @@ static int socket_setup(int fd, struct srv_cfg *cfg)
 	int y;
 	socklen_t len = sizeof(y);
 	const void *pv = (const void *)&y;
+	const char *lv, *on;
 
 	y = 1;
 	rv = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, pv, len);
-	if (unlikely(rv < 0))
+	if (unlikely(rv < 0)) {
+		lv = "SOL_SOCKET";
+		on = "SO_REUSEADDR";
 		goto out_err;
+	}
 
 	y = 1;
 	rv = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, pv, len);
-	if (unlikely(rv < 0))
+	if (unlikely(rv < 0)) {
+		lv = "IPPROTO_TCP";
+		on = "TCP_NODELAY";
 		goto out_err;
+	}
 
 	y = 1;
 	rv = setsockopt(fd, SOL_SOCKET, SO_INCOMING_CPU, pv, len);
-	if (unlikely(rv < 0))
+	if (unlikely(rv < 0)) {
+		lv = "SOL_SOCKET";
+		on = "SO_INCOMING_CPU";
 		goto out_err;
+	}
 
 	y = 1024 * 1024 * 2;
 	rv = setsockopt(fd, SOL_SOCKET, SO_RCVBUFFORCE, pv, len);
-	if (unlikely(rv < 0))
+	if (unlikely(rv < 0)) {
+		lv = "SOL_SOCKET";
+		on = "SO_RCVBUFFORCE";
 		goto out_err;
+	}
 
 	y = 1024 * 1024 * 2;
 	rv = setsockopt(fd, SOL_SOCKET, SO_SNDBUFFORCE, pv, len);
-	if (unlikely(rv < 0))
+	if (unlikely(rv < 0)) {
+		lv = "SOL_SOCKET";
+		on = "SO_SNDBUFFORCE";
 		goto out_err;
+	}
 
 	y = 30000;
 	rv = setsockopt(fd, SOL_SOCKET, SO_BUSY_POLL, pv, len);
-	if (unlikely(rv < 0))
+	if (unlikely(rv < 0)) {
+		lv = "SOL_SOCKET";
+		on = "SO_BUSY_POLL";
 		goto out_err;
+	}
 
 	/*
 	 * TODO: Utilize `cfg` to set some socket options from config
@@ -270,7 +289,7 @@ static int socket_setup(int fd, struct srv_cfg *cfg)
 	return rv;
 out_err:
 	err = errno;
-	pr_err("setsockopt(): " PRERF, PREAR(err));
+	pr_err("setsockopt(%s, %s): " PRERF, lv, on, PREAR(err));
 	return rv;
 }
 
@@ -621,11 +640,11 @@ static bool send_welcome(struct tcp_client *client, struct srv_tcp_state *state)
 }
 
 
-static evt_cli_goto handle_hello(struct tcp_client *client,
-				 struct srv_tcp_state *state,
-				 uint16_t data_len)
+static evt_cli_goto_t handle_hello(struct tcp_client *client,
+				   struct srv_tcp_state *state,
+				   uint16_t data_len)
 {
-	tcli_pkt *cli_pkt;
+	tcli_pkt_t *cli_pkt;
 	struct tcli_hello_pkt *hlo_pkt;
 	version_t cmp_ver = {
 		.ver       = VERSION,
@@ -677,16 +696,16 @@ static evt_cli_goto handle_hello(struct tcp_client *client,
 }
 
 
-static evt_cli_goto handle_client_pkt(tcli_pkt *cli_pkt,
-				      struct tcp_client *client,
-				      uint16_t data_len,
-				      struct srv_tcp_state *state)
+static evt_cli_goto_t handle_client_pkt(tcli_pkt_t *cli_pkt,
+				        struct tcp_client *client,
+				        uint16_t data_len,
+				        struct srv_tcp_state *state)
 {
 	(void)client;
 	(void)state;
 	(void)data_len;
 	(void)IPM_ADD;
-	evt_cli_goto retval = RETURN_OK;
+	evt_cli_goto_t retval = RETURN_OK;
 
 	switch (cli_pkt->type) {
 	case TCLI_PKT_HELLO:
@@ -741,16 +760,17 @@ out:
 }
 
 
-static evt_cli_goto process_client_buf(size_t recv_s, struct tcp_client *client,
-				       struct srv_tcp_state *state)
+static evt_cli_goto_t process_client_buf(size_t recv_s,
+					 struct tcp_client *client,
+				         struct srv_tcp_state *state)
 {
 	uint16_t npad;
 	uint16_t data_len;
 	uint16_t fdata_len; /* Full data length                        */
 	uint16_t cdata_len; /* Current received data length + plus pad */
-	evt_cli_goto retval;
+	evt_cli_goto_t retval;
 
-	tcli_pkt *cli_pkt = client->recv_buf.__pkt_chk;
+	tcli_pkt_t *cli_pkt = client->recv_buf.__pkt_chk;
 	char *recv_buf = client->recv_buf.raw_buf;
 
 process_again:
@@ -1007,7 +1027,7 @@ static int event_loop(struct srv_tcp_state *state)
 			}
 
 			retval = -err;
-			pr_error("epoll_wait(): " PRERF, PREAR(err));
+			pr_err("epoll_wait(): " PRERF, PREAR(err));
 			break;
 		}
 

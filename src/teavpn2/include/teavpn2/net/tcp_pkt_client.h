@@ -36,7 +36,7 @@ struct tcli_auth_pkt {
 };
 
 
-typedef struct _tcli_pkt {
+typedef struct _tcli_pkt_t {
 	tcli_pkt_type		type;	/* Packet type    */
 	uint8_t			npad;	/* Padding length */
 	uint16_t		length;	/* Data length    */
@@ -50,20 +50,20 @@ typedef struct _tcli_pkt {
 			char		__end;
 		};
 	};
-} tcli_pkt;
+} tcli_pkt_t;
 
 #define UTCLI_MUL 4
 
-typedef union _utcli_pkt {
-	tcli_pkt		cli_pkt;
-	tcli_pkt		__pkt_chk[UTCLI_MUL];
-	char			raw_buf[sizeof(tcli_pkt) * UTCLI_MUL];
-} utcli_pkt;
+typedef union _utcli_pkt_t {
+	tcli_pkt_t		cli_pkt;
+	tcli_pkt_t		__pkt_chk[UTCLI_MUL];
+	char			raw_buf[sizeof(tcli_pkt_t) * UTCLI_MUL];
+} utcli_pkt_t;
 
 
-#define TCLI_PKT_MIN_L	(offsetof(tcli_pkt, raw_data[0]))
-#define TCLI_PKT_MAX_L	(offsetof(tcli_pkt, __end))
-#define TCLI_PKT_RECV_L	(offsetof(utcli_pkt, __pkt_chk[UTCLI_MUL - 1]))
+#define TCLI_PKT_MIN_L	(offsetof(tcli_pkt_t, raw_data[0]))
+#define TCLI_PKT_MAX_L	(offsetof(tcli_pkt_t, __end))
+#define TCLI_PKT_RECV_L	(offsetof(utcli_pkt_t, __pkt_chk[UTCLI_MUL - 1]))
 
 static_assert(sizeof(tcli_pkt_type) == 1, "Bad sizeof(tcli_pkt_type)");
 

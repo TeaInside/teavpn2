@@ -15,8 +15,8 @@ SERVER_DEFAULT_CFG_FILE = config/server.ini
 CLIENT_DEFAULT_CFG_FILE = config/client.ini
 
 TARGET_BIN = teavpn2
-CC	:= cc
-CXX	:= c++
+CC	:= clang
+CXX	:= clang++
 LD	:= $(CXX)
 VG	:= valgrind
 

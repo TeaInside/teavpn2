@@ -20,7 +20,7 @@ typedef enum _evt_cli_goto {
 	RETURN_OK	= 0,
 	OUT_CONN_ERR	= 1,
 	OUT_CONN_CLOSE	= 2,
-} evt_srv_goto;
+} evt_srv_goto_t;
 
 
 struct cli_tcp_state {
@@ -38,8 +38,8 @@ struct cli_tcp_state {
 	uint32_t		send_c;		/* Number of send()           */
 	uint32_t		recv_c;		/* Number of recv()           */
 	size_t			recv_s;		/* Active bytes in recv_buf   */
-	utsrv_pkt		recv_buf;	/* Server packet from recv()  */
-	utcli_pkt		send_buf;	/* Client packet to send()    */
+	utsrv_pkt_t		recv_buf;	/* Server packet from recv()  */
+	utcli_pkt_t		send_buf;	/* Client packet to send()    */
 };
 
 
@@ -273,7 +273,7 @@ out_err:
 }
 
 
-static ssize_t send_to_server(struct cli_tcp_state *state, tcli_pkt *cli_pkt,
+static ssize_t send_to_server(struct cli_tcp_state *state, tcli_pkt_t *cli_pkt,
 			      size_t len)
 {
 	int err;
@@ -308,7 +308,7 @@ static int send_hello(struct cli_tcp_state *state)
 {
 	size_t send_len;
 	uint16_t data_len;
-	tcli_pkt *cli_pkt;
+	tcli_pkt_t *cli_pkt;
 	struct tcli_hello_pkt *hlo_pkt;
 
 	prl_notice(2, "Sending hello packet to server...");
@@ -336,26 +336,58 @@ static int send_hello(struct cli_tcp_state *state)
 }
 
 
-static evt_srv_goto handle_welcome(struct cli_tcp_state *state)
+static ssize_t send_auth(struct cli_tcp_state *state)
 {
-	(void)state;
-	return RETURN_OK;
+	size_t send_len;
+	uint16_t data_len;
+	tcli_pkt_t *cli_pkt;
+	struct tcli_auth_pkt *auth_pkt;
+	struct cli_auth_cfg *auc = &state->cfg->auth;
+
+	cli_pkt  = state->send_buf.__pkt_chk;
+	auth_pkt = &cli_pkt->auth_pkt;
+
+	strncpy(auth_pkt->uname, auc->username, sizeof(auth_pkt->uname) - 1);
+	strncpy(auth_pkt->pass, auc->password, sizeof(auth_pkt->pass) - 1);
+
+	auth_pkt->uname[sizeof(auth_pkt->uname) - 1] = '\0';
+	auth_pkt->pass[sizeof(auth_pkt->pass) - 1] = '\0';
+
+	prl_notice(0, "Authenticating as %s", auth_pkt->uname);
+	
+	data_len        = sizeof(struct tcli_auth_pkt);
+	cli_pkt->type   = TCLI_PKT_AUTH;
+	cli_pkt->npad   = 0;
+	cli_pkt->length = htons(data_len);
+	send_len        = TCLI_PKT_MIN_L + data_len;
+
+	return send_to_server(state, cli_pkt, send_len);
 }
 
 
-static evt_srv_goto handle_server_pkt(tsrv_pkt *srv_pkt, uint16_t data_len,
-				      struct cli_tcp_state *state)
+static evt_srv_goto_t handle_welcome(struct cli_tcp_state *state)
+{
+	/*
+	 * TODO: Strict checking here.
+	 */
+
+	return send_auth(state) > 0 ? RETURN_OK : OUT_CONN_CLOSE;
+}
+
+
+static evt_srv_goto_t handle_server_pkt(tsrv_pkt *srv_pkt, uint16_t data_len,
+				     	struct cli_tcp_state *state)
 {
 	(void)srv_pkt;
 	(void)data_len;
 	(void)state;
 
-	evt_srv_goto retval = RETURN_OK;
+	evt_srv_goto_t retval = RETURN_OK;
 
 	switch (srv_pkt->type) {
 	case TSRV_PKT_WELCOME:
 		/*
-		 * Server will send us welcome packet if the
+		 * Server will send us `welcome packet` if the
 		 * version is supported by the TeaVPN2 server.
 		 *
 		 * See also: send_hello()
@@ -369,7 +401,7 @@ static evt_srv_goto handle_server_pkt(tsrv_pkt *srv_pkt, uint16_t data_len,
 		 * We must have private IP information from
 		 * this **AUTH OK** packet.
 		 */
-		retval = handle_auth_ok();
+		// retval = handle_auth_ok();
 		goto out;
 	case TSRV_PKT_AUTH_REJECT:
 		goto out;
@@ -417,14 +449,14 @@ out:
 }
 
 
-static evt_srv_goto process_server_buf(size_t recv_s,
-				       struct cli_tcp_state *state)
+static evt_srv_goto_t process_server_buf(size_t recv_s,
+					 struct cli_tcp_state *state)
 {
 	uint16_t npad;
 	uint16_t data_len;
 	uint16_t fdata_len; /* Full data length                        */
 	uint16_t cdata_len; /* Current received data length + plus pad */
-	evt_srv_goto retval;
+	evt_srv_goto_t retval;
 
 	tsrv_pkt *srv_pkt = state->recv_buf.__pkt_chk;
 	char *recv_buf = srv_pkt->raw_data;
