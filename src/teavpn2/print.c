@@ -31,6 +31,10 @@ static __always_inline char *get_time(char *buf)
 	time_t rawtime;
 	struct tm *timeinfo;
 
+	/*
+	 * These `time` functions are not thread-safe, hence
+	 * we need mutex here.
+	 */
 	pthread_mutex_lock(&get_time_mt);
 	time(&rawtime);
 	timeinfo = localtime(&rawtime);
