@@ -335,7 +335,7 @@ static int init_iface(struct srv_tcp_state *state)
 
 	prl_notice(0, "Creating virtual network interface: \"%s\"...", j->dev);
 
-	fd = tun_alloc(j->dev, IFF_TUN);
+	fd = tun_alloc(j->dev, IFF_TUN | IFF_NO_PI);
 	if (unlikely(fd < 0))
 		return -1;
 	if (unlikely(fd_set_nonblock(fd) < 0))
