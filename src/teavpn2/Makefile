@@ -23,4 +23,4 @@ OBJ_PRE_CC	+= $(OBJ_TMP_CC)
 
 $(OBJ_TMP_CC):
 	@echo "   CC		" "$(@:$(BASE_DIR)/%=%)"
-	@$(CC) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)
+	$(CC) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)

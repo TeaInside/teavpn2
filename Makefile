@@ -15,6 +15,7 @@ SERVER_DEFAULT_CFG_FILE = config/server.ini
 CLIENT_DEFAULT_CFG_FILE = config/client.ini
 
 TARGET_BIN = teavpn2
+
 CC	:= clang
 CXX	:= clang++
 LD	:= $(CXX)
@@ -70,7 +71,7 @@ USE_SERVER	:= 1
 
 DEPFLAGS	 = -MT "$@" -MMD -MP -MF "$(@:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)"
 LIB_LDFLAGS	:= -lpthread
-LDFLAGS		:= -fPIE -fpie $(WARN_FLAGS)
+LDFLAGS		:= -fPIE -fpie
 CFLAGS		:= -fPIE -fpie -std=c11
 CXXFLAGS	:= -fPIE -fpie -std=c++2a
 VGFLAGS		:= \

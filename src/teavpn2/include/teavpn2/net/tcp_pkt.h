@@ -6,12 +6,12 @@
 #include <teavpn2/net/tcp_pkt_client.h>
 #include <teavpn2/net/tcp_pkt_server.h>
 
-static_assert(sizeof(tsrv_pkt) == (
+static_assert(sizeof(tsrv_pkt_t) == (
 	         1     /* type   */
 	       + 1     /* npad   */
 	       + 2     /* length */
 	       + 4096  /* data   */
-	      ), "Bad sizeof(tsrv_pkt)");
+	      ), "Bad sizeof(tsrv_pkt_t)");
 static_assert(sizeof(tcli_pkt_t) == (
 	         1     /* type   */
 	       + 1     /* npad   */
@@ -19,21 +19,21 @@ static_assert(sizeof(tcli_pkt_t) == (
 	       + 4096  /* data   */
 	      ), "Bad sizeof(tcli_pkt_t)");
 
-static_assert(offsetof(tsrv_pkt, type) == 0, "Bad offsetof(tsrv_pkt, type)");
+static_assert(offsetof(tsrv_pkt_t, type) == 0, "Bad offsetof(tsrv_pkt_t, type)");
 static_assert(offsetof(tcli_pkt_t, type) == 0,
 	      "Bad offsetof(tcli_pkt_t, type)");
 
-static_assert(offsetof(tsrv_pkt, npad) == 1, "Bad offsetof(tsrv_pkt, npad)");
+static_assert(offsetof(tsrv_pkt_t, npad) == 1, "Bad offsetof(tsrv_pkt_t, npad)");
 static_assert(offsetof(tcli_pkt_t, npad) == 1,
 	      "Bad offsetof(tcli_pkt_t, npad)");
 
-static_assert(offsetof(tsrv_pkt, length) == 2,
-	      "Bad offsetof(tsrv_pkt, length)");
+static_assert(offsetof(tsrv_pkt_t, length) == 2,
+	      "Bad offsetof(tsrv_pkt_t, length)");
 static_assert(offsetof(tcli_pkt_t, length) == 2,
 	      "Bad offsetof(tcli_pkt_t, length)");
 
-static_assert(offsetof(tsrv_pkt, raw_data) == 4,
-	      "Bad offsetof(tsrv_pkt, raw_data)");
+static_assert(offsetof(tsrv_pkt_t, raw_data) == 4,
+	      "Bad offsetof(tsrv_pkt_t, raw_data)");
 static_assert(offsetof(tcli_pkt_t, raw_data) == 4,
 	      "Bad offsetof(tcli_pkt_t, raw_data)");
 

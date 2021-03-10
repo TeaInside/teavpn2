@@ -375,7 +375,7 @@ static evt_srv_goto_t handle_welcome(struct cli_tcp_state *state)
 }
 
 
-static evt_srv_goto_t handle_server_pkt(tsrv_pkt *srv_pkt, uint16_t data_len,
+static evt_srv_goto_t handle_server_pkt(tsrv_pkt_t *srv_pkt, uint16_t data_len,
 				     	struct cli_tcp_state *state)
 {
 	(void)srv_pkt;
@@ -458,7 +458,7 @@ static evt_srv_goto_t process_server_buf(size_t recv_s,
 	uint16_t cdata_len; /* Current received data length + plus pad */
 	evt_srv_goto_t retval;
 
-	tsrv_pkt *srv_pkt = state->recv_buf.__pkt_chk;
+	tsrv_pkt_t *srv_pkt = state->recv_buf.__pkt_chk;
 	char *recv_buf = srv_pkt->raw_data;
 
 again:

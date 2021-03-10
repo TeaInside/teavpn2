@@ -13,6 +13,7 @@ static int count_online_cpu(void)
 int set_cpu_init(void)
 {
 	int err;
+	int ret;
 	int ncpu;
 	int tcpu = -1;
 	int used = 0;
@@ -64,8 +65,8 @@ int set_cpu_init(void)
 set_nice:
 	errno = 0;
 	/* Unreliable return value, let's just check errno. */
-	nice(-20);
-	nice(-20);
+	ret = nice(-20);
+	ret = nice(-20);
 	err = errno;
 	if (unlikely(err != 0)) {
 		pr_err("nice: " PRERF, PREAR(err));
@@ -74,6 +75,6 @@ set_nice:
 		prl_notice(4, "nice(-20) success");
 		prl_notice(4, "I am a high priority process now, excellent!");
 	}
-
+	(void)ret;
 	return tcpu;
 }

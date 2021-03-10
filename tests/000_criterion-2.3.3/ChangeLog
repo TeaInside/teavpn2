@@ -1,0 +1,245 @@
+2018-11-05  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 2.3.3
+    * Fix: Clang 5.0.x was producing test executables that caused Criterion to
+      fork-bomb the host system. The issue has been fixed, and Criterion
+      now pro-actively aborts itself if it detects a fork-bomb loop to avoid
+      similar issues in the future.
+
+    The full git changelog may be accessed with `git log v2.3.2..v2.3.3`.
+
+2017-04-08  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 2.3.2
+    * Fix: timings were always reporting `0`; they are now working as expected.
+
+    The full git changelog may be accessed with `git log v2.3.1..v2.3.2`.
+
+2017-02-07  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 2.3.1
+    * Fix: correctly handle malformed --debug parameter
+    * Fix: replaced the cryptic message when the debugger is not present with a more explicit one.
+    * Fix: cache section limits on report hooks for significantly better performance.
+    * Fix: don't report passing assertions by default for significantly better performance.
+    * Addition: added --full-stats CLI switch to report passing assertions for compatibility purposes.
+
+    The full git changelog may be accessed with `git log v2.3.0-1..v2.3.1`.
+
+2016-12-07  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 2.3.0-1
+    This is a re-release of v2.3.0.
+
+    There are no substantial changes in the release, only fixes in the build
+    system. If you are not building criterion from source, you can ignore this
+    changelog.
+
+    * Fix: Updated version strings in messages
+    * Fix: The build system now searches for local installations of non-criterion-specific dependencies.
+
+2016-09-18  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 2.3.0
+    * Addition: added German translation files (Matthias "ailu" Günzel).
+    * Addition: added a pkg-config file.
+    * Addition: allow tests to be skipped with cr_skip_test() (Matthias "ailu" Günzel).
+    * Addition: assertions on wide-strings are now available (Kevin "kevinoid" Locke).
+    * Addition: crash-mode with --crash to raise a trap when an assertion fails for debugging purposes (Matthias "ailu" Günzel).
+    * Addition: debugging mode with --debug.
+    * Addition: global test timeout with --timeout.
+    * Addition: header files in the public API now have doxygen documentation (Matthias "ailu" Günzel).
+    * Addition: test filtering now works on windows.
+    * Addition: user logging API with cr_log, cr_log_info, cr_log_warning, and cr_log_error.
+    * Breaking: dropped support for MinGW, use MinGW-w64.
+    * Breaking: dropped support for Windows XP, use Windows 7 and later.
+    * Breaking: log_pre_init and log_pre_test in the internal logger API now takes an additional parameter.
+    * Breaking: the SOVERSION now follows the SONAME major independently of the project version.
+    * Change: --pattern has been renamed to --filter.
+    * Change: removed dependency on PCRE for filtering (Matthias "ailu" Günzel).
+    * Change: sections of all loaded shared modules are now inspected for tests and hooks.
+    * Change: setting .exit_code = 0 now enforces the exit code of the test to be 0.
+    * Change: string assertions now print the contents of string parameters ("kaidowei").
+    * Change: xml reports now includes elapsed times ("kaidowei").
+    * Deprecation: --no-early-exit is now a no-op and should no longer be used.
+    * Deprecation: internal logging API is no longer public, fallbacks to the new logging API.
+    * Fix: fail-fast now works correctly.
+    * Fix: fixed FindCriterion.cmake with the correct package name (László "MrAnno" Várady).
+    * Fix: position-independent executables now work.
+    * Fix: string assertions no longer crash with a NULL parameter ("kaidowei").
+    * Fix: the data pipe no longer gets corrupted when running a large quantity of assertions in parallel.
+    * Fix: using dmalloc on tests now works.
+    * Fix: using the GOLD linker rather than BFD now works.
+    * Fix: using the musl C library now works.
+
+2016-06-20  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 2.2.2
+    * Fix: fixed deadlocks when tests are terminated too fast
+    * Fix: fixed crash during test teardown if spawning new threads in the test
+    * Fix: fixed memory leak in disabled tests
+
+2016-02-06  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 2.2.1
+    * Fix: fixed criterion not being embeddable with CMake's `add_directory`
+    * Fix: fixed resource leaks in the child pump thread
+    * Fix: fixed redirected standard streams being leaked by cr_(assert|expect)_std(out|err)
+    * Fix: fixed out of bounds during assert message sending
+    * Fix: fixed naming convention conflicts for internal variables used by the implementation of cr_assert
+    * Fix: fixed empty format string warning with GCC 4.8
+    * Fix: fixed file-to-file comparison assert message being corrupted
+
+2015-12-08  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 2.2.0
+    * Breaking: Renamed all unprefixed internal macros and functions that were
+      exposed in the API, and moved them to criterion/internal.
+      This shouldn't break your code if you did not use these in the first
+      place.
+    * Change: Added language-specific wrapping logic to decouple the language
+      the tests are written in from the test runner.
+    * Change: Rewrote the reporting logic to allow multiple test reports to be
+      written using any format.
+    * Addition: Added parallel jobs for the test runner.
+    * Addition: Added C++ allocator for STL collections based on
+      cr_malloc/cr_free.
+    * Addition: Added criterion::parameters in C++ for simpler parameter list
+      generation.
+    * Addition: Added saner defaults when the tests detect they run under
+      valgrind.
+    * Addition: Added basic Objective-C language support.
+    * Addition: Added JUnit XML reporting.
+    * Addition: Added JSON reporting.
+    * Addition: Added dynamic reporter registration.
+    * Addition: Added back support for GCC 4.6 when compiling C tests.
+    * Addition: Added single test execution mode.
+    * Removal: Removed all deprecated 1.x unprefixed assertion macros.
+    * Fix: Fixed some memory corruption happening on rare occasions on assert
+      messages.
+    * Fix: Fixed deadlocks happening at random when a large quantity of assert
+      is present.
+    * Fix: Fixed the library not compiling with the intel compiler collection.
+    * Deprecation: All cr_assume_strings_* macros are deprecated in favor of
+      cr_assume_str_*.
+    * Deprecation: All cr_assume_arrays_* macros are deprecated in favor of
+      cr_assume_arr_*.
+
+2015-11-25  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 2.1.1
+    * Fix: Fixed bug where the TAP output access the assert message after
+      it has been freed, causing it to print garbage.
+
+2015-09-21  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 2.1.0
+    * Addition: Added file mocking utilities
+    * Addition: Added parameterized tests
+
+2015-09-20  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 2.0.2
+    * Fix: Fixed rare bug where tests from only one compilation unit would run.
+
+2015-09-19  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 2.0.1
+    * Fix: Fixed wrong setjmp() usage making tests compiled with optimisations
+      crash.
+
+2015-09-14  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 2.0.0
+    * Breaking: ABI incompatibility with prior versions of criterion. You
+      **must** recompile your tests.
+    * Breaking: cr_abort_test(NULL) does not compile anymore.
+    * Change: Changed all assertion macros to accept a printf format string as a
+      message.
+    * Change: Made the API C++11-compatible.
+    * Change: Made the library ISO C compliant. You can now compile the library
+      with VC 14+.
+    * Addition: Added support for theories.
+    * Addition: Added ability to test the exit status of a test.
+    * Addition: Added C++11 throw assertions.
+    * Addition: Added assert message localization.
+    * Addition: Added test timeouts.
+    * Addition: Added test standard i/o redirection & file comparison assertions.
+    * Removal: Removed the deprecated prefixless assertion macros
+    * Deprecation: Deprecated cr_abort_test.
+    * Deprecation: cr_{assert,expect}_strings_* and cr_{assert,expect}_arrays_*
+      are deprecated in favor of cr_{assert,expect}_str_* and 
+      cr_{assert,expect}_arr_* respectively.
+
+2015-08-20  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 1.3.1
+    * Fixed OS X and Windows section iterations
+    * Fixed report hooks not working on OS X and Windows
+    * Fixed duplicated output when writing in PRE_ALL to a redirected stdout/err
+    * Added -S switch to display filenames in their short version
+
+2015-08-05  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 1.3.0
+    * Turned the library into a shared library.
+    * Added extended globbing for --pattern (requires PCRE)
+    * Switched to a CMake build system
+    * Fixed windows builds & output
+    * Added basic windows SEH-to-signal translator
+
+2015-04-26  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 1.2.1
+    * Added a cr_ prefix to all assertion macros. Old macros are deprecated
+    and will be removed in a future version.
+
+2015-04-15  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 1.2.0
+    * Added native Windows support through MinGW
+    * Fixed inaccurate statistics on disabled and crashing tests
+    * Fixed asserts not aborting the test when used in functions
+    * Fixed programs not compiling when no tests are declared
+    * Added assert_null to test for pointer nullity
+    * Added assert_arrays_eq_cmp for padded struct arrays equality
+
+    * Added i18n support
+    * Added fr_FR localization
+
+2015-03-24  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 1.1.0
+    * Refactored logging system
+    * Changed output format to a better-looking one
+    * Added Syntactic coloration
+
+    * Added test suite separation
+    * Added test suite statistics
+
+    * Added --list option
+    * Added --fail-fast option
+    * Added --pattern option
+
+2015-03-18  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 1.0.0
+    * Added test timings
+    * Changed assert prototypes
+    * ANSI compliance over header files
+    * Windows + FreeBSD compatibility
+
+2015-03-11  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 0.3.0
+    * A logging interface
+    * Various readme and documentation changes
+    * Default CLI options & environment variables
+    * Mac OS X compatibility
+    * Comparison assertions, floating-point equality assertions
+
+2015-02-06  Franklin "Snaipe" Mathieu  <franklinmathieu@gmail.com>
+
+    * criterion: version 0.2.0
+    * Added criterion internals.
+    * Added Test, ReportHook, assert and expect macros.
