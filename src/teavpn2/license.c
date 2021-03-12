@@ -3,7 +3,11 @@
 #include <teavpn2/base.h>
 
 
-static const char teavpn2[] = "\n\
+extern const char license_text_teavpn2[];
+extern const char license_text_inih[];
+
+
+const char license_text_teavpn2[] = "\n\
 https://github.com/TeaInside/teavpn2\n\
 \n\
 TeaVPN2 - Fast and Free VPN Software\n\
@@ -25,7 +29,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,\n\
 ";
 
 
-static const char inih[] = "\n\
+const char license_text_inih[] = "\n\
 https://github.com/benhoyt/inih\n\
 \n\
 The \"inih\" library is distributed under the New BSD license:\n\
@@ -64,14 +68,14 @@ int print_license(unsigned short i)
 	const char *p = NULL;
 
 	switch (i) {
-	case 0: p = teavpn2; break;
-	case 1: p = inih; break;
+	case 0: p = license_text_teavpn2; break;
+	case 1: p = license_text_inih; break;
 	default:
 		p = invalid;
 		retval = 1;
 		break;
 	}
 
-	puts(p);
+	printf("%s", p);
 	return retval;
 }

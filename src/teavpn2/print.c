@@ -24,6 +24,12 @@ uint8_t __notice_level = 3;
 #endif
 
 
+void teavpn_print_version(void)
+{
+	puts("TeaVPN2 " TEAVPN2_VERSION);
+}
+
+
 static __always_inline char *get_time(char *buf)
 {
 	size_t len;

@@ -22,12 +22,6 @@ static __always_inline void usage(const char *app)
 }
 
 
-void teavpn_print_version(void)
-{
-	puts("TeaVPN2 " TEAVPN2_VERSION);
-}
-
-
 int main(int argc, char *argv[])
 {
 	char arena_buffer[4096];

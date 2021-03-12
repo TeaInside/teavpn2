@@ -16,11 +16,14 @@ include $(BASE_DIR)/src/teavpn2/net/Makefile
 OBJ_TMP_CC	:= \
 	$(BASE_DIR)/src/teavpn2/cpu.o \
 	$(BASE_DIR)/src/teavpn2/license.o \
-	$(BASE_DIR)/src/teavpn2/main.o \
 	$(BASE_DIR)/src/teavpn2/print.o
+
+ifneq ($(DO_TEST),1)
+	OBJ_TMP_CC += $(BASE_DIR)/src/teavpn2/main.o
+endif
 
 OBJ_PRE_CC	+= $(OBJ_TMP_CC)
 
 $(OBJ_TMP_CC):
 	@echo "   CC		" "$(@:$(BASE_DIR)/%=%)"
-	$(CC) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)
+	@$(CC) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)

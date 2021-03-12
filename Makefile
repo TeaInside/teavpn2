@@ -33,37 +33,35 @@ ifeq (,$(findstring __GNUC__,$(CXX_BUILTIN_CONSTANTS)))
 $(error I want __GNUC__!)
 endif
 
-ifneq (,$(findstring __GNUC__,$(CC_BUILTIN_CONSTANTS)))
-	ifneq (,$(findstring __clang__,$(CC_BUILTIN_CONSTANTS)))
-		# Clang
-		WARN_FLAGS	:= \
-			-Wall \
-			-Werror \
-			-Wextra \
-			-Weverything \
-			-Wformat \
-			-Wformat-security \
-			-Wsequence-point \
-			-Wimplicit-fallthrough
+ifneq ($(DO_TEST),1)
+	ifneq (,$(findstring __GNUC__,$(CC_BUILTIN_CONSTANTS)))
+		ifneq (,$(findstring __clang__,$(CC_BUILTIN_CONSTANTS)))
+			# Clang
+			WARN_FLAGS	:= \
+				-Wall \
+				-Werror \
+				-Wextra \
+				-Weverything
+		else
+			# Pure GCC
+			WARN_FLAGS	:= \
+				-Wall \
+				-Werror \
+				-Wextra \
+				-Wstrict-aliasing=3 \
+				-Wformat \
+				-Wformat-security \
+				-Wformat-signedness \
+				-Wsequence-point \
+				-Wduplicated-cond \
+				-Wduplicated-branches \
+				-Wunsafe-loop-optimizations \
+				-Wstack-usage=2097152 \
+				-Wimplicit-fallthrough
+		endif
 	else
-		# Pure GCC
-		WARN_FLAGS	:= \
-			-Wall \
-			-Werror \
-			-Wextra \
-			-Wstrict-aliasing=3 \
-			-Wformat \
-			-Wformat-security \
-			-Wformat-signedness \
-			-Wsequence-point \
-			-Wduplicated-cond \
-			-Wduplicated-branches \
-			-Wunsafe-loop-optimizations \
-			-Wstack-usage=2097152 \
-			-Wimplicit-fallthrough
+	$(error I want __GNUC__!)
 	endif
-else
-$(error I want __GNUC__!)
 endif
 
 USE_CLIENT	:= 1
@@ -72,7 +70,7 @@ USE_SERVER	:= 1
 DEPFLAGS	 = -MT "$@" -MMD -MP -MF "$(@:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)"
 LIB_LDFLAGS	:= -lpthread
 LDFLAGS		:= -fPIE -fpie
-CFLAGS		:= -fPIE -fpie -std=c11
+CFLAGS		:= -fPIE -fpie # -std=c11
 CXXFLAGS	:= -fPIE -fpie -std=c++2a
 VGFLAGS		:= \
 	--leak-check=full \
@@ -188,6 +186,7 @@ endif
 
 #######################################
 # Force these to be a simple variable
+TESTS		:=
 OBJ_CC		:=
 OBJ_PRE_CC	:=
 OBJ_TMP_CC	:=
@@ -203,9 +202,11 @@ include $(BASE_DIR)/src/ext/Makefile
 CFLAGS		:= $(INCLUDE_DIR) $(CFLAGS) $(CCXXFLAGS)
 CXXFLAGS	:= $(INCLUDE_DIR) $(CXXFLAGS) $(CCXXFLAGS)
 
+include $(BASE_DIR)/tests/Makefile
+
 $(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC)
 	@echo "   LD		" "$(@)"
-	@$(LD) $(LDFLAGS) $(OBJ_CC) $(OBJ_PRE_CC) -o "$@" $(LIB_LDFLAGS)
+	$(LD) $(LDFLAGS) $(OBJ_CC) $(OBJ_PRE_CC) -o "$@" $(LIB_LDFLAGS)
 	@chmod a+x teavpn2 || true
 
 $(DEP_DIRS):
@@ -221,7 +222,7 @@ $(OBJ_PRE_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
 -include $(OBJ_CC:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)
 -include $(OBJ_PRE_CC:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)
 
-clean:
+clean: clean_test
 	@rm -rfv $(DEP_DIRS) $(OBJ_CC) $(OBJ_PRE_CC) $(TARGET_BIN)
 
 server: $(TARGET_BIN)
