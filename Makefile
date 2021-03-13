@@ -41,7 +41,8 @@ ifneq ($(DO_TEST),1)
 				-Wall \
 				-Werror \
 				-Wextra \
-				-Weverything
+				-Weverything \
+				-Wno-disabled-macro-expansion
 		else
 			# Pure GCC
 			WARN_FLAGS	:= \
