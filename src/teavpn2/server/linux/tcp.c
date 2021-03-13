@@ -25,12 +25,12 @@
 #define EPL_MAP_TO_NOP	(0x0u)
 #define EPL_MAP_TO_TUN	(0x1u)
 #define EPL_MAP_TO_TCP	(0x2u)
-/* EPL_MAP_ADD must be the number of EPL_MAP_TO_* constants */
-#define EPL_MAP_ADD	(0x3u)
+/* EPL_MAP_SHIFT must be the number of EPL_MAP_TO_* constants */
+#define EPL_MAP_SHIFT	(0x3u)
 
 #define EPL_IN_EVT	(EPOLLIN | EPOLLPRI)
 #define IP_MAP_TO_NOP	(0x0u)
-#define IP_MAP_ADD	(0x1u)
+#define IP_MAP_SHIFT	(0x1u)
 
 /* Macros for printing  */
 #define W_IP(CLIENT) ((CLIENT)->src_ip), ((CLIENT)->src_port)
@@ -663,7 +663,7 @@ static bool plug_to_client_slot(int cli_fd, const char *src_ip,
 	/*
 	 * Map the FD to translate to idx later
 	 */
-	state->epoll_map[cli_fd] = idx + EPL_MAP_ADD;
+	state->epoll_map[cli_fd] = idx + EPL_MAP_SHIFT;
 
 	client = &state->clients[idx];
 	client->is_used  = true;
@@ -1182,7 +1182,7 @@ static int handle_event(struct srv_tcp_state *state, struct epoll_event *event)
 		retval = handle_tcp_event(fd, state, revents);
 		break;
 	default:
-		map_to -= EPL_MAP_ADD;
+		map_to -= EPL_MAP_SHIFT;
 		retval = handle_client_event(fd, map_to, state, revents);
 		break;
 	}
