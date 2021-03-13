@@ -14,7 +14,7 @@
  * tsrv_pkt_type means TCP Server Packet Type
  */
 
-typedef enum __attribute__((packed)) _tcli_pkt_type {
+typedef enum __attribute__((packed)) _tcli_pkt_type_t {
 	TCLI_PKT_HELLO		= 0,
 	TCLI_PKT_AUTH		= 1,
 	TCLI_PKT_IFACA_ACK	= 2,
@@ -22,7 +22,7 @@ typedef enum __attribute__((packed)) _tcli_pkt_type {
 	TCLI_PKT_REQSYNC	= 4,
 	TCLI_PKT_PING		= 5,
 	TCLI_PKT_CLOSE		= 6
-} tcli_pkt_type;
+} tcli_pkt_type_t;
 
 
 struct tcli_hello_pkt {
@@ -37,7 +37,7 @@ struct tcli_auth_pkt {
 
 
 typedef struct _tcli_pkt_t {
-	tcli_pkt_type		type;	/* Packet type    */
+	tcli_pkt_type_t		type;	/* Packet type    */
 	uint8_t			npad;	/* Padding length */
 	uint16_t		length;	/* Data length    */
 	union {
@@ -65,7 +65,10 @@ typedef union _utcli_pkt_t {
 #define TCLI_PKT_MAX_L	(offsetof(tcli_pkt_t, __end))
 #define TCLI_PKT_RECV_L	(offsetof(utcli_pkt_t, __pkt_chk[UTCLI_MUL - 1]))
 
-static_assert(sizeof(tcli_pkt_type) == 1, "Bad sizeof(tcli_pkt_type)");
+#define TCLI_PKT_TYPE_MIN (0)
+#define TCLI_PKT_TYPE_MAX (6)
+
+static_assert(sizeof(tcli_pkt_type_t) == 1, "Bad sizeof(tcli_pkt_type_t)");
 
 static_assert(sizeof(struct tcli_hello_pkt) == sizeof(version_t),
 	      "Bad sizeof(struct tcli_hello_pkt)");

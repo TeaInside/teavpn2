@@ -12,9 +12,9 @@
 
 
 /*
- * tsrv_pkt_type means TCP Client Packet Type
+ * tsrv_pkt_type_t means TCP Client Packet Type
  */
-typedef enum __attribute__((packed)) _tsrv_pkt_type {
+typedef enum __attribute__((packed)) _tsrv_pkt_type_t {
 	TSRV_PKT_WELCOME	= 0,
 	TSRV_PKT_AUTH_OK	= 1,
 	TSRV_PKT_AUTH_REJECT	= 2,
@@ -22,7 +22,7 @@ typedef enum __attribute__((packed)) _tsrv_pkt_type {
 	TSRV_PKT_REQSYNC	= 4,
 	TSRV_PKT_PING		= 5,
 	TSRV_PKT_CLOSE		= 6
-} tsrv_pkt_type;
+} tsrv_pkt_type_t;
 
 
 /*
@@ -34,7 +34,7 @@ struct tsrv_aok_pkt {
 
 
 typedef struct _tsrv_pkt_t {
-	tsrv_pkt_type		type;	/* Packet type    */
+	tsrv_pkt_type_t		type;	/* Packet type    */
 	uint8_t			npad;	/* Padding length */
 	uint16_t		length;	/* Data length    */
 	union {
@@ -61,7 +61,7 @@ typedef union _utsrv_pkt_t {
 #define TSRV_PKT_MAX_L	(offsetof(tsrv_pkt_t, __end))
 #define TSRV_PKT_RECV_L	(offsetof(utsrv_pkt_t, __pkt_chk[UTSRV_MUL - 1]))
 
-static_assert(sizeof(tsrv_pkt_type) == 1, "Bad sizeof(tsrv_pkt_type)");
+static_assert(sizeof(tsrv_pkt_type_t) == 1, "Bad sizeof(tsrv_pkt_type_t)");
 
 static_assert(sizeof(struct tsrv_aok_pkt) == sizeof(struct iface_cfg),
 	      "Bad sizeof(struct tsrv_aok_pkt)");
