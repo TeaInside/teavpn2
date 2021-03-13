@@ -1,6 +1,6 @@
 
-#ifndef __TEAVPN2__LIB__STRING_H
-#define __TEAVPN2__LIB__STRING_H
+#ifndef TEAVPN2__LIB__STRING_H
+#define TEAVPN2__LIB__STRING_H
 
 #include <stddef.h>
 
@@ -11,4 +11,4 @@ char *trim(char *str);
 char *trim_cpy(char *str);
 char *trunc_str(char *str, size_t n);
 
-#endif /* #ifndef __TEAVPN2__LIB__STRING_H */
+#endif /* #ifndef TEAVPN2__LIB__STRING_H */

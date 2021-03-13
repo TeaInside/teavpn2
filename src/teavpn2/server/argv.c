@@ -13,10 +13,10 @@ struct parse_struct {
 };
 
 /* ---------------------- Default configuration values ---------------------- */
-#ifdef SERVER_DEFAULT_CONFIG_FILE
-	char d_srv_cfg_file[] = SERVER_DEFAULT_CONFIG_FILE;
+#ifdef SERVER_DEFAULT_CFG_FILE
+char d_srv_cfg_file[] = SERVER_DEFAULT_CFG_FILE;
 #else
-	char d_srv_cfg_file[] = "/etc/teavpn2/server.ini";
+char d_srv_cfg_file[] = "/etc/teavpn2/server.ini";
 #endif
 
 /* Default config for virtual network interface */
@@ -29,26 +29,9 @@ char d_srv_ipv4_netmask[] = "255.255.255.0";
 sock_type d_srv_sock_type = SOCK_TCP;
 char d_srv_bind_addr[] = "0.0.0.0";
 uint16_t d_srv_bind_port = 55555u;
-int d_srv_max_conn = 10;
+uint16_t d_srv_max_conn = 10;
 int d_srv_backlog = 5;
 /* -------------------------------------------------------------------------- */
-
-
-/*
- * ---- Short technical overview about config ---- 
- *
- * Note that cfg->cfg_file is a pointer (`char *`). If it contains an empty
- * string then the app takes default config value and override it with command
- * line arguments.
- * 
- * If cfg->cfg_file contains non empty string, it will open a file with name
- * taken from such a string. If the file does not exists, it will check the file
- * name, whether it is equals to d_srv_cfg_file or not, if it is equal, then
- * it does nothing and continue the execution like when cfg->cfg_file contains
- * and empty string, but if it is not equal to d_srv_cfg_file, then it errors
- * and extis immediately.
- *
- */
 
 
 static __always_inline void init_default_cfg(struct srv_cfg *cfg)
@@ -129,7 +112,7 @@ static __always_inline int getopt_handler(int argc, char *argv[],
 			teavpn_server_show_help(ctx->app);
 			goto out_exit;
 		case 'v':
-			teavpn_server_show_version();
+			teavpn_print_version();
 			goto out_exit;
 		case 'c':
 			cfg->cfg_file = trunc_str(optarg, 255);
@@ -205,8 +188,8 @@ int teavpn_server_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 {
 	struct parse_struct ctx;
 
-	ctx.app  = argv[0];
-	ctx.cfg  = cfg;
+	ctx.app = argv[0];
+	ctx.cfg = cfg;
 	init_default_cfg(cfg);
 	if (getopt_handler(argc - 1, argv + 1, &ctx) < 0)
 		return -1;

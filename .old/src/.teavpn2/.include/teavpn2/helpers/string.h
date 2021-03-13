@@ -1,6 +1,6 @@
 
-#ifndef __TEAVPN2__HELPERS__STRING_H
-#define __TEAVPN2__HELPERS__STRING_H
+#ifndef TEAVPN2__HELPERS__STRING_H
+#define TEAVPN2__HELPERS__STRING_H
 
 #include <stdlib.h>
 #include <string.h>
@@ -33,4 +33,4 @@ char *trim_len(char *head, size_t len, size_t *res_len);
 char *trim_len_cpy(char *head, size_t len, size_t *res_len);
 char *trunc_str(char *str, size_t n);
 
-#endif /* #ifndef __TEAVPN2__HELPERS__STRING_H */
+#endif /* #ifndef TEAVPN2__HELPERS__STRING_H */

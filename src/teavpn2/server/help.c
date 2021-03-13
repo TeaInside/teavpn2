@@ -3,21 +3,6 @@
 #include <teavpn2/server/common.h>
 
 
-extern char d_srv_cfg_file[];
-
-/* Default config for virtual network interface */
-extern uint16_t d_srv_mtu;
-extern char d_srv_dev[];
-extern char d_srv_ipv4[];
-extern char d_srv_ipv4_netmask[];
-
-/* Default config for socket */
-extern sock_type d_srv_sock_type;
-extern char d_srv_bind_addr[];
-extern uint16_t d_srv_bind_port;
-extern int d_srv_max_conn;
-extern int d_srv_backlog;
-
 void teavpn_server_show_help(const char *app)
 {
 	printf("Usage: %s server [options]\n", app);
@@ -68,10 +53,4 @@ void teavpn_server_show_help(const char *app)
 	printf("GitHub repository: https://github.com/TeaInside/teavpn2\n");
 	printf("\n");
 	printf("This software is licensed under the GPL-v3 license.\n");
-}
-
-
-void teavpn_server_show_version(void)
-{
-	puts("TeaVPN Server " TEAVPN_SERVER_VERSION);
 }

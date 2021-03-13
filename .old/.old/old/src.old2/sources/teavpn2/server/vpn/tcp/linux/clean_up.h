@@ -1,11 +1,11 @@
 
-#ifndef SRC_TEAVPN2__SERVER__TEAVPN2__TCP__LINUX_H
+#ifndef SRC_TEAVPN2__SERVERTEAVPN2__TCP__LINUX_H
 #  error This file must be included from \
          src/sources/teavpn2/server/teavpn2/tcp/linux.h
 #endif
 
-#ifndef SRC_TEAVPN2__SERVER__TEAVPN2__TCP__LINUX__CLEAN_UP_H
-#define SRC_TEAVPN2__SERVER__TEAVPN2__TCP__LINUX__CLEAN_UP_H
+#ifndef SRC_TEAVPN2__SERVERTEAVPN2__TCP__LINUX__CLEAN_UP_H
+#define SRC_TEAVPN2__SERVERTEAVPN2__TCP__LINUX__CLEAN_UP_H
 
 #define CLOSE_FD(FD)                                \
 do {                                                \
@@ -63,4 +63,4 @@ tsrv_clean_up_tcp(tcp_state *state)
   free(chan);
 }
 
-#endif /* #ifndef SRC_TEAVPN2__SERVER__TEAVPN2__TCP__LINUX__CLEAN_UP_H */
+#endif /* #ifndef SRC_TEAVPN2__SERVERTEAVPN2__TCP__LINUX__CLEAN_UP_H */

@@ -1,6 +1,6 @@
 
-#ifndef __TEAVPN2____BASE_H
-#define __TEAVPN2____BASE_H
+#ifndef TEAVPN2____BASE_H
+#define TEAVPN2____BASE_H
 
 #include <errno.h>
 #include <stdint.h>
@@ -54,4 +54,4 @@ STATIC_ASSERT(
 	"Invalid sizeof(struct iface_cfg)"
 );
 
-#endif /* #ifndef __TEAVPN2____BASE_H */
+#endif /* #ifndef TEAVPN2____BASE_H */

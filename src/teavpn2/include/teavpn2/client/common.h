@@ -1,20 +1,20 @@
 
-#ifndef __TEAVPN2__CLIENT__COMMON_H
-#define __TEAVPN2__CLIENT__COMMON_H
+#ifndef TEAVPN2__CLIENT__COMMON_H
+#define TEAVPN2__CLIENT__COMMON_H
 
-#include <teavpn2/__base.h>
+#include <teavpn2/base.h>
 
 
 struct cli_iface_cfg {
-	uint16_t	mtu;		/* Virtual interface MTU     */
 	char		*dev;		/* Virtual interface name    */
 };
 
 
 struct cli_sock_cfg {
 	sock_type	type;		/* Socket type (TCP/UDP) */
-	char		*server_addr;	/* Server address        */
 	uint16_t	server_port;	/* Server port           */
+	struct_pad(0, 2);
+	char		*server_addr;	/* Server address        */
 };
 
 
@@ -35,7 +35,16 @@ int teavpn_client_entry(int argc, char *argv[]);
 int teavpn_client_cfg_parse(struct cli_cfg *cfg);
 int teavpn_client_argv_parse(int argc, char *argv[], struct cli_cfg *cfg);
 void teavpn_client_show_help(const char *app);
-void teavpn_client_show_version(void);
-int teavpn_client_tcp(struct cli_cfg *cfg);
 
-#endif /* #ifndef __TEAVPN2__CLIENT__COMMON_H */
+
+extern char d_cli_cfg_file[];
+
+/* Default config for virtual network interface */
+extern char d_cli_dev[];
+
+/* Default config for socket */
+extern sock_type d_cli_sock_type;
+extern char d_cli_server_addr[];
+extern uint16_t d_cli_server_port;
+
+#endif /* #ifndef TEAVPN2__CLIENT__COMMON_H */

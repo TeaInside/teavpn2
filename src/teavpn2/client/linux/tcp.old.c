@@ -1,39 +1,78 @@
 
-#include <poll.h>
-#include <stdio.h>
-#include <assert.h>
-#include <signal.h>
-#include <string.h>
+#include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
+#include <pthread.h>
+#include <stdalign.h>
+#include <sys/epoll.h>
 #include <arpa/inet.h>
-#include <sys/types.h>
-#include <sys/socket.h>
 #include <netinet/tcp.h>
-#include <teavpn2/net/linux/iface.h>
-#include <teavpn2/client/linux/tcp.h>
-#include <teavpn2/server/linux/tcp.h>
+#include <teavpn2/base.h>
+#include <teavpn2/net/iface.h>
+#include <teavpn2/client/tcp.h>
+#include <teavpn2/net/tcp_pkt.h>
+
+#define MAX_ERR_C	(0xfu)
+#define EPOLL_IN_EVT	(EPOLLIN | EPOLLPRI)
 
 
-#define MAX_ERR_C (10u)
+typedef enum _evt_cli_goto {
+	RETURN_OK	= 0,
+	OUT_CONN_ERR	= 1,
+	OUT_CONN_CLOSE	= 2,
+} evt_srv_goto_t;
+
+
+struct cli_tcp_state {
+	pid_t			pid;		/* Main process PID           */
+	int			epl_fd;		/* Epoll fd                   */
+	int			net_fd;		/* Main TCP socket fd         */
+	int			tun_fd;		/* TUN/TAP fd                 */
+	bool			is_auth;	/* Is authenticated?          */
+	bool			stop;		/* Stop the event loop?       */
+	bool			reconn;		/* Reconnect if conn dropped? */
+	uint8_t			reconn_c;	/* Reconnect count            */
+	uint8_t			err_c;		/* Error count                */
+	struct_pad(0, 3);
+	struct cli_cfg		*cfg;		/* Config                     */
+	uint32_t		send_c;		/* Number of send()           */
+	uint32_t		recv_c;		/* Number of recv()           */
+	size_t			recv_s;		/* Active bytes in recv_buf   */
+	utsrv_pkt_t		recv_buf;	/* Server packet from recv()  */
+	utcli_pkt_t		send_buf;	/* Client packet to send()    */
+};
+
+
 static struct cli_tcp_state *g_state;
 
 
-static void intr_handler(int sig)
+static void interrupt_handler(int sig)
 {
 	struct cli_tcp_state *state = g_state;
 
 	state->stop = true;
 	putchar('\n');
-	(void)sig;
+	pr_notice("Signal %d (%s) has been caught", sig, strsignal(sig));
 }
 
 
-static void init_state(struct cli_tcp_state *state)
+static int init_state(struct cli_tcp_state *state)
 {
-	state->net_fd = -1;
-	state->tun_fd = -1;
-	state->stop = false;
-	state->is_auth = false;
+	state->pid      = getpid();
+	state->epl_fd   = -1;
+	state->net_fd   = -1;
+	state->tun_fd   = -1;
+	state->stop     = false;
+	state->reconn   = true;
+	state->reconn_c = 0;
+	state->send_c   = 0;
+	state->recv_c   = 0;
+	state->recv_s   = 0;
+	state->is_auth  = false;
+
+	prl_notice(0, "My PID is %d", state->pid);
+
+	return 0;
 }
 
 
@@ -42,7 +81,7 @@ static int init_iface(struct cli_tcp_state *state)
 	int fd;
 	struct cli_iface_cfg *j = &state->cfg->iface;
 
-	prl_notice(3, "Creating virtual network interface: \"%s\"...", j->dev);
+	prl_notice(0, "Creating virtual network interface: \"%s\"...", j->dev);
 	fd = tun_alloc(j->dev, IFF_TUN);
 	if (fd < 0)
 		return -1;
@@ -60,19 +99,50 @@ out_err:
 static int socket_setup(int fd, struct cli_cfg *cfg)
 {
 	int rv;
-	int y = 1;
+	int err;
+	int y;
 	socklen_t len = sizeof(y);
 	const void *pv = (const void *)&y;
 
+	y = 1;
+	rv = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, pv, len);
+	if (unlikely(rv < 0))
+		goto out_err;
+
+	y = 1;
 	rv = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, pv, len);
 	if (unlikely(rv < 0))
 		goto out_err;
 
+	y = 0;
+	rv = setsockopt(fd, SOL_SOCKET, SO_INCOMING_CPU, pv, len);
+	if (unlikely(rv < 0))
+		goto out_err;
+
+	y = 1024 * 1024 * 2;
+	rv = setsockopt(fd, SOL_SOCKET, SO_RCVBUFFORCE, pv, len);
+	if (unlikely(rv < 0))
+		goto out_err;
+
+	y = 1024 * 1024 * 2;
+	rv = setsockopt(fd, SOL_SOCKET, SO_SNDBUFFORCE, pv, len);
+	if (unlikely(rv < 0))
+		goto out_err;
+
+	y = 30000;
+	rv = setsockopt(fd, SOL_SOCKET, SO_BUSY_POLL, pv, len);
+	if (unlikely(rv < 0))
+		goto out_err;
+
+	/*
+	 * TODO: Utilize `cfg` to set some socket options from config
+	 */
 	(void)cfg;
 	return rv;
 
 out_err:
-	pr_error("setsockopt(): %s", strerror(errno));
+	err = errno;
+	pr_error("setsockopt(): " PRERF, PREAR(err));
 	return rv;
 }
 
@@ -80,55 +150,56 @@ out_err:
 static int init_socket(struct cli_tcp_state *state)
 {
 	int fd;
-	int ern;
+	int err;
 	int retval;
-	struct sockaddr_in srv_addr;
-	socklen_t addrlen = sizeof(struct sockaddr_in);
+	struct sockaddr_in addr;
 	struct cli_sock_cfg *sock = &state->cfg->sock;
 	char *server_addr = sock->server_addr;
 	uint16_t server_port = sock->server_port;
+	socklen_t addrlen = sizeof(struct sockaddr_in);
 
-	prl_notice(3, "Creating TCP socket...");
+	prl_notice(0, "Creating TCP socket...");
 	fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
-	if (fd < 0) {
-		ern = errno;
-		retval = -ern;
-		pr_error("socket(): %s", strerror(ern));
+	if (unlikely(fd < 0)) {
+		err = errno;
+		retval = -err;
+		pr_error("socket(): " PRERF, PREAR(err));
 		goto out_err;
 	}
 
-
-	prl_notice(3, "Setting up socket file descriptor...");
+	prl_notice(0, "Setting up socket file descriptor...");
 	retval = socket_setup(fd, state->cfg);
-	if (retval < 0)
+	if (unlikely(retval < 0))
 		goto out_err;
 
-	srv_addr.sin_family = AF_INET; 
-	srv_addr.sin_port = htons(server_port); 
-
-	if (!inet_pton(AF_INET, server_addr, &srv_addr.sin_addr)) {
-		ern = errno;
-		retval = -ern;
-		pr_error("inet_pton(%s): %s", server_addr, strerror(ern));
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(server_port);
+	if (!inet_pton(AF_INET, server_addr, &addr.sin_addr)) {
+		err = EINVAL;
+		retval = -err;
+		pr_error("inet_pton(%s): " PRERF, server_addr, PREAR(err));
 		goto out_err;
 	}
-
 
 	prl_notice(0, "Connecting to %s:%d...", server_addr, server_port);
 again:
-	retval = connect(fd, &srv_addr, addrlen);
+	retval = connect(fd, &addr, addrlen);
 	if (retval < 0) {
-		ern = errno;
-		if (ern == EINPROGRESS)
+		err = errno;
+		if ((err == EINPROGRESS) || (err == EALREADY)) {
+			usleep(1000);
 			goto again;
-		retval = -ern;
-		pr_error("connect(): %s", strerror(ern));
+		}
+
+		retval = -err;
+		pr_error("connect(): " PRERF, PREAR(err));
 		goto out_err;
 	}
 
 	state->net_fd = fd;
 	prl_notice(0, "Connection established!");
 	return 0;
+
 out_err:
 	if (fd > 0)
 		close(fd);
@@ -136,321 +207,524 @@ out_err:
 }
 
 
-static size_t send_to_server(struct cli_tcp_state *state,
-			     struct cli_tcp_pkt *cli_pkt, size_t send_len)
+static int epoll_add(int epl_fd, int fd, uint32_t events)
 {
+	int err;
+	struct epoll_event event;
+
+	/* Shut the valgrind up! */
+	memset(&event, 0, sizeof(struct epoll_event));
+
+	event.events = events;
+	event.data.fd = fd;
+	if (unlikely(epoll_ctl(epl_fd, EPOLL_CTL_ADD, fd, &event) < 0)) {
+		err = errno;
+		pr_err("epoll_ctl(EPOLL_CTL_ADD): " PRERF, PREAR(err));
+		return -1;
+	}
+	return 0;
+}
+
+
+static int epoll_delete(int epl_fd, int fd)
+{
+	int err;
+
+	if (unlikely(epoll_ctl(epl_fd, EPOLL_CTL_DEL, fd, NULL) < 0)) {
+		err = errno;
+		pr_error("epoll_ctl(EPOLL_CTL_DEL): " PRERF, PREAR(err));
+		return -1;
+	}
+	return 0;
+}
+
+
+static int init_epoll(struct cli_tcp_state *state)
+{
+	int err;
+	int ret;
+	int epl_fd = -1;
+	int tun_fd = state->tun_fd;
 	int net_fd = state->net_fd;
 
-	send_ret = send(net_fd, cli_pkt, send_len, 0);
+	prl_notice(0, "Initializing epoll fd...");
+	epl_fd = epoll_create(3);
+	if (unlikely(epl_fd < 0))
+		goto out_create_err;
+
+	ret = epoll_add(epl_fd, tun_fd, EPOLL_IN_EVT);
+	if (unlikely(ret < 0))
+		goto out_err;
+
+	ret = epoll_add(epl_fd, net_fd, EPOLL_IN_EVT);
+	if (unlikely(ret < 0))
+		goto out_err;
+
+	state->epl_fd = epl_fd;
+	return 0;
+
+out_create_err:
+	err = errno;
+	pr_err("epoll_create(): " PRERF, PREAR(err));
+out_err:
+	if (epl_fd > 0)
+		close(epl_fd);
+	return -1;
+}
+
+
+static ssize_t send_to_server(struct cli_tcp_state *state, tcli_pkt_t *cli_pkt,
+			      size_t len)
+{
+	int err;
+	int net_fd = state->net_fd;
+	ssize_t send_ret;
+
+	state->send_c++;
+
+	send_ret = send(net_fd, cli_pkt, len, 0);
 	if (unlikely(send_ret < 0)) {
-		pr_error("send(): %s", strerror(errno));
-		return 0;
-	}
-	prl_notice(11, "send(): %ld bytes", send_ret);
+		err = errno;
+		if (err == EAGAIN) {
+			/*
+			 * TODO: Handle pending buffer
+			 *
+			 * For now, let it fallthrough to error.
+			 */
+		}
 
-	return (size_t)send_ret;
+		pr_err("send(fd=%d)" PRERF, net_fd, PREAR(err));
+		return -1;
+	}
+
+	prl_notice(5, "[%10" PRIu32 "] send(fd=%d) %ld bytes to server",
+		   state->send_c, net_fd, send_ret);
+
+	return send_ret;
 }
 
 
-static bool send_hello(struct cli_tcp_state *state)
+static int send_hello(struct cli_tcp_state *state)
 {
 	size_t send_len;
-	ssize_t send_ret;
-	int net_fd = state->net_fd;
-	struct cli_tcp_pkt *cli_pkt = &state->cli_pkt;
-
-	cli_pkt->type = CLI_PKT_HELLO;
-	cli_pkt->length = 0;
-
-	send_len = offsetof(struct cli_tcp_pkt, raw_data);
-	return send_to_server(state, cli_pkt, send_len) == send_len;
-}
-
-
-static bool send_auth(struct cli_tcp_state *state)
-{
 	uint16_t data_len;
-	size_t send_len;
-	ssize_t send_ret;
-	int net_fd = state->net_fd;
-	struct cli_tcp_pkt *cli_pkt = &state->cli_pkt;
-	struct auth_pkt	*auth = &cli_pkt->auth;
-	struct cli_auth_cfg *auth_cfg = &state->cfg->auth;
+	tcli_pkt_t *cli_pkt;
+	struct tcli_hello_pkt *hlo_pkt;
 
-	prl_notice(0, "Authenticating...");
+	prl_notice(2, "Sending hello packet to server...");
 
-	data_len = sizeof(struct auth_pkt);
-	cli_pkt->type = CLI_PKT_AUTH;
+	cli_pkt = state->send_buf.__pkt_chk;
+	hlo_pkt = &cli_pkt->hello_pkt;
+
+	/*
+	 * Tell the server what my version is.
+	 */
+	memset(&hlo_pkt->v, 0, sizeof(hlo_pkt->v));
+	hlo_pkt->v.ver       = VERSION;
+	hlo_pkt->v.patch_lvl = PATCHLEVEL;
+	hlo_pkt->v.sub_lvl   = SUBLEVEL;
+	strncpy(hlo_pkt->v.extra, EXTRAVERSION, sizeof(hlo_pkt->v.extra) - 1);
+	hlo_pkt->v.extra[sizeof(hlo_pkt->v.extra) - 1] = '\0';
+
+	data_len        = sizeof(struct tcli_hello_pkt);
+	cli_pkt->type   = TCLI_PKT_HELLO;
+	cli_pkt->npad   = 0;
 	cli_pkt->length = htons(data_len);
+	send_len        = TCLI_PKT_MIN_L + data_len;
 
-	strncpy(auth->username, auth_cfg->username, sizeof(auth->username) - 1);
-	strncpy(auth->password, auth_cfg->password, sizeof(auth->password) - 1);
-	auth->username[sizeof(auth->username) - 1] = '\0';
-	auth->password[sizeof(auth->password) - 1] = '\0';
-
-	send_len = offsetof(struct cli_tcp_pkt, raw_data);
-	return send_to_server(state, cli_pkt, send_len) == send_len;
+	return (send_to_server(state, cli_pkt, send_len) > 0) ? 0 : -1;
 }
 
 
-static bool read_banner(struct cli_tcp_state *state)
+static ssize_t send_auth(struct cli_tcp_state *state)
 {
-	struct srv_tcp_pkt *srv_pkt = &state->srv_pkt;
-	struct srv_banner *banner = &srv_pkt->banner;
+	size_t send_len;
+	uint16_t data_len;
+	tcli_pkt_t *cli_pkt;
+	struct tcli_auth_pkt *auth_pkt;
+	struct cli_auth_cfg *auc = &state->cfg->auth;
 
-	if ((	banner->cur.ver		== 0)
-	    && (banner->cur.sub_ver 	== 0)
-	    && (banner->cur.sub_sub_ver == 1)) {
+	cli_pkt  = state->send_buf.__pkt_chk;
+	auth_pkt = &cli_pkt->auth_pkt;
 
-		if (!state->is_auth)
-			return send_auth(state);
+	strncpy(auth_pkt->uname, auc->username, sizeof(auth_pkt->uname) - 1);
+	strncpy(auth_pkt->pass, auc->password, sizeof(auth_pkt->pass) - 1);
 
-		return true;
+	auth_pkt->uname[sizeof(auth_pkt->uname) - 1] = '\0';
+	auth_pkt->pass[sizeof(auth_pkt->pass) - 1] = '\0';
+
+	prl_notice(0, "Authenticating as %s", auth_pkt->uname);
+	
+	data_len        = sizeof(struct tcli_auth_pkt);
+	cli_pkt->type   = TCLI_PKT_AUTH;
+	cli_pkt->npad   = 0;
+	cli_pkt->length = htons(data_len);
+	send_len        = TCLI_PKT_MIN_L + data_len;
+
+	return send_to_server(state, cli_pkt, send_len);
+}
+
+
+static evt_srv_goto_t handle_welcome(struct cli_tcp_state *state)
+{
+	/*
+	 * TODO: Strict checking here.
+	 */
+
+	return send_auth(state) > 0 ? RETURN_OK : OUT_CONN_CLOSE;
+}
+
+
+static evt_srv_goto_t handle_server_pkt(tsrv_pkt_t *srv_pkt, uint16_t data_len,
+				     	struct cli_tcp_state *state)
+{
+	(void)srv_pkt;
+	(void)data_len;
+	(void)state;
+
+	evt_srv_goto_t retval = RETURN_OK;
+
+	switch (srv_pkt->type) {
+	case TSRV_PKT_WELCOME:
+		/*
+		 * Server will send us `welcome packet` if the
+		 * version is supported by the TeaVPN2 server.
+		 *
+		 * See also: send_hello()
+		 */
+		retval = handle_welcome(state);
+		goto out;
+	case TSRV_PKT_AUTH_OK:
+		/*
+		 * Authentication success!
+		 *
+		 * We must have private IP information from
+		 * this **AUTH OK** packet.
+		 */
+		// retval = handle_auth_ok();
+		goto out;
+	case TSRV_PKT_AUTH_REJECT:
+		goto out;
+	case TSRV_PKT_IFACE_DATA:
+		goto out;
+	case TSRV_PKT_REQSYNC:
+		goto out;
+	case TSRV_PKT_PING:
+		goto out;
+	case TSRV_PKT_CLOSE:
+		goto out;
 	}
 
-	return false;
-}
+	/*
+	 * I don't put default on switch statement to shut
+	 * the clang warning up!
+	 */
 
+	/* default: */
+	/*
+	 * TODO: Change the state to CT_NOSYNC and
+	 *       create a recovery rountine.
+	 */
 
-static void handle_auth_ok(struct cli_tcp_state *state)
-{
-	struct cli_cfg *cfg = state->cfg;
-	struct cli_iface_cfg *iface_cfg = &cfg->iface;
-	struct srv_tcp_pkt *srv_pkt = &state->srv_pkt;
-	struct srv_auth_ok *auth_ok = &srv_pkt->auth_ok;
-	struct iface_cfg *iface = &auth_ok->iface;
-
-	strncpy(iface->dev, iface_cfg->dev, sizeof(iface->dev) - 1);
-
-	if (unlikely(!raise_up_interface(iface))) {
-		state->stop = true;
-		pr_error("Cannot raise up virtual network interface");
-		return;
+	if ((NOTICE_MAX_LEVEL) >= 5) {
+		/*
+		 * Something is wrong!
+		 *
+		 * Let's debug this by hand by seeing the
+		 * hexdump result.
+		 */
+		VT_HEXDUMP(srv_pkt, sizeof(*srv_pkt));
+		panic("CORRUPTED PACKET!");
 	}
 
-	prl_notice(0, "Virtual network interface has been raised up");
-	prl_notice(0, "Initialization Sequence Completed");
+	prl_notice(0, "Received invalid packet type from server (type: %d)",
+		   srv_pkt->type);
+
+	if (likely(!state->is_auth))
+		return OUT_CONN_CLOSE;
+
+	return OUT_CONN_ERR;
+out:
+	return retval;
 }
 
 
-static void handle_server_data(int net_fd, struct cli_tcp_state *state)
+static evt_srv_goto_t process_server_buf(size_t recv_s,
+					 struct cli_tcp_state *state)
 {
-	int ern;
+	uint16_t npad;
+	uint16_t data_len;
+	uint16_t fdata_len; /* Full data length                        */
+	uint16_t cdata_len; /* Current received data length + plus pad */
+	evt_srv_goto_t retval;
+
+	tsrv_pkt_t *srv_pkt = state->recv_buf.__pkt_chk;
+	char *recv_buf = srv_pkt->raw_data;
+
+again:
+	if (unlikely(recv_s < TSRV_PKT_MIN_L)) {
+		/*
+		 * We can't continue to process the packet at this point,
+		 * because we have not received the `type of packet` and
+		 * the `length of packet`.
+		 *
+		 * Kick out!
+		 * Let's wait for the next cycle.
+		 */
+		goto out;
+	}
+
+	npad      = srv_pkt->npad;
+	data_len  = ntohs(srv_pkt->length);
+	fdata_len = data_len + npad;
+	if (unlikely(data_len > TSRV_PKT_MAX_L)) {
+		/*
+		 * `data_len` must **never be greater** than TSRV_PKT_MAX_L.
+		 *
+		 * If we reach this block, then it must be corrupted packet!
+		 *
+		 * BTW, there are several possibilities here:
+		 * - Server has been compromised to intentionally send broken
+		 *   packet (it's very unlikely, uh...).
+		 * - Packet has been corrupted when it was on the way (maybe
+		 *   ISP problem?).
+		 * - Bug on something we haven't yet known.
+		 */
+		prl_notice(0, "Server sends invalid packet length "
+			      "(max_allowed_len = %zu; srv_pkt->length = %u; "
+			      "recv_s = %zu) CORRUPTED PACKET?", TSRV_PKT_MAX_L,
+			      data_len, recv_s);
+
+		return state->is_auth ? OUT_CONN_ERR : OUT_CONN_CLOSE;
+	}
+
+
+	/* Calculate current received data length */
+	cdata_len = (uint16_t)recv_s - (uint16_t)TSRV_PKT_MIN_L;
+	if (unlikely(cdata_len < fdata_len)) {
+		/*
+		 * **We really have received** the type and length of packet.
+		 *
+		 * However, the packet has not been fully received.
+		 * So let's wait for the next cycle to process it.
+		 */
+		goto out;
+	}
+
+	retval = handle_server_pkt(srv_pkt, data_len, state);
+	if (unlikely(retval != RETURN_OK))
+		return retval;
+
+	if (likely(cdata_len > fdata_len)) {
+		/*
+		 * We have extra packet on the tail, must memmove to
+		 * the head before we run out of buffer.
+		 */
+		size_t cur_valid_size = TCLI_PKT_MIN_L + fdata_len;
+		recv_s -= cur_valid_size;
+
+		memmove(recv_buf, recv_buf + cur_valid_size, recv_s);
+
+		prl_notice(5, "memmove (copy_size: %zu; recv_s: %zu; "
+			      "cur_valid_size: %zu)", recv_s, recv_s,
+			      cur_valid_size);
+
+		goto again;
+	}
+
+	recv_s = 0;
+out:
+	state->recv_s = recv_s;
+	return RETURN_OK;
+}
+
+
+static void handle_recv_server(int net_fd, struct cli_tcp_state *state)
+{
+	int err;
 	size_t recv_s;
+	char *recv_buf;
 	size_t recv_len;
 	ssize_t recv_ret;
-	char *recv_buf;
-	struct srv_tcp_pkt *srv_pkt;
-	uint16_t fdata_len; /* Full data length    */
-	uint16_t cdata_len; /* Current data length */
 
-	recv_buf = state->recv_buf;
-	srv_pkt  = &state->srv_pkt;
 	recv_s   = state->recv_s;
-
-	recv_len = sizeof(struct srv_tcp_pkt) - recv_s;
-	recv_ret = recv(net_fd, recv_buf, recv_len, 0);
+	recv_len = TCLI_PKT_RECV_L - recv_s;
+	recv_buf = state->recv_buf.raw_buf;
+	recv_ret = recv(net_fd, recv_buf + recv_s, recv_len, 0);
 	if (unlikely(recv_ret < 0)) {
-		ern = errno;
-		if (ern == EAGAIN)
+		err = errno;
+		if (err == EAGAIN)
 			return;
-		pr_error("recv(): %s", strerror(ern));
+		pr_err("recv(fd=%d): " PRERF, net_fd, PREAR(err));
 		goto out_err_c;
 	}
 
 	if (unlikely(recv_ret == 0)) {
-		prl_notice(6, "Server has closed the connection");
+		prl_notice(0, "Server has closed its connection");
 		goto out_close_conn;
 	}
-
-	prl_notice(11, "recv() %ld bytes from server", recv_ret);
 
 	recv_s += (size_t)recv_ret;
-	if (unlikely(recv_s < SRV_PKT_MIN_RSIZ)) {
-		/*
-		 * We haven't received the type and length of packet.
-		 * Very unlikely happens, maybe connection is too slow (?)
-		 */
-		goto out_save_recv_s;
-	}
 
+	prl_notice(5, "recv(fd=%d) %ld bytes from server (recv_s = %zu)",
+		   net_fd, recv_ret, recv_s);
 
-	fdata_len = htons(srv_pkt->length);
-	if (unlikely(fdata_len > SRV_PKT_DATA_SIZ)) {
-		/*
-		 * Server sends invalid length.
-		 *
-		 * Possibilities in this case:
-		 * - There is a bug in client module.
-		 * - The packet has been corrupted.
-		 * - Server has been compromised to send malicious packet.
-		 * - Or whatever causes packet corruption (?)
-		 */
-		prl_notice(1, "Server sends invalid packet len "
-			   "(max_allowed_len = %zu; cli_pkt->length = %u;"
-			   " recv_s = %zu) POSSIBLE BUG!", SRV_PKT_DATA_SIZ,
-			   fdata_len, recv_s);
+	switch (process_server_buf(recv_s, state)) {
+	case RETURN_OK:
+		return;
+	case OUT_CONN_ERR:
 		goto out_err_c;
-	}
-
-	/* Calculate current data length */
-	cdata_len = recv_s - CLI_PKT_MIN_RSIZ;
-	if (unlikely(cdata_len < fdata_len)) {
-		/*
-		 * We have received the type and length of packet, but
-		 * incomplete, let's wait a bit longer in the next cycle.
-		 */
-		goto out_save_recv_s;
-	}
-
-	assert(cdata_len == fdata_len);
-
-	switch (srv_pkt->type) {
-	case SRV_PKT_BANNER:
-		if (!read_banner(state))
-			goto out_close_conn;
-		break;
-	case SRV_PKT_AUTH_OK:
-		handle_auth_ok(state);
-		break;
-	case SRV_PKT_AUTH_REJECT:
-		prl_notice(0, "Authentication rejected by server");
+	case OUT_CONN_CLOSE:
 		goto out_close_conn;
-	case SRV_PKT_DATA:
-		break;
-	case SRV_PKT_CLOSE:
-		break;
-	default:
-		prl_notice(11, "Received invalid packet from server (type: %d)",
-			   srv_pkt->type);
-		goto out_err_c;
 	}
-	state->recv_s = 0;
-	return;
 
-out_save_recv_s:
-	state->recv_s = recv_s;
 	return;
 
 out_err_c:
 	state->recv_s = 0;
-	if (state->err_c++ >= MAX_ERR_C) {
-		pr_error("Reached the max number of error");
-		goto out_close_conn;
-	}
-	return;
+
+	if (state->err_c++ < MAX_ERR_C)
+		return;
+
+	prl_notice(0, "Reached the max number of error, closing...");
 
 out_close_conn:
-	prl_notice(0, "Stopping event loop...");
+	epoll_delete(state->epl_fd, net_fd);
 	state->stop = true;
-	return;
+	prl_notice(0, "Stopping event loop...");
+}
+
+
+static int handle_event(struct cli_tcp_state *state, struct epoll_event *event)
+{
+	int fd;
+	bool is_err;
+	uint32_t revents;
+	const uint32_t errev = EPOLLERR | EPOLLHUP;
+
+	fd      = event->data.fd;
+	revents = event->events;
+	is_err  = ((revents & errev) != 0);
+
+	if (fd == state->net_fd) {
+		if (unlikely(is_err)) {
+			pr_err("tun_fd wait error");
+			return -1;
+		}
+		handle_recv_server(fd, state);
+	} else
+	if (fd == state->tun_fd) {
+		
+	}
+
+	return 0;
 }
 
 
 static int event_loop(struct cli_tcp_state *state)
 {
-	int rv;
-	int ern;
-	int timeout;
-	nfds_t nfds;
+	int err;
 	int retval = 0;
-	struct pollfd fds[2];
-	int net_fd = state->net_fd;
-	int tun_fd = state->tun_fd;
+	int maxevents = 32;
+
+	int epl_ret;
+	int epl_fd = state->epl_fd;
+	struct epoll_event events[2];
 
 
-	fds[0].fd = net_fd;
-	fds[0].events = POLLIN;
-
-	fds[1].fd = -tun_fd; /* OFF */
-	fds[1].events = POLLIN;
-
-	nfds = 2;
-	timeout = 5000;
-
-	while (true) {
-		rv = poll(fds, nfds, timeout);
-
-		if (unlikely(rv == 0)) {
-			/* Poll reached timeout. */
-			goto eol;
+	while (likely(!state->stop)) {
+		epl_ret = epoll_wait(epl_fd, events, maxevents, 3000);
+		if (unlikely(epl_ret == 0)) {
+			/*
+			 * epoll reached timeout.
+			 *
+			 * TODO: Do something meaningful here...
+			 * Maybe keep alive ping to clients?
+			 */
+			continue;
 		}
 
 
-		if (unlikely(rv < 0)) {
-			ern = errno;
-			if (ern == EINTR) {
+		if (unlikely(epl_ret < 0)) {
+			err = errno;
+			if (err == EINTR) {
 				retval = 0;
 				prl_notice(0, "Interrupted!");
-				break;
+				continue;
 			}
-			retval = -ern;
-			pr_error("poll(): %s", strerror(ern));
+
+			retval = -err;
+			pr_error("epoll_wait(): " PRERF, PREAR(err));
 			break;
 		}
 
-
-		if (likely((fds[0].revents & POLLIN) != 0)) {
-			handle_server_data(net_fd, state);
-			rv--;
+		for (int i = 0; likely(i < epl_ret); i++) {
+			retval = handle_event(state, &events[i]);
+			if (unlikely(retval < 0))
+				goto out;
 		}
-
-
-		if (likely((fds[1].revents & POLLIN) != 0)) {
-			rv--;
-		}
-
-	eol:
-		if (unlikely(state->stop))
-			break;
 	}
 
-
+out:
 	return retval;
 }
 
 
 static void destroy_state(struct cli_tcp_state *state)
 {
-	int net_fd = state->net_fd;
+	int epl_fd = state->epl_fd;
 	int tun_fd = state->tun_fd;
+	int net_fd = state->net_fd;
 
-	if (tun_fd != -1) {
-		prl_notice(6, "Closing tun_fd (%d)", tun_fd);
+	if (likely(tun_fd != -1)) {
+		prl_notice(0, "Closing state->tun_fd (%d)", tun_fd);
 		close(tun_fd);
 	}
 
-	if (net_fd != -1) {
-		prl_notice(6, "Closing net_fd (%d)", net_fd);
+	if (likely(net_fd != -1)) {
+		prl_notice(0, "Closing state->net_fd (%d)", net_fd);
 		close(net_fd);
+	}
+
+	if (likely(epl_fd != -1)) {
+		prl_notice(0, "Closing state->epl_fd (%d)", epl_fd);
+		close(epl_fd);
 	}
 }
 
 
 int teavpn_client_tcp_handler(struct cli_cfg *cfg)
 {
-	int retval;
+	int retval = 0;
 	struct cli_tcp_state state;
+
+	/* Shut the valgrind up! */
+	memset(&state, 0, sizeof(struct cli_tcp_state));
 
 	state.cfg = cfg;
 	g_state = &state;
+	signal(SIGHUP, interrupt_handler);
+	signal(SIGINT, interrupt_handler);
+	signal(SIGPIPE, interrupt_handler);
+	signal(SIGTERM, interrupt_handler);
+	signal(SIGQUIT, interrupt_handler);
 
-	signal(SIGINT, intr_handler);
-	signal(SIGHUP, intr_handler);
-	signal(SIGTERM, intr_handler);
-	signal(SIGQUIT, intr_handler);
-
-	init_state(&state);
-
+	retval = init_state(&state);
+	if (unlikely(retval < 0))
+		goto out;
 	retval = init_iface(&state);
 	if (retval < 0)
 		goto out;
 	retval = init_socket(&state);
-	if (retval < 0)
+	if (unlikely(retval < 0))
+		goto out;
+	retval = init_epoll(&state);
+	if (unlikely(retval < 0))
 		goto out;
 	retval = send_hello(&state);
-	if (retval < 0)
+	if (unlikely(retval < 0))
 		goto out;
+	prl_notice(0, "Waiting for server welcome...");
 	retval = event_loop(&state);
 out:
 	destroy_state(&state);

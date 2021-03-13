@@ -1,7 +1,7 @@
 
 
-#ifndef __TEAVPN2__GLOBAL__HELPERS__STRING_H
-#define __TEAVPN2__GLOBAL__HELPERS__STRING_H
+#ifndef TEAVPN2__GLOBAL__HELPERS__STRING_H
+#define TEAVPN2__GLOBAL__HELPERS__STRING_H
 
 #include <stdlib.h>
 #include <string.h>
@@ -135,4 +135,4 @@ static __always_inline char *trunc_str(char *str, size_t n)
 
 char *escapeshellarg(char *alloc, const char *str, size_t len, size_t *res_len);
 
-#endif /* #ifndef __TEAVPN2__GLOBAL__HELPERS__STRING_H */
+#endif /* #ifndef TEAVPN2__GLOBAL__HELPERS__STRING_H */

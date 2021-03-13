@@ -1,17 +1,7 @@
 
 #include <stdio.h>
-#include <teavpn2/server/common.h>
+#include <teavpn2/client/common.h>
 
-extern char d_cli_cfg_file[];
-
-/* Default config for virtual network interface */
-extern uint16_t d_cli_mtu;
-extern char d_cli_dev[];
-
-/* Default config for socket */
-extern sock_type d_cli_sock_type;
-extern char d_cli_server_addr[];
-extern uint16_t d_cli_server_port;
 
 void teavpn_client_show_help(const char *app)
 {
@@ -32,7 +22,6 @@ void teavpn_client_show_help(const char *app)
 	printf(" Virtual network interface:\n");
 	printf("  -d, --dev=DEV\t\t\tSet virtual network interface name"
 	       " (default: %s).\n", d_cli_dev);
-	printf("  -m, --mtu=MTU\t\t\tSet mtu value (default: %d).\n", d_cli_mtu);
 
 	printf("\n");
 	printf(" Socket:\n");
@@ -54,10 +43,4 @@ void teavpn_client_show_help(const char *app)
 	printf("GitHub repository: https://github.com/TeaInside/teavpn2\n");
 	printf("\n");
 	printf("This software is licensed under the GPL-v3 license.\n");
-}
-
-
-void teavpn_client_show_version(void)
-{
-	puts("TeaVPN Client " TEAVPN_CLIENT_VERSION);
 }

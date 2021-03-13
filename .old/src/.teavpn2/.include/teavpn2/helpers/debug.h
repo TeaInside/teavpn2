@@ -1,6 +1,6 @@
 
-#ifndef __TEAVPN2__HELPERS__DEBUG_H
-#define __TEAVPN2__HELPERS__DEBUG_H
+#ifndef TEAVPN2__HELPERS__DEBUG_H
+#define TEAVPN2__HELPERS__DEBUG_H
 
 #include <stdint.h>
 
@@ -22,4 +22,4 @@ void __pr_notice(const char *fmt, ...);
 		}						\
 	} while (0)
 
-#endif /* #ifndef __TEAVPN2__HELPERS__DEBUG_H */
+#endif /* #ifndef TEAVPN2__HELPERS__DEBUG_H */

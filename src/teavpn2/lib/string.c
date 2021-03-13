@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <teavpn2/base.h>
 #include <teavpn2/lib/string.h>
 
 
@@ -39,7 +40,7 @@ char *escapeshellarg(char *alloc, const char *str, size_t len, size_t *res_len)
 			cmd[y++] = '\\';
 			cmd[y++] = '\'';
 #endif
-		/* fallthrough */
+		fallthrough;
 		default:
 			cmd[y++] = str[x];
 		}
