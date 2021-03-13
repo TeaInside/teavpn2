@@ -54,12 +54,16 @@ typedef union _utsrv_pkt_t {
 	tsrv_pkt_t		srv_pkt;
 	tsrv_pkt_t		__pkt_chk[UTSRV_MUL];
 	char			raw_buf[sizeof(tsrv_pkt_t) * UTSRV_MUL];
+	struct {
+		char		__dummy0[(sizeof(tcli_pkt_t) * UTCLI_MUL) - 1];
+		char		__end;
+	};
 } utsrv_pkt_t;
 
 
-#define TSRV_PKT_MIN_L	(offsetof(tsrv_pkt_t, raw_data[0]))
+#define TSRV_PKT_MIN_L	(offsetof(tsrv_pkt_t, raw_data))
 #define TSRV_PKT_MAX_L	(offsetof(tsrv_pkt_t, __end))
-#define TSRV_PKT_RECV_L	(offsetof(utsrv_pkt_t, __pkt_chk[UTSRV_MUL - 1]))
+#define TSRV_PKT_RECV_L	(offsetof(utsrv_pkt_t, __end))
 
 static_assert(sizeof(tsrv_pkt_type_t) == 1, "Bad sizeof(tsrv_pkt_type_t)");
 

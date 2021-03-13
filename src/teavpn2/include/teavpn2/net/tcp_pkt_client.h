@@ -58,12 +58,16 @@ typedef union _utcli_pkt_t {
 	tcli_pkt_t		cli_pkt;
 	tcli_pkt_t		__pkt_chk[UTCLI_MUL];
 	char			raw_buf[sizeof(tcli_pkt_t) * UTCLI_MUL];
+	struct {
+		char		__dummy0[(sizeof(tcli_pkt_t) * UTCLI_MUL) - 1];
+		char		__end;
+	};
 } utcli_pkt_t;
 
 
-#define TCLI_PKT_MIN_L	(offsetof(tcli_pkt_t, raw_data[0]))
-#define TCLI_PKT_MAX_L	(offsetof(tcli_pkt_t, __end))
-#define TCLI_PKT_RECV_L	(offsetof(utcli_pkt_t, __pkt_chk[UTCLI_MUL - 1]))
+#define TCLI_PKT_MIN_L	(offsetof(tcli_pkt_t, raw_data))
+#define TCLI_PKT_MAX_L	(offsetof(tcli_pkt_t, __end) + 1)
+#define TCLI_PKT_RECV_L	(offsetof(utcli_pkt_t, __end) + 1)
 
 #define TCLI_PKT_TYPE_MIN (0)
 #define TCLI_PKT_TYPE_MAX (6)
