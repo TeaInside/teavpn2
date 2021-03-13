@@ -48,9 +48,8 @@ void __pr_notice(const char *fmt, ...)
 
 #define panic(...)					\
 do {							\
-	pr_emerg("========= START PANIC =========");	\
+	pr_emerg("Panic: Not syncing!");		\
 	pr_emerg(__VA_ARGS__);				\
-	pr_emerg("========= END PANIC =========");	\
 } while (0)
 
 

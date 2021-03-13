@@ -278,6 +278,8 @@ static ssize_t send_to_server(struct cli_tcp_state *state, tcli_pkt_t *cli_pkt,
 	ssize_t send_ret;
 	int tcp_fd = state->tcp_fd;
 
+	len += cli_pkt->npad;
+
 	state->send_c++;
 	send_ret = send(tcp_fd, cli_pkt, len, 0);
 	if (unlikely(send_ret < 0)) {
@@ -313,7 +315,7 @@ static ssize_t send_to_server(struct cli_tcp_state *state, tcli_pkt_t *cli_pkt,
 }
 
 
-static size_t set_cli_pkt_buf(tcli_pkt_t *cli_pkt, tcli_pkt_type type,
+static size_t set_cli_pkt_buf(tcli_pkt_t *cli_pkt, tcli_pkt_type_t type,
 				 uint16_t length)
 {
 	cli_pkt->type   = type;

@@ -20,57 +20,61 @@
 #define MAX_ERR_C	(0xfu)
 
 #define EPL_MAP_SIZE	(0xffffu)
+
 #define EPL_MAP_TO_NOP	(0x0u)
 #define EPL_MAP_TO_TUN	(0x1u)
 #define EPL_MAP_TO_TCP	(0x2u)
-/* EPL_MAP_ADD must be the number of EPL_MAP_TO_* constants */
+/*
+ * EPL_MAP_ADD must be the number of EPL_MAP_TO_* constants
+ */
 #define EPL_MAP_ADD	(0x3u)
 
 #define EPL_IN_EVT	(EPOLLIN | EPOLLPRI)
 #define IP_MAP_TO_NOP	(0x0u)
 #define IP_MAP_ADD	(0x1u)
 
-/* Macros for printing  */
+/*
+ * Macros for printing 
+ */
 #define W_IP(CLIENT) ((CLIENT)->src_ip), ((CLIENT)->src_port)
 #define W_UN(CLIENT) ((CLIENT)->uname)
 #define W_IU(CLIENT) W_IP(CLIENT), W_UN(CLIENT)
 #define PRWIU "%s:%d (%s)"
+
 
 #if defined(__clang__)
 #  pragma clang diagnostic pop
 #endif
 
 
-typedef enum _gt_cli_evt_t {
-	HCE_OK = 0,
-	HCE_ERR = 1,
-	HCE_CLOSE = 2
-} gt_cli_evt_t;
-
-
 struct client_slot {
 	int			cli_fd;
+
 	uint32_t		recv_c;
 	uint32_t		send_c;
+
 	uint16_t		client_idx;
 	char			uname[64];
 
 	bool			is_auth;
 	bool			is_used;
 	bool			is_conn;
-	uint8_t			err_c;
 
+	uint8_t			err_c;
 	char			src_ip[IPV4_L];
 	uint16_t		src_port;
 	struct_pad(0, 4);
 
 	/* Number of unprocessed bytes in recv_buf */
 	size_t			recv_s;
+
 	utcli_pkt_t		recv_buf;
 };
 
 
-/* Stack to retrieve client slot in O(1) time complexity */
+/*
+ * Stack to retrieve client slot in O(1) time complexity
+ */
 struct cl_slot_stk {
 	uint16_t		sp;	/* Stack pointer       */
 	uint16_t		max_sp;	/* Max stack pointer   */
@@ -84,26 +88,21 @@ struct cl_slot_stk {
  *
  * Whenever there is a packet that should be broadcasted
  * to all clients, we use this struct to enumerate the
- * client index slot efficiently.
+ * client index slot.
  */
 struct _bc_arr {
-	uint16_t		*arr;
 	uint16_t		n;
 	struct_pad(0, 6);
+	uint16_t		*arr;
 };
-
 
 
 struct srv_tcp_state {
 	int			epoll_fd;
 	int			tcp_fd;
 	int			tun_fd;
-
-	bool			stop;
-	struct_pad(0, 3);
-
+	struct_pad(0, 4);
 	struct cl_slot_stk	client_stack;
-	struct srv_cfg		*cfg;
 	struct client_slot	*clients;
 	uint16_t		*epoll_map;
 
@@ -113,13 +112,19 @@ struct srv_tcp_state {
 	 */
 	uint16_t		(*ip_map)[256];
 
+	struct srv_cfg		*cfg;
+
 	/* Counters */
 	uint32_t		read_tun_c;
 	uint32_t		write_tun_c;
 
 	struct _bc_arr		bc_idx_arr;
+
 	utsrv_pkt_t		send_buf;
+	bool			stop;
+	struct_pad(1, 7);
 };
+
 
 static struct srv_tcp_state *g_state;
 
@@ -180,27 +185,6 @@ static void *calloc_wrp(size_t nmemb, size_t size)
 }
 
 
-static int init_state_client_stack(struct srv_tcp_state *state)
-{
-	uint16_t *arr;
-	uint16_t max_conn = state->cfg->sock.max_conn;
-	struct cl_slot_stk *clstk = &state->client_stack;
-
-	arr = calloc_wrp(EPL_MAP_SIZE, sizeof(uint16_t));
-	if (unlikely(arr == NULL))
-		return -1;
-
-	clstk->sp     = max_conn; /* Stack growsdown, so sp starts at high */
-	clstk->max_sp = max_conn;
-	clstk->arr    = arr;
-
-	while (max_conn--)
-		push_client_stack(clstk, max_conn);
-
-	return 0;
-}
-
-
 /*
  * Caller is responsible to keep track the index (client_idx).
  */
@@ -254,6 +238,27 @@ static int init_state_epoll_map(struct srv_tcp_state *state)
 		epoll_map[fd] = EPL_MAP_TO_NOP;
 
 	state->epoll_map = epoll_map;
+	return 0;
+}
+
+
+static int init_state_client_stack(struct srv_tcp_state *state)
+{
+	uint16_t *arr;
+	uint16_t max_conn = state->cfg->sock.max_conn;
+	struct cl_slot_stk *clstk = &state->client_stack;
+
+	arr = calloc_wrp(EPL_MAP_SIZE, sizeof(uint16_t));
+	if (unlikely(arr == NULL))
+		return -1;
+
+	clstk->sp     = max_conn; /* Stack growsdown, so sp starts at high */
+	clstk->max_sp = max_conn;
+	clstk->arr    = arr;
+
+	while (max_conn--)
+		push_client_stack(clstk, max_conn);
+
 	return 0;
 }
 
@@ -318,16 +323,16 @@ static int init_state(struct srv_tcp_state *state)
 
 static int init_iface(struct srv_tcp_state *state)
 {
-	int tun_fd;
+	int fd;
 	struct iface_cfg i;
 	struct srv_iface_cfg *j = &state->cfg->iface;
 
 	prl_notice(0, "Creating virtual network interface: \"%s\"...", j->dev);
 
-	tun_fd = tun_alloc(j->dev, IFF_TUN | IFF_NO_PI);
-	if (unlikely(tun_fd < 0))
+	fd = tun_alloc(j->dev, IFF_TUN | IFF_NO_PI);
+	if (unlikely(fd < 0))
 		return -1;
-	if (unlikely(fd_set_nonblock(tun_fd) < 0))
+	if (unlikely(fd_set_nonblock(fd) < 0))
 		goto out_err;
 
 	memset(&i, 0, sizeof(struct iface_cfg));
@@ -341,10 +346,10 @@ static int init_iface(struct srv_tcp_state *state)
 		goto out_err;
 	}
 
-	state->tun_fd = tun_fd;
+	state->tun_fd = fd;
 	return 0;
 out_err:
-	close(tun_fd);
+	close(fd);
 	return -1;
 }
 
@@ -420,15 +425,15 @@ out_err:
 
 static int init_socket(struct srv_tcp_state *state)
 {
+	int fd;
 	int err;
-	int tcp_fd;
 	int retval;
 	struct sockaddr_in addr;
 	struct srv_sock_cfg *sock = &state->cfg->sock;
 
 	prl_notice(0, "Creating TCP socket...");
-	tcp_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
-	if (unlikely(tcp_fd < 0)) {
+	fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
+	if (unlikely(fd < 0)) {
 		err = errno;
 		retval = -err;
 		pr_err("socket(): " PRERF, PREAR(err));
@@ -436,7 +441,7 @@ static int init_socket(struct srv_tcp_state *state)
 	}
 
 	prl_notice(0, "Setting up socket file descriptor...");
-	retval = socket_setup(tcp_fd, state->cfg);
+	retval = socket_setup(fd, state->cfg);
 	if (unlikely(retval < 0))
 		goto out_err;
 
@@ -445,7 +450,7 @@ static int init_socket(struct srv_tcp_state *state)
 	addr.sin_port = htons(sock->bind_port);
 	addr.sin_addr.s_addr = inet_addr(sock->bind_addr);
 
-	retval = bind(tcp_fd, (struct sockaddr *)&addr, sizeof(addr));
+	retval = bind(fd, (struct sockaddr *)&addr, sizeof(addr));
 	if (unlikely(retval < 0)) {
 		err = errno;
 		retval = -err;
@@ -453,7 +458,7 @@ static int init_socket(struct srv_tcp_state *state)
 		goto out_err;
 	}
 
-	retval = listen(tcp_fd, sock->backlog);
+	retval = listen(fd, sock->backlog);
 	if (unlikely(retval < 0)) {
 		err = errno;
 		retval = -err;
@@ -461,14 +466,14 @@ static int init_socket(struct srv_tcp_state *state)
 		goto out_err;
 	}
 
-	state->tcp_fd = tcp_fd;
+	state->tcp_fd = fd;
 	prl_notice(0, "Listening on %s:%u...", sock->bind_addr,
 		   sock->bind_port);
 
 	return retval;
 out_err:
-	if (tcp_fd > 0)
-		close(tcp_fd);
+	if (fd > 0)
+		close(fd);
 	return retval;
 }
 
@@ -503,6 +508,7 @@ static int epoll_delete(int epl_fd, int fd)
 	}
 	return 0;
 }
+
 
 
 static int init_epoll(struct srv_tcp_state *state)
@@ -594,7 +600,6 @@ static ssize_t handle_iface_read(int tun_fd, struct srv_tcp_state *state)
 	prl_notice(5, "[%10" PRIu32 "] read(fd=%d) %zd bytes from tun_fd",
 		   state->read_tun_c, tun_fd, read_ret);
 
-	/* TODO: Broadcast srv_pkt */
 	return read_ret;
 }
 
@@ -630,7 +635,7 @@ static const char* resolve_new_client_ip(struct sockaddr_in *saddr,
 }
 
 
-static bool plug_to_client_slot(int cli_fd, const char *src_ip,
+static bool resolve_client_slot(int cli_fd, const char *src_ip,
 				uint16_t src_port,
 				struct srv_tcp_state *state)
 {
@@ -693,7 +698,7 @@ static void resolve_new_connection(int cli_fd, struct sockaddr_in *saddr,
 
 	src_port = ntohs(saddr->sin_port);
 
-	if (likely(plug_to_client_slot(cli_fd, src_ip, src_port, state)))
+	if (likely(resolve_client_slot(cli_fd, src_ip, src_port, state)))
 		return;
 
 	prl_notice(0, "Dropping connection from %s:%u", src_ip, src_port);
@@ -737,7 +742,14 @@ static int handle_tcp_event(int tcp_fd, struct srv_tcp_state *state,
 }
 
 
-static void panic_dump(void *ptr, size_t len)
+typedef enum _goto_in_client_event_t {
+	CET_GT_RETURN_OK = 0,
+	CET_GT_ERR = 1,
+	CET_GT_CLOSE_CONN = 2,
+} goto_cl_evt_t;
+
+
+static void CORRUPTION_DUMP(void *ptr, size_t len)
 {
 	if ((NOTICE_MAX_LEVEL) >= 5) {
 		panic("Data corrution detected!");
@@ -749,61 +761,51 @@ static void panic_dump(void *ptr, size_t len)
 static void print_corruption_notice(struct client_slot *client)
 {
 	tcli_pkt_t *cli_pkt = client->recv_buf.__pkt_chk;
-	panic_dump(cli_pkt, sizeof(*cli_pkt));
+	CORRUPTION_DUMP(cli_pkt, sizeof(*cli_pkt));
 }
 
 
-static gt_cli_evt_t handle_clpkt_hello(tcli_pkt_t *cli_pkt,
-				       struct client_slot *client,
-				       uint16_t data_len,
-				       struct srv_tcp_state *state)
+static goto_cl_evt_t handle_iface_write()
 {
-	(void)cli_pkt;
-	(void)client;
-	(void)data_len;
-	(void)state;
 
-	pr_notice("Hello");
-
-	return HCE_OK;
 }
 
 
-static gt_cli_evt_t process_client_pkt(tcli_pkt_t *cli_pkt,
-				       struct client_slot *client,
-				       uint16_t data_len,
-				       struct srv_tcp_state *state)
+static goto_cl_evt_t process_packet_from_client2(tcli_pkt_t *cli_pkt,
+						 struct client_slot *client,
+						 uint16_t data_len,
+						 struct srv_tcp_state *state)
 {
 	tcli_pkt_type_t pkt_type = cli_pkt->type;
+
 	
 	if (likely(pkt_type == TCLI_PKT_IFACE_DATA))
-		return HCE_OK;
-
+		return handle_iface_write(state, cli_pkt, data_len);
 	if (unlikely(pkt_type == TCLI_PKT_HELLO))
-		return handle_clpkt_hello(cli_pkt, client, data_len, state);
+		return handle_hello_pkt(cli_pkt, data_len);
 	if (unlikely(pkt_type == TCLI_PKT_AUTH))
-		return HCE_OK;
+		return CET_GT_RETURN_OK;
 	if (unlikely(pkt_type == TCLI_PKT_IFACA_ACK))
-		return HCE_OK;
+		return CET_GT_RETURN_OK;
 	if (unlikely(pkt_type == TCLI_PKT_REQSYNC))
-		return HCE_OK;
+		return CET_GT_RETURN_OK;
 	if (unlikely(pkt_type == TCLI_PKT_PING))
-		return HCE_OK;
+		return CET_GT_RETURN_OK;
 	if (unlikely(pkt_type == TCLI_PKT_CLOSE))
-		return HCE_OK;
+		return CET_GT_RETURN_OK;
 
-	print_corruption_notice(client);
+	print_corruption_dump(client);
 
 	prl_notice(0, "Client " PRWIU " sends invalid packet type (type: %d) "
 		      "CORRUPTED PACKET?", W_IU(client), pkt_type);
 
-	return client->is_auth ? HCE_ERR : HCE_CLOSE;
+	return client->is_auth ? CET_GT_ERR : CET_GT_CLOSE_CONN;
 }
 
 
-static gt_cli_evt_t handle_client_event3(size_t recv_s,
-					 struct client_slot *client,
-					 struct srv_tcp_state *state)
+static goto_cl_evt_t process_packet_from_client(size_t recv_s,
+						struct client_slot *client,
+				   		struct srv_tcp_state *state)
 {
 	char *recv_buf;
 	tcli_pkt_t *cli_pkt;
@@ -812,7 +814,8 @@ static gt_cli_evt_t handle_client_event3(size_t recv_s,
 	uint16_t data_len;
 	size_t   fdata_len; /* Expected full data length + plus pad    */
 	size_t   cdata_len; /* Current received data length + plus pad */
-	gt_cli_evt_t retval;
+	goto_cl_evt_t retval;
+
 
 	recv_buf = client->recv_buf.raw_buf;
 	cli_pkt  = client->recv_buf.__pkt_chk;
@@ -835,7 +838,7 @@ process_again:
 	fdata_len = data_len + npad;
 	if (unlikely(data_len > TCLI_PKT_MAX_L)) {
 
-		print_corruption_notice(client);
+		print_corruption_dump(client);
 
 		/*
 		 * `data_len` must **never be greater** than TCLI_PKT_MAX_L.
@@ -854,7 +857,7 @@ process_again:
 			      "recv_s = %zu) CORRUPTED PACKET?", W_IU(client),
 			      TCLI_PKT_MAX_L, data_len, recv_s);
 
-		return client->is_auth ? HCE_ERR : HCE_CLOSE;
+		return client->is_auth ? CET_GT_ERR : CET_GT_CLOSE_CONN;
 	}
 
 	/* Calculate current received data length */
@@ -869,19 +872,20 @@ process_again:
 	}
 
 	assert(cdata_len >= fdata_len);
-	retval = process_client_pkt(cli_pkt, client, data_len, state);
-	if (unlikely(retval != HCE_OK))
+	retval = process_packet_from_client2(cli_pkt, client, data_len, state);
+	if (retval != CET_GT_RETURN_OK)
 		return retval;
 
 	if (likely(cdata_len > fdata_len)) {
-		char *source_ptr;
 		size_t processed_len;
 		size_t unprocessed_len;
+		char *source_ptr;
 
 		processed_len   = TCLI_PKT_MIN_L + fdata_len;
 		unprocessed_len = recv_s - processed_len;
 		source_ptr      = &(recv_buf[processed_len]);
-		recv_s          = unprocessed_len;
+
+		recv_s = unprocessed_len;
 		memmove(recv_buf, source_ptr, unprocessed_len);
 
 		prl_notice(5, "memmove " PRWIU " (copy_size: %zu; "
@@ -894,14 +898,15 @@ process_again:
 	recv_s = 0;
 out:
 	client->recv_s = recv_s;
-	return HCE_OK;
+	return CET_GT_RETURN_OK;
 }
 
 
-static gt_cli_evt_t handle_client_event2(int cli_fd,
-					 struct client_slot *client,
-					 struct srv_tcp_state *state)
+static goto_cl_evt_t
+handle_incoming_packet_from_client(int cli_fd, struct client_slot *client,
+				   struct srv_tcp_state *state)
 {
+	int err;
 	size_t recv_s;
 	char *recv_buf;
 	size_t recv_len;
@@ -915,19 +920,18 @@ static gt_cli_evt_t handle_client_event2(int cli_fd,
 
 	recv_ret = recv(cli_fd, recv_buf + recv_s, recv_len, 0);
 	if (unlikely(recv_ret < 0)) {
-		int err = errno;
+		err = errno;
 		if (err == EAGAIN)
-			return HCE_CLOSE;
+			return CET_GT_RETURN_OK;
 
 		pr_err("recv(fd=%d): " PRERF " " PRWIU, cli_fd, PREAR(err),
 		       W_IU(client));
-
-		return HCE_ERR;
+		return CET_GT_ERR;
 	}
 
 	if (unlikely(recv_ret == 0)) {
 		prl_notice(0, PRWIU " has closed its connection", W_IU(client));
-		return HCE_CLOSE;
+		return CET_GT_CLOSE_CONN;
 	}
 
 	recv_s += (size_t)recv_ret;
@@ -936,53 +940,51 @@ static gt_cli_evt_t handle_client_event2(int cli_fd,
 		   " (recv_s = %zu)", client->recv_c, cli_fd, recv_ret,
 		   W_IU(client), recv_s);
 
-	return handle_client_event3(recv_s, client, state);
+	return process_packet_from_client(recv_s, client, state);
 }
 
 
 static int handle_client_event(int cli_fd, uint16_t map_to,
 			       struct srv_tcp_state *state, uint32_t revents)
 {
-	gt_cli_evt_t jump_to;
+	goto_cl_evt_t jump_to;
 	struct client_slot *client = &state->clients[map_to];
 	const uint32_t err_mask = EPOLLERR | EPOLLHUP;
 
 	if (unlikely(revents & err_mask)) {
 		pr_err("Detected error from revents " PRWIU, W_IU(client));
-		goto out_close;
+		goto out_close_conn;
 	}
 
-	jump_to = handle_client_event2(cli_fd, client, state);
-	if (likely(jump_to == HCE_OK)) {
-		goto out_ok;
+
+	jump_to = handle_incoming_packet_from_client(cli_fd, client, state);
+	if (likely(jump_to == CET_GT_RETURN_OK)) {
+		goto out_return_ok;
 	} else
-	if (unlikely(jump_to == HCE_ERR)) {
+	if (unlikely(jump_to == CET_GT_ERR)) {
 		goto out_err;
 	} else
-	if (unlikely(jump_to == HCE_CLOSE)) {
-		goto out_close;
+	if (unlikely(jump_to == CET_GT_CLOSE_CONN)) {
+		goto out_close_conn;
 	} else {
 		__builtin_unreachable();
 	}
 
-out_ok:
+out_return_ok:
 	return 0;
 
 out_err:
 	client->recv_s = 0;
-	prl_notice(5, "[%03u] Client " PRWIU " errored", client->err_c,
-		   W_IU(client));
-
 	if (unlikely(client->err_c++ >= MAX_ERR_C)) {
 		pr_err("Client " PRWIU " has reached the max number of errors",
 		       W_IU(client));
-		goto out_close;
+		goto out_close_conn;
 	}
 
-	/* Tolerate small error */
+	/* We tolerate small error */
 	return 0;
 
-out_close:
+out_close_conn:
 	epoll_delete(state->epoll_fd, cli_fd);
 	close(cli_fd);
 
@@ -1139,7 +1141,6 @@ static void destroy_state(struct srv_tcp_state *state)
 
 int teavpn_server_tcp_handler(struct srv_cfg *cfg)
 {
-	(void)pop_client_stack;
 	int retval;
 	struct srv_tcp_state state;
 
