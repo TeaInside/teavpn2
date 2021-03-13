@@ -6,7 +6,7 @@
 #include <teavpn2/base.h>
 #include <teavpn2/version_t.h>
 
-#ifndef TEAVPN2__NET__TCP_PKT_H
+#ifndef TEAVPN2__NET__TCP_PKT_H__INCLUDE
 #  error "This file must be included from <teavpn2/net/tcp_pkt.h>"
 #endif
 

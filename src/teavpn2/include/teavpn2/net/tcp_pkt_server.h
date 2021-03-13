@@ -6,7 +6,7 @@
 #include <teavpn2/base.h>
 #include <teavpn2/net/iface.h>
 
-#ifndef TEAVPN2__NET__TCP_PKT_H
+#ifndef TEAVPN2__NET__TCP_PKT_H__INCLUDE
 #  error "This file must be included from <teavpn2/net/tcp_pkt.h>"
 #endif
 
@@ -62,8 +62,8 @@ typedef union _utsrv_pkt_t {
 
 
 #define TSRV_PKT_MIN_L	(offsetof(tsrv_pkt_t, raw_data))
-#define TSRV_PKT_MAX_L	(offsetof(tsrv_pkt_t, __end))
-#define TSRV_PKT_RECV_L	(offsetof(utsrv_pkt_t, __end))
+#define TSRV_PKT_MAX_L	(offsetof(tsrv_pkt_t, __end) + 1)
+#define TSRV_PKT_RECV_L	(offsetof(utsrv_pkt_t, __end) + 1)
 
 static_assert(sizeof(tsrv_pkt_type_t) == 1, "Bad sizeof(tsrv_pkt_type_t)");
 

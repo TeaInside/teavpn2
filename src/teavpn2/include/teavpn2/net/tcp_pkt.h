@@ -3,8 +3,10 @@
 #ifndef TEAVPN2__NET__TCP_PKT_H
 #define TEAVPN2__NET__TCP_PKT_H
 
+#define TEAVPN2__NET__TCP_PKT_H__INCLUDE
 #include <teavpn2/net/tcp_pkt_client.h>
 #include <teavpn2/net/tcp_pkt_server.h>
+#undef TEAVPN2__NET__TCP_PKT_H__INCLUDE
 
 static_assert(sizeof(tsrv_pkt_t) == (
 	         1     /* type   */
