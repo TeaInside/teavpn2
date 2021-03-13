@@ -53,11 +53,8 @@ ifneq ($(DO_TEST),1)
 				-Wformat-security \
 				-Wformat-signedness \
 				-Wsequence-point \
-				-Wduplicated-cond \
-				-Wduplicated-branches \
 				-Wunsafe-loop-optimizations \
-				-Wstack-usage=2097152 \
-				-Wimplicit-fallthrough
+				-Wstack-usage=2097152
 		endif
 	else
 	$(error I want __GNUC__!)
