@@ -8,7 +8,9 @@
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 #include <teavpn2/base.h>
+#include <teavpn2/auth.h>
 #include <teavpn2/net/iface.h>
+#include <teavpn2/lib/string.h>
 #include <teavpn2/server/tcp.h>
 #include <teavpn2/net/tcp_pkt.h>
 
@@ -742,6 +744,7 @@ static void panic_dump(void *ptr, size_t len)
 	if ((NOTICE_MAX_LEVEL) >= 5) {
 		panic("Data corrution detected!");
 		VT_HEXDUMP(ptr, len);
+		panic("Not syncing --");
 	}
 }
 
@@ -753,19 +756,163 @@ static void print_corruption_notice(struct client_slot *client)
 }
 
 
+static ssize_t send_to_client(struct client_slot *client,
+			      struct srv_tcp_state *state,
+			      size_t len)
+{
+	int err;
+	ssize_t send_ret;
+	int cli_fd = client->cli_fd;	
+	tsrv_pkt_t *srv_pkt = state->send_buf.__pkt_chk;
+
+	client->send_c++;
+
+	send_ret = send(cli_fd, srv_pkt, len, 0);
+	if (unlikely(send_ret < 0)) {
+		err = errno;
+		if (err == EAGAIN) {
+			/*
+			 * TODO: Handle pending buffer
+			 *
+			 * For now, let it fallthrough to error.
+			 */
+		}
+
+		pr_err("send(fd=%d)" PRERF, cli_fd, PREAR(err));
+		return -1;
+	}
+
+	prl_notice(5, "[%10" PRIu32 "] send(fd=%d) %ld bytes to " PRWIU,
+		   client->send_c, cli_fd, send_ret, W_IU(client));
+
+	return send_ret;
+}
+
+
+static size_t set_srv_pkt_buf(tsrv_pkt_t *srv_pkt, tsrv_pkt_type_t type,
+			      uint16_t length)
+{
+	srv_pkt->type   = type;
+	srv_pkt->npad   = 0;
+	srv_pkt->length = htons(length);
+
+	return TSRV_PKT_MIN_L + length;
+}
+
+
+/* _b_ means return bool */
+static bool send_b_welcome(struct client_slot *client,
+			   struct srv_tcp_state *state)
+{
+	size_t send_len;
+	tsrv_pkt_t *srv_pkt = state->send_buf.__pkt_chk;
+
+	send_len = set_srv_pkt_buf(srv_pkt, TSRV_PKT_WELCOME, 0);
+	return send_to_client(client, state, send_len) > 0;
+}
+
+
 static gt_cli_evt_t handle_clpkt_hello(tcli_pkt_t *cli_pkt,
 				       struct client_slot *client,
 				       uint16_t data_len,
 				       struct srv_tcp_state *state)
 {
-	(void)cli_pkt;
-	(void)client;
-	(void)data_len;
-	(void)state;
+	version_t cmp_ver = {
+		.ver       = VERSION,
+		.patch_lvl = PATCHLEVEL,
+		.sub_lvl   = SUBLEVEL,
+		.extra     = EXTRAVERSION
+	};
+	struct tcli_hello_pkt *hlo_pkt;
 
-	pr_notice("Hello");
+	/* Ignore hello packet from authenticated client */
+	if (unlikely(client->is_auth))
+		return HCE_OK;
+
+	/* Wrong data length */
+	if (unlikely(data_len != sizeof(cmp_ver))) {
+		prl_notice(0, "Client " PRWIU " sends invalid hello data "
+			   "length (expected: %zu; got: %u)", W_IU(client),
+			   sizeof(cmp_ver), data_len);
+		return HCE_CLOSE;
+	}
+
+	hlo_pkt = &cli_pkt->hello_pkt;
+
+	if (unlikely(memcmp(&hlo_pkt->v, &cmp_ver, sizeof(cmp_ver)) != 0)) {
+
+		/*
+		 * For safe print, in case client sends non null-terminated
+		 */
+		hlo_pkt->v.extra[sizeof(hlo_pkt->v.extra) - 1] = '\0';
+
+		pr_err("Invalid client version from " PRWIU
+		       " (got: %u.%u.%u%s; expected: %u.%u.%u%s)",
+		       W_IU(client),
+		       hlo_pkt->v.ver,
+		       hlo_pkt->v.patch_lvl,
+		       hlo_pkt->v.sub_lvl,
+		       hlo_pkt->v.extra,
+		       cmp_ver.ver,
+		       cmp_ver.patch_lvl,
+		       cmp_ver.sub_lvl,
+		       cmp_ver.extra);
+
+		return HCE_CLOSE;
+	}
+
+	return send_b_welcome(client, state) ? HCE_OK : HCE_CLOSE;
+}
+
+
+static gt_cli_evt_t handle_clpkt_auth(tcli_pkt_t *cli_pkt,
+				      struct client_slot *client,
+				      uint16_t data_len,
+				      struct srv_tcp_state *state)
+{
+	bool is_auth_succeed;
+	tsrv_pkt_t *srv_pkt = state->send_buf.__pkt_chk;
+	struct auth_ret	*aret = &srv_pkt->auth_ok.aret;
+	struct tcli_auth_pkt *auth_pkt = &cli_pkt->auth_pkt;
+	char *uname = auth_pkt->uname;
+	char *pass  = auth_pkt->pass;
+
+	if (unlikely(client->is_auth))
+		return HCE_OK;
+
+	if (unlikely(data_len != sizeof(struct tcli_auth_pkt))) {
+		prl_notice(0, "Client " PRWIU " sends invalid auth packet "
+			      "length (expected: %zu; got: %u)", W_IU(client),
+			      sizeof(struct tcli_auth_pkt),
+			      data_len);
+		return HCE_CLOSE;
+	}
+
+	strncpy(client->uname, uname, sizeof(client->uname) - 1);
+
+	is_auth_succeed = teavpn_server_auth(aret, uname, pass);
+	memzero_explicit(&auth_pkt->pass, sizeof(auth_pkt->pass));
+
+	if (unlikely(!is_auth_succeed)) {
+		prl_notice(0, "Authentication failed from " PRWIU,
+			   W_IU(client));
+		goto out_auth_failed;
+	}
+
+	// if (unlikely(!send_auth_ok(client, state))) {
+	// 	prl_notice(0, "Authentication error from " PRWIU, W_IU(client));
+	// 	goto out_auth_failed;
+	// }
+
+	client->is_auth  = true;
+
+	/* TODO: Set IP Map, set index, etc. */
 
 	return HCE_OK;
+
+out_auth_failed:
+	// send_auth_fail(client, state);
+	return HCE_CLOSE;
 }
 
 
@@ -778,18 +925,17 @@ static gt_cli_evt_t process_client_pkt(tcli_pkt_t *cli_pkt,
 	
 	if (likely(pkt_type == TCLI_PKT_IFACE_DATA))
 		return HCE_OK;
-
-	if (unlikely(pkt_type == TCLI_PKT_HELLO))
+	if (likely(pkt_type == TCLI_PKT_HELLO))
 		return handle_clpkt_hello(cli_pkt, client, data_len, state);
-	if (unlikely(pkt_type == TCLI_PKT_AUTH))
+	if (likely(pkt_type == TCLI_PKT_AUTH))
+		return handle_clpkt_auth(cli_pkt, client, data_len, state);
+	if (likely(pkt_type == TCLI_PKT_IFACA_ACK))
 		return HCE_OK;
-	if (unlikely(pkt_type == TCLI_PKT_IFACA_ACK))
+	if (likely(pkt_type == TCLI_PKT_REQSYNC))
 		return HCE_OK;
-	if (unlikely(pkt_type == TCLI_PKT_REQSYNC))
+	if (likely(pkt_type == TCLI_PKT_PING))
 		return HCE_OK;
-	if (unlikely(pkt_type == TCLI_PKT_PING))
-		return HCE_OK;
-	if (unlikely(pkt_type == TCLI_PKT_CLOSE))
+	if (likely(pkt_type == TCLI_PKT_CLOSE))
 		return HCE_OK;
 
 	print_corruption_notice(client);
@@ -874,6 +1020,11 @@ process_again:
 		return retval;
 
 	if (likely(cdata_len > fdata_len)) {
+		/*
+		 * We have extra bytes on the tail, must memmove to the front
+		 * before we run out of buffer.
+		 */
+
 		char *source_ptr;
 		size_t processed_len;
 		size_t unprocessed_len;
@@ -917,7 +1068,7 @@ static gt_cli_evt_t handle_client_event2(int cli_fd,
 	if (unlikely(recv_ret < 0)) {
 		int err = errno;
 		if (err == EAGAIN)
-			return HCE_CLOSE;
+			return HCE_OK;
 
 		pr_err("recv(fd=%d): " PRERF " " PRWIU, cli_fd, PREAR(err),
 		       W_IU(client));
@@ -948,7 +1099,15 @@ static int handle_client_event(int cli_fd, uint16_t map_to,
 	const uint32_t err_mask = EPOLLERR | EPOLLHUP;
 
 	if (unlikely(revents & err_mask)) {
-		pr_err("Detected error from revents " PRWIU, W_IU(client));
+
+		if (err_mask & EPOLLHUP) {
+			prl_notice(0, PRWIU " has closed its connection",
+				   W_IU(client));
+		} else {
+			pr_err("Detected error from revents " PRWIU,
+			       W_IU(client));
+		}
+
 		goto out_close;
 	}
 
@@ -970,7 +1129,7 @@ out_ok:
 
 out_err:
 	client->recv_s = 0;
-	prl_notice(5, "[%03u] Client " PRWIU " errored", client->err_c,
+	prl_notice(5, "[%03u] Client " PRWIU " got error", client->err_c,
 		   W_IU(client));
 
 	if (unlikely(client->err_c++ >= MAX_ERR_C)) {

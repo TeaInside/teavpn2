@@ -1,0 +1,18 @@
+
+#ifndef TEAVPN2__AUTH_H
+#define TEAVPN2__AUTH_H
+
+#include <teavpn2/base.h>
+#include <teavpn2/net/iface.h>
+
+
+struct auth_ret {
+	struct iface_cfg	iface;
+};
+
+bool teavpn_server_auth(struct auth_ret *ret, char *uname, char *pass);
+
+static_assert(sizeof(struct iface_cfg) == sizeof(struct auth_ret),
+	      "Bad sizeof(struct auth_ret)");
+
+#endif /* #ifndef TEAVPN2__AUTH_H */

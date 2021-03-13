@@ -4,6 +4,7 @@
 #define TEAVPN2__NET__TCP_PKT_SERVER_H
 
 #include <teavpn2/base.h>
+#include <teavpn2/auth.h>
 #include <teavpn2/net/iface.h>
 
 #ifndef TEAVPN2__NET__TCP_PKT_H__INCLUDE
@@ -29,7 +30,7 @@ typedef enum __attribute__((packed)) _tsrv_pkt_type_t {
  * aok means Auth OK
  */
 struct tsrv_aok_pkt {
-	struct iface_cfg	ifc;
+	struct auth_ret		aret;
 };
 
 
@@ -67,7 +68,7 @@ typedef union _utsrv_pkt_t {
 
 static_assert(sizeof(tsrv_pkt_type_t) == 1, "Bad sizeof(tsrv_pkt_type_t)");
 
-static_assert(sizeof(struct tsrv_aok_pkt) == sizeof(struct iface_cfg),
+static_assert(sizeof(struct tsrv_aok_pkt) == sizeof(struct auth_ret),
 	      "Bad sizeof(struct tsrv_aok_pkt)");
 
 #endif /* #ifndef TEAVPN2__NET__TCP_PKT_SERVER_H */
