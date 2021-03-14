@@ -7,6 +7,7 @@
 #include <sys/epoll.h>
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
+#include <teavpn2/cpu.h>
 #include <teavpn2/base.h>
 #include <teavpn2/net/iface.h>
 #include <teavpn2/lib/string.h>
@@ -46,7 +47,9 @@ struct cli_tcp_state {
 	utsrv_pkt_t		recv_buf;
 	struct iface_cfg	ciff;
 	bool			need_iface_down;
-	struct_pad(1, 5);
+	bool			aff_ok;
+	struct_pad(1, 4);
+	cpu_set_t		aff;
 };
 
 
@@ -64,6 +67,16 @@ static void handle_interrupt(int sig)
 
 static int init_state(struct cli_tcp_state *state)
 {
+	struct cpu_ret_info cri;
+
+	if (optimize_cpu_affinity(1, &cri) == 0) {
+		memcpy(&state->aff, &cri.affinity, sizeof(state->aff));
+		state->aff_ok = true;
+	} else {
+		state->aff_ok = false;
+	}
+
+	optimize_process_priority(-20, &cri);
 
 	state->epoll_fd     = -1;
 	state->tcp_fd       = -1;
@@ -101,12 +114,14 @@ out_err:
 }
 
 
-static int socket_setup(int fd, struct cli_cfg *cfg)
+static int socket_setup(int fd, struct cli_tcp_state *state)
 {
 	int rv;
 	int err;
 	int y;
+	bool soi = false;
 	socklen_t len = sizeof(y);
+	struct cli_cfg *cfg = state->cfg;
 	const void *pv = (const void *)&y;
 	const char *lv, *on;
 
@@ -126,15 +141,26 @@ static int socket_setup(int fd, struct cli_cfg *cfg)
 		goto out_err;
 	}
 
-	y = 1;
-	rv = setsockopt(fd, SOL_SOCKET, SO_INCOMING_CPU, pv, len);
-	if (unlikely(rv < 0)) {
-		lv = "SOL_SOCKET";
-		on = "SO_INCOMING_CPU";
-		goto out_err;
+	for (int i = 0; i < CPU_SETSIZE; i++) {
+		if (CPU_ISSET(i, &state->aff)) {
+			y = i;
+			soi = true;
+			break;
+		}
 	}
 
-	y = 1024 * 1024 * 2;
+	if (soi) {
+		prl_notice(4, "Pinning SO_INCOMING_CPU to CPU %d", y);
+		rv = setsockopt(fd, SOL_SOCKET, SO_INCOMING_CPU, pv, len);
+		if (unlikely(rv < 0)) {
+			lv = "SOL_SOCKET";
+			on = "SO_INCOMING_CPU";
+			rv = 0;
+			goto out_err;
+		}
+	}
+
+	y = 1024 * 1024 * 4;
 	rv = setsockopt(fd, SOL_SOCKET, SO_RCVBUFFORCE, pv, len);
 	if (unlikely(rv < 0)) {
 		lv = "SOL_SOCKET";
@@ -142,7 +168,7 @@ static int socket_setup(int fd, struct cli_cfg *cfg)
 		goto out_err;
 	}
 
-	y = 1024 * 1024 * 2;
+	y = 1024 * 1024 * 4;
 	rv = setsockopt(fd, SOL_SOCKET, SO_SNDBUFFORCE, pv, len);
 	if (unlikely(rv < 0)) {
 		lv = "SOL_SOCKET";
@@ -191,7 +217,7 @@ static int init_socket(struct cli_tcp_state *state)
 	}
 
 	prl_notice(0, "Setting up socket file descriptor...");
-	retval = socket_setup(fd, state->cfg);
+	retval = socket_setup(fd, state);
 	if (unlikely(retval < 0))
 		goto out_err;
 
