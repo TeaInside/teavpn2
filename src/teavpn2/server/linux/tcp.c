@@ -958,7 +958,7 @@ static gt_cli_evt_t handle_clpkt_auth(tcli_pkt_t *cli_pkt,
 	}
 
 	ip_idx_i = ipv4 & 0xffu;
-	ip_idx_j = (ipv4 >> 8) & 0xffu;
+	ip_idx_j = (ipv4 >> 8u) & 0xffu;
 	client->ipv4 = ipv4;
 
 	/* TODO: Set IP Map, set index, etc. */

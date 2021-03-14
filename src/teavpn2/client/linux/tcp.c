@@ -524,7 +524,6 @@ static gt_srv_evt_t handle_srpkt_welcome(uint16_t data_len,
 static gt_srv_evt_t handle_srpkt_auth_ok(tsrv_pkt_t *srv_pkt, uint16_t data_len,
 					 struct cli_tcp_state *state)
 {
-	(void)state;
 	struct auth_ret	*aret = &srv_pkt->auth_ok.aret;
 	struct iface_cfg *iff = &aret->iface;
 	struct cli_iface_cfg *j = &state->cfg->iface;
