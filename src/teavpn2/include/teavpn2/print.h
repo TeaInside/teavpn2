@@ -58,7 +58,7 @@ do {							\
 	if (LEVEL == 0) {				\
 		pr_notice(__VA_ARGS__);			\
 	} else						\
-	if (likely((LEVEL) < __notice_level)) {		\
+	if (likely((LEVEL) <= __notice_level)) {	\
 		pr_notice(__VA_ARGS__);			\
 	}						\
 } while (0)
