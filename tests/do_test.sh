@@ -1,8 +1,11 @@
 #!/bin/sh
 
+GREEN="32"
+BOLDGREEN="\e[1;${GREEN}m"
+ENDCOLOR="\e[0m"
+
 for i in ${@}; do
-	echo "[Testing] $i";
-	echo $LD_PRELOAD;
-	echo $VG $VGFLAGS --log-file="$i.log" "$i";
-	$VG $VGFLAGS --log-file="$i.log" "$i";
+	/bin/echo -e "${BOLDGREEN}[Testing] $i${ENDCOLOR}";
+	# $VG $VGFLAGS --log-file="$i.log" "$i";
+	$i;
 done;

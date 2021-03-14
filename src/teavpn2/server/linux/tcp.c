@@ -56,6 +56,7 @@ struct client_slot {
 	uint32_t		recv_c;
 	uint32_t		send_c;
 	uint16_t		client_idx;
+	uint16_t		bc_arr_idx;
 	char			uname[64];
 
 	bool			is_auth;
@@ -65,9 +66,11 @@ struct client_slot {
 
 	char			src_ip[IPV4_L];
 	uint16_t		src_port;
+	struct_pad(0, 2);
 	uint32_t		ipv4; /* Private IP */
 
 	/* Number of unprocessed bytes in recv_buf */
+	struct_pad(1, 4);
 	size_t			recv_s;
 	utcli_pkt_t		recv_buf;
 };
@@ -82,19 +85,8 @@ struct cl_slot_stk {
 };
 
 
-/*
- * Broadcast array.
- *
- * Whenever there is a packet that should be broadcasted
- * to all clients, we use this struct to enumerate the
- * client index slot efficiently.
- */
-struct _bc_arr {
-	uint16_t		*arr;
-	uint16_t		n;
-	struct_pad(0, 6);
-};
-
+/* Must read that header file */
+#include <teavpn2/server/bc_arr.h>
 
 
 struct srv_tcp_state {
@@ -120,7 +112,7 @@ struct srv_tcp_state {
 	uint32_t		read_tun_c;
 	uint32_t		write_tun_c;
 
-	struct _bc_arr		bc_idx_arr;
+	struct bc_arr		bc_arr_ct;
 	utsrv_pkt_t		send_buf;
 	struct iface_cfg	siff;
 	bool			need_iface_down;
@@ -283,22 +275,9 @@ static int init_state_ip_map(struct srv_tcp_state *state)
 }
 
 
-static int init_state_broadcast_arr(struct srv_tcp_state *state)
-{
-	uint16_t *bc_arr;
-
-	bc_arr = calloc_wrp(state->cfg->sock.max_conn, sizeof(uint16_t));
-	if (unlikely(bc_arr == NULL))
-		return -1;
-
-	state->bc_idx_arr.n = 0;
-	state->bc_idx_arr.arr = bc_arr;
-	return 0;
-}
-
-
 static int init_state(struct srv_tcp_state *state)
 {
+	uint16_t max_conn = state->cfg->sock.max_conn;
 
 	if (unlikely(init_state_client_stack(state) < 0))
 		return -1;
@@ -308,7 +287,7 @@ static int init_state(struct srv_tcp_state *state)
 		return -1;
 	if (unlikely(init_state_ip_map(state) < 0))
 		return -1;
-	if (unlikely(init_state_broadcast_arr(state) < 0))
+	if (unlikely(bc_arr_init(&state->bc_arr_ct, max_conn) < 0))
 		return -1;
 
 	state->epoll_fd     = -1;
@@ -974,9 +953,11 @@ out_auth_failed:
 static gt_cli_evt_t handle_clpkt_iface_ack(struct client_slot *client,
 					   struct srv_tcp_state *state)
 {
+	char priv_ip[IPV4_L];
 	uint32_t ipv4 = client->ipv4;
 	uint16_t i;
 	uint16_t j;
+	int32_t k;
 
 	if (unlikely(!client->is_auth)) {
 		prl_notice(0, "Unauthenticated client trying to send iface "
@@ -986,10 +967,19 @@ static gt_cli_evt_t handle_clpkt_iface_ack(struct client_slot *client,
 
 	i = ipv4 & 0xffu;
 	j = (ipv4 >> 8u) & 0xffu;
-
 	state->ip_map[i][j] = client->client_idx + IP_MAP_SHIFT;
 
-	/* TODO: Add to broadcast list */
+	inet_ntop(AF_INET, &client->ipv4, priv_ip, sizeof(priv_ip));
+	prl_notice(0, PRWIU " acknowledged the IP assignment (%s)",
+		   W_IU(client), priv_ip);
+
+	k = bc_arr_insert(&state->bc_arr_ct, client->client_idx);
+	if (unlikely(k == -1)) {
+		state->stop = true;
+		pr_err("Bug bc_arr_insert");
+		return HCE_CLOSE;
+	}
+	client->bc_arr_idx = (uint16_t)k;
 
 	return HCE_OK;
 }
@@ -1417,7 +1407,7 @@ static void free_state(struct srv_tcp_state *state)
 	free(state->clients);
 	free(state->epoll_map);
 	free(state->ip_map);
-	free(state->bc_idx_arr.arr);
+	free(state->bc_arr_ct.arr);
 	memset(state, 0, sizeof(struct srv_tcp_state));
 }
 
