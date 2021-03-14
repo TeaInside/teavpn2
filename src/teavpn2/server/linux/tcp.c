@@ -371,7 +371,7 @@ static int socket_setup(int fd, struct srv_cfg *cfg)
 		goto out_err;
 	}
 
-	y = 1024 * 1024 * 2;
+	y = 1024 * 1024 * 4;
 	rv = setsockopt(fd, SOL_SOCKET, SO_RCVBUFFORCE, pv, len);
 	if (unlikely(rv < 0)) {
 		lv = "SOL_SOCKET";
@@ -379,7 +379,7 @@ static int socket_setup(int fd, struct srv_cfg *cfg)
 		goto out_err;
 	}
 
-	y = 1024 * 1024 * 2;
+	y = 1024 * 1024 * 4;
 	rv = setsockopt(fd, SOL_SOCKET, SO_SNDBUFFORCE, pv, len);
 	if (unlikely(rv < 0)) {
 		lv = "SOL_SOCKET";

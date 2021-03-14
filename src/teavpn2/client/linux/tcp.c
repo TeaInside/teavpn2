@@ -320,7 +320,7 @@ static ssize_t send_to_server(struct cli_tcp_state *state, tcli_pkt_t *cli_pkt,
 			return 0;
 		}
 
-		pr_err("send(fd=%d)" PRERF, tcp_fd, PREAR(err));
+		pr_err("send(fd=%d) " PRERF, tcp_fd, PREAR(err));
 		return -1;
 	}
 
@@ -418,6 +418,7 @@ static int exec_epoll_wait(int epoll_fd, struct epoll_event *events,
 static ssize_t handle_iface_read(int tun_fd, struct cli_tcp_state *state)
 {
 	int err;
+	size_t send_len;
 	ssize_t read_ret;
 	tcli_pkt_t *cli_pkt;
 
@@ -436,7 +437,9 @@ static ssize_t handle_iface_read(int tun_fd, struct cli_tcp_state *state)
 	prl_notice(5, "[%10" PRIu32 "] read(fd=%d) %zd bytes from tun_fd",
 		   state->read_tun_c, tun_fd, read_ret);
 
-	/* TODO: Send to server */
+	send_len = set_cli_pkt_buf(cli_pkt, TCLI_PKT_IFACE_DATA,
+				   (uint16_t)read_ret);
+	send_to_server(state, cli_pkt, send_len);
 	return read_ret;
 }
 
@@ -537,6 +540,7 @@ static gt_srv_evt_t handle_srpkt_auth_ok(tsrv_pkt_t *srv_pkt, uint16_t data_len,
 	struct auth_ret	*aret = &srv_pkt->auth_ok.aret;
 	struct iface_cfg *iff = &aret->iface;
 	struct cli_iface_cfg *j = &state->cfg->iface;
+	struct cli_sock_cfg *sock = &state->cfg->sock;
 	bool override_default = state->cfg->iface.override_default;
 
 
@@ -556,6 +560,9 @@ static gt_srv_evt_t handle_srpkt_auth_ok(tsrv_pkt_t *srv_pkt, uint16_t data_len,
 	if (!override_default) {
 		iff->ipv4_pub[0] = '\0';
 		iff->ipv4_dgateway[0] = '\0';
+	} else {
+		sane_strncpy(iff->ipv4_pub, sock->server_addr,
+			     sizeof(iff->ipv4_pub));
 	}
 
 	memcpy(&state->ciff, iff, sizeof(*iff));
@@ -566,8 +573,55 @@ static gt_srv_evt_t handle_srpkt_auth_ok(tsrv_pkt_t *srv_pkt, uint16_t data_len,
 	}
 
 	state->need_iface_down = true;
+	state->is_auth = true;
 
 	return send_iface_ack(state) > 0 ? HSE_OK : HSE_CLOSE;
+}
+
+
+static ssize_t handle_iface_write(tsrv_pkt_t *srv_pkt,
+				  uint16_t data_len,
+				  struct cli_tcp_state *state)
+{
+	ssize_t write_ret;
+	int tun_fd = state->tun_fd;
+
+	state->write_tun_c++;
+
+	write_ret = write(tun_fd, srv_pkt->raw_data, data_len);
+	if (unlikely(write_ret < 0)) {
+		int err = errno;
+		if (err == EAGAIN) {
+			/* TODO: Handle pending TUN/TAP buffer */
+			pr_err("Pending buffer detected on write(): EAGAIN");
+			return 0;
+		}
+
+		pr_err("write(fd=%d) to tun_fd" PRERF, tun_fd, PREAR(err));
+		return -1;
+	}
+
+	prl_notice(5, "[%10" PRIu32 "] write(fd=%d) %zd bytes to tun_fd",
+		   state->write_tun_c, tun_fd, write_ret);
+
+	return write_ret;
+}
+
+
+static gt_srv_evt_t handle_srpkt_iface_data(tsrv_pkt_t *srv_pkt,
+					    uint16_t data_len,
+					    struct cli_tcp_state *state)
+{
+	ssize_t write_ret;
+
+	if (unlikely(!state->is_auth)) {
+		prl_notice(0, "Server sends iface data in non authenticated "
+			   "state");
+		return HSE_CLOSE;
+	}
+
+	write_ret = handle_iface_write(srv_pkt, data_len, state);
+	return (write_ret > 0) ? HSE_OK : HSE_ERR;
 }
 
 
@@ -577,7 +631,7 @@ static gt_srv_evt_t process_server_pkt(tsrv_pkt_t *srv_pkt, uint16_t data_len,
 	tsrv_pkt_type_t pkt_type = srv_pkt->type;
 
 	if (likely(pkt_type == TSRV_PKT_IFACE_DATA))
-		return HSE_OK;
+		return handle_srpkt_iface_data(srv_pkt, data_len, state);
 	if (likely(pkt_type == TSRV_PKT_WELCOME))
 		return handle_srpkt_welcome(data_len, state);
 	if (likely(pkt_type == TSRV_PKT_AUTH_OK))
