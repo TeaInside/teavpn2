@@ -17,7 +17,7 @@
 typedef enum __attribute__((packed)) _tcli_pkt_type_t {
 	TCLI_PKT_HELLO		= 0,
 	TCLI_PKT_AUTH		= 1,
-	TCLI_PKT_IFACA_ACK	= 2,
+	TCLI_PKT_IFACE_ACK	= 2,
 	TCLI_PKT_IFACE_DATA	= 3,
 	TCLI_PKT_REQSYNC	= 4,
 	TCLI_PKT_PING		= 5,

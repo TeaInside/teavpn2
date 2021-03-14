@@ -96,8 +96,8 @@ static __no_inline bool teavpn_iface_toggle(struct iface_cfg *iface, bool up)
 	char cbuf[256];
 	const char *ip;
 
-	strncpy(uipv4, iface->ipv4, IPV4_SL);
-	strncpy(uipv4_nm, iface->ipv4_netmask, IPV4_SL);
+	sane_strncpy(uipv4, iface->ipv4, sizeof(uipv4));
+	sane_strncpy(uipv4_nm, iface->ipv4_netmask, sizeof(uipv4_nm));
 
 	/* Convert netmask from chars to 32-bit big-endian integer */
 	if (unlikely(!inet_pton(AF_INET, uipv4_nm, &bipv4_nm))) {

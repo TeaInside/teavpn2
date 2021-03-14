@@ -9,6 +9,7 @@
 #include <netinet/tcp.h>
 #include <teavpn2/base.h>
 #include <teavpn2/net/iface.h>
+#include <teavpn2/lib/string.h>
 #include <teavpn2/client/tcp.h>
 #include <teavpn2/net/tcp_pkt.h>
 
@@ -315,7 +316,7 @@ static ssize_t send_to_server(struct cli_tcp_state *state, tcli_pkt_t *cli_pkt,
 			 *
 			 * For now, let it fallthrough to error.
 			 */
-			pr_err("Pending buffer detected: EAGAIN");
+			pr_err("Pending buffer detected on send(): EAGAIN");
 			return 0;
 		}
 
@@ -370,8 +371,7 @@ static int send_hello(struct cli_tcp_state *state)
 	hlo_pkt->v.ver       = VERSION;
 	hlo_pkt->v.patch_lvl = PATCHLEVEL;
 	hlo_pkt->v.sub_lvl   = SUBLEVEL;
-	strncpy(hlo_pkt->v.extra, EXTRAVERSION, sizeof(hlo_pkt->v.extra) - 1);
-	hlo_pkt->v.extra[sizeof(hlo_pkt->v.extra) - 1] = '\0';
+	sane_strncpy(hlo_pkt->v.extra, EXTRAVERSION, sizeof(hlo_pkt->v.extra));
 
 	data_len = sizeof(struct tcli_hello_pkt);
 	send_len = set_cli_pkt_buf(cli_pkt, TCLI_PKT_HELLO, data_len);
@@ -492,8 +492,8 @@ static ssize_t send_auth(struct cli_tcp_state *state)
 	auth_pkt = &cli_pkt->auth_pkt;
 	memset(auth_pkt, 0, sizeof(struct tcli_auth_pkt));
 
-	strncpy(auth_pkt->uname, uname, sizeof(auth_pkt->uname) - 1);
-	strncpy(auth_pkt->pass, pass, sizeof(auth_pkt->pass) - 1);
+	sane_strncpy(auth_pkt->uname, uname, sizeof(auth_pkt->uname));
+	sane_strncpy(auth_pkt->pass, pass, sizeof(auth_pkt->pass));
 
 	data_len = sizeof(struct tcli_auth_pkt);
 	send_len = set_cli_pkt_buf(cli_pkt, TCLI_PKT_AUTH, data_len);
@@ -521,6 +521,16 @@ static gt_srv_evt_t handle_srpkt_welcome(uint16_t data_len,
 }
 
 
+static ssize_t send_iface_ack(struct cli_tcp_state *state)
+{
+	size_t send_len;
+	tcli_pkt_t *cli_pkt = state->send_buf.__pkt_chk;
+
+	send_len = set_cli_pkt_buf(cli_pkt, TCLI_PKT_IFACE_ACK, 0);
+	return send_to_server(state, cli_pkt, send_len);
+}
+
+
 static gt_srv_evt_t handle_srpkt_auth_ok(tsrv_pkt_t *srv_pkt, uint16_t data_len,
 					 struct cli_tcp_state *state)
 {
@@ -537,8 +547,7 @@ static gt_srv_evt_t handle_srpkt_auth_ok(tsrv_pkt_t *srv_pkt, uint16_t data_len,
 		return HSE_CLOSE;
 	}
 
-	strncpy(iff->dev, j->dev, sizeof(iff->dev));
-	iff->dev[sizeof(iff->dev) - 1] = '\0';
+	sane_strncpy(iff->dev, j->dev, sizeof(iff->dev));
 
 	iff->mtu = ntohs(iff->mtu);
 
@@ -558,14 +567,13 @@ static gt_srv_evt_t handle_srpkt_auth_ok(tsrv_pkt_t *srv_pkt, uint16_t data_len,
 
 	state->need_iface_down = true;
 
-	return HSE_OK;
+	return send_iface_ack(state) > 0 ? HSE_OK : HSE_CLOSE;
 }
 
 
 static gt_srv_evt_t process_server_pkt(tsrv_pkt_t *srv_pkt, uint16_t data_len,
 				       struct cli_tcp_state *state)
 {
-	(void)data_len;
 	tsrv_pkt_type_t pkt_type = srv_pkt->type;
 
 	if (likely(pkt_type == TSRV_PKT_IFACE_DATA))

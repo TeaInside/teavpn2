@@ -33,16 +33,15 @@ static int auth_parser_handler(void *user, const char *section,
 
 	rmatch_s("auth") {
 		rmatch_n("username") {
-			strncpy(ctx->look_uname, value, 63);
-			ctx->look_uname[63] = '\0';
+			sane_strncpy(ctx->look_uname, value,
+				     sizeof(ctx->look_uname));
 		} else
 		rmatch_n("password") {
 			union const_castu ptr;
 			ptr._const = value;
 
-			strncpy(ctx->look_pass, value, 63);
-			ctx->look_pass[63] = '\0';
-
+			sane_strncpy(ctx->look_pass, value,
+				     sizeof(ctx->look_pass));
 			memzero_explicit(ptr._no_const, strnlen(value, 64));
 
 		} else {
@@ -51,10 +50,11 @@ static int auth_parser_handler(void *user, const char *section,
 	} else
 	rmatch_s("iface") {
 		rmatch_n("ipv4") {
-			strncpy(iface->ipv4, value, IPV4_L - 1);
+			sane_strncpy(iface->ipv4, value, sizeof(iface->ipv4));
 		} else
 		rmatch_n("ipv4_netmask") {
-			strncpy(iface->ipv4_netmask, value, IPV4_L - 1);
+			sane_strncpy(iface->ipv4_netmask, value,
+				     sizeof(iface->ipv4_netmask));
 		} else
 		rmatch_n("mtu") {
 			iface->mtu = (uint16_t)atoi(value);

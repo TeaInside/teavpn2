@@ -338,12 +338,9 @@ static int init_iface(struct srv_tcp_state *state)
 		goto out_err;
 
 	memset(i, 0, sizeof(struct iface_cfg));
-	strncpy(i->dev, j->dev, sizeof(i->dev));
-	strncpy(i->ipv4, j->ipv4, sizeof(i->ipv4));
-	strncpy(i->ipv4_netmask, j->ipv4_netmask, sizeof(i->ipv4_netmask));
-	i->dev[sizeof(i->dev) - 1] = '\0';
-	i->ipv4[sizeof(i->ipv4) - 1] = '\0';
-	i->ipv4_netmask[sizeof(i->ipv4_netmask) - 1] = '\0';
+	sane_strncpy(i->dev, j->dev, sizeof(i->dev));
+	sane_strncpy(i->ipv4, j->ipv4, sizeof(i->ipv4));
+	sane_strncpy(i->ipv4_netmask, j->ipv4_netmask, sizeof(i->ipv4_netmask));
 	i->mtu = j->mtu;
 
 	if (unlikely(!teavpn_iface_up(i))) {
@@ -680,8 +677,7 @@ static bool plug_to_client_slot(int cli_fd, const char *src_ip,
 	client->cli_fd   = cli_fd;
 	client->src_port = src_port;
 
-	strncpy(client->src_ip, src_ip, IPV4_L - 1);
-	client->src_ip[IPV4_L - 1] = '\0';
+	sane_strncpy(client->src_ip, src_ip, IPV4_L);
 
 	prl_notice(0, "New connection from " PRWIU " (fd:%d)", W_IU(client),
 		   cli_fd);
@@ -913,8 +909,6 @@ static gt_cli_evt_t handle_clpkt_auth(tcli_pkt_t *cli_pkt,
 	struct tcli_auth_pkt *auth_pkt = &cli_pkt->auth_pkt;
 	char *uname = auth_pkt->uname;
 	char *pass  = auth_pkt->pass;
-	uint16_t ip_idx_i;
-	uint16_t ip_idx_j;
 	uint32_t ipv4;
 
 	if (unlikely(client->is_auth))
@@ -928,8 +922,7 @@ static gt_cli_evt_t handle_clpkt_auth(tcli_pkt_t *cli_pkt,
 		return HCE_CLOSE;
 	}
 
-	strncpy(client->uname, uname, sizeof(client->uname));
-	client->uname[sizeof(client->uname) - 1] = '\0';
+	sane_strncpy(client->uname, uname, sizeof(client->uname));
 
 	memset(iff, 0, sizeof(struct iface_cfg));
 	is_auth_succeed = teavpn_server_auth(cfg, aret, uname, pass);
@@ -941,10 +934,10 @@ static gt_cli_evt_t handle_clpkt_auth(tcli_pkt_t *cli_pkt,
 		goto out_auth_failed;
 	}
 
-	strncpy(iff->ipv4_dgateway, cfg->iface.ipv4,
-		sizeof(iff->ipv4_dgateway) - 1);
-	strncpy(iff->ipv4_pub, cfg->sock.exposed_addr,
-		sizeof(iff->ipv4_pub) - 1);
+	sane_strncpy(iff->ipv4_dgateway, cfg->iface.ipv4,
+		     sizeof(iff->ipv4_dgateway));
+	sane_strncpy(iff->ipv4_pub, cfg->sock.exposed_addr,
+		     sizeof(iff->ipv4_pub));
 	iff->mtu = htons(iff->mtu);
 
 	errno = 0;
@@ -957,8 +950,6 @@ static gt_cli_evt_t handle_clpkt_auth(tcli_pkt_t *cli_pkt,
 		goto out_auth_failed;
 	}
 
-	ip_idx_i = ipv4 & 0xffu;
-	ip_idx_j = (ipv4 >> 8u) & 0xffu;
 	client->ipv4 = ipv4;
 
 	/* TODO: Set IP Map, set index, etc. */
@@ -972,12 +963,88 @@ static gt_cli_evt_t handle_clpkt_auth(tcli_pkt_t *cli_pkt,
 	prl_notice(0, "Assigning IP %s to " PRWIU, iff->ipv4, W_IU(client));
 
 	client->is_auth = true;
-	state->ip_map[ip_idx_i][ip_idx_j] = client->client_idx + IP_MAP_SHIFT;
 	return HCE_OK;
 
 out_auth_failed:
 	send_b_auth_reject(client, state);
 	return HCE_CLOSE;
+}
+
+
+static gt_cli_evt_t handle_clpkt_iface_ack(struct client_slot *client,
+					   struct srv_tcp_state *state)
+{
+	uint32_t ipv4 = client->ipv4;
+	uint16_t i;
+	uint16_t j;
+
+	if (unlikely(!client->is_auth)) {
+		prl_notice(0, "Unauthenticated client trying to send iface "
+			      "ack " PRWIU, W_IU(client));
+		return HCE_CLOSE;
+	}
+
+	i = ipv4 & 0xffu;
+	j = (ipv4 >> 8u) & 0xffu;
+
+	state->ip_map[i][j] = client->client_idx + IP_MAP_SHIFT;
+
+	/* TODO: Add to broadcast list */
+
+	return HCE_OK;
+}
+
+
+static ssize_t handle_iface_write(tcli_pkt_t *cli_pkt,
+				  struct client_slot *client,
+				  uint16_t data_len,
+				  struct srv_tcp_state *state)
+{
+	ssize_t write_ret;
+	int tun_fd = state->tun_fd;
+
+	state->write_tun_c++;
+
+	write_ret = write(tun_fd, cli_pkt->raw_data, data_len);
+	if (unlikely(write_ret < 0)) {
+		int err = errno;
+		if (err == EAGAIN) {
+			/* TODO: Handle pending TUN/TAP buffer */
+			pr_err("Pending buffer detected on write(): EAGAIN "
+			       PRWIU, W_IU(client));
+			return 0;
+		}
+
+		pr_err("write(fd=%d) to tun_fd" PRERF " " PRWIU, tun_fd,
+		       PREAR(err), W_IU(client));
+		return -1;
+	}
+
+	prl_notice(5, "[%10" PRIu32 "] write(fd=%d) %zd bytes to tun_fd " PRWIU,
+		   state->write_tun_c, tun_fd, write_ret, W_IU(client));
+
+	return write_ret;
+}
+
+
+static gt_cli_evt_t handle_clpkt_iface_data(tcli_pkt_t *cli_pkt,
+					    struct client_slot *client,
+					    uint16_t data_len,
+					    struct srv_tcp_state *state)
+{
+	ssize_t write_ret;
+
+	if (unlikely(!client->is_auth)) {
+		prl_notice(0, "Unauthenticated client trying to send iface "
+			      "data " PRWIU, W_IU(client));
+		return HCE_CLOSE;
+	}
+
+	write_ret = handle_iface_write(cli_pkt, client, data_len, state);
+
+	/* TODO: Broadcast the packet to other clients */
+
+	return (write_ret > 0) ? HCE_OK : HCE_ERR;
 }
 
 
@@ -989,19 +1056,20 @@ static gt_cli_evt_t process_client_pkt(tcli_pkt_t *cli_pkt,
 	tcli_pkt_type_t pkt_type = cli_pkt->type;
 	
 	if (likely(pkt_type == TCLI_PKT_IFACE_DATA))
-		return HCE_OK;
-	if (likely(pkt_type == TCLI_PKT_HELLO))
+		return handle_clpkt_iface_data(cli_pkt, client, data_len,
+					       state);
+	if (unlikely(pkt_type == TCLI_PKT_HELLO))
 		return handle_clpkt_hello(cli_pkt, client, data_len, state);
-	if (likely(pkt_type == TCLI_PKT_AUTH))
+	if (unlikely(pkt_type == TCLI_PKT_AUTH))
 		return handle_clpkt_auth(cli_pkt, client, data_len, state);
-	if (likely(pkt_type == TCLI_PKT_IFACA_ACK))
+	if (unlikely(pkt_type == TCLI_PKT_IFACE_ACK))
+		return handle_clpkt_iface_ack(client, state);
+	if (unlikely(pkt_type == TCLI_PKT_REQSYNC))
 		return HCE_OK;
-	if (likely(pkt_type == TCLI_PKT_REQSYNC))
+	if (unlikely(pkt_type == TCLI_PKT_PING))
 		return HCE_OK;
-	if (likely(pkt_type == TCLI_PKT_PING))
-		return HCE_OK;
-	if (likely(pkt_type == TCLI_PKT_CLOSE))
-		return HCE_OK;
+	if (unlikely(pkt_type == TCLI_PKT_CLOSE))
+		return HCE_CLOSE;
 
 	print_corruption_notice(client);
 

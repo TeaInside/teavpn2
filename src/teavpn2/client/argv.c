@@ -115,15 +115,15 @@ static __always_inline int getopt_handler(int argc, char *argv[],
 				union {
 					char 		targ[4];
 					uint32_t 	int_rep;
-				} tmp;
-				tmp.int_rep = 0;
-				strncpy(tmp.targ, optarg, sizeof(tmp.targ) - 1);
-				tmp.int_rep |= 0x20202020u; /* tolower */
-				tmp.targ[3]  = '\0';
-				if (!memcmp(tmp.targ, "tcp", 4)) {
+				} t;
+				t.int_rep = 0;
+				sane_strncpy(t.targ, optarg, sizeof(t.targ));
+				t.int_rep |= 0x20202020u; /* tolower */
+				t.targ[3]  = '\0';
+				if (!memcmp(t.targ, "tcp", 4)) {
 					sock->type = SOCK_TCP;
 				} else
-				if (!memcmp(tmp.targ, "udp", 4)) {
+				if (!memcmp(t.targ, "udp", 4)) {
 					sock->type = SOCK_UDP;
 				} else {
 					pr_error("Invalid socket type \"%s\"",
