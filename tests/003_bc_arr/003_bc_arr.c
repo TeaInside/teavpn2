@@ -71,6 +71,9 @@ Test(bc_arr, efficient_remove)
 	cr_assert_eq(memcmp(&cmp4, bc.arr, sizeof(cmp4)), 0, "memcmp");
 	cr_assert_eq(bc_arr_count(&bc), 1, "bc_arr_count");
 
+	cr_assert(bc_arr_remove(&bc, 0));  // remove [0]
+	cr_assert_eq(bc_arr_count(&bc), 0, "bc_arr_count");
+
 	bc_arr_destroy(&bc);
 }
 
@@ -114,6 +117,45 @@ Test(bc_arr, iterator_test)
 	BC_ARR_FOREACH(&bc) {
 		cr_assert_eq(__data, cmp[__i], "Wrong foreach");
 	}
+
+	bc_arr_destroy(&bc);
+}
+
+
+Test(bc_arr, maintain_insert_and_remove)
+{
+	struct bc_arr bc;
+	uint16_t cmp0[] = {[0]=8, [1]=9}; // remove [1]
+	uint16_t cmp1[] = {[0]=8}; // insert(11)
+	uint16_t cmp2[] = {[0]=8, [1]=11}; // remove [0]
+	uint16_t cmp3[] = {[0]=11};
+
+	cr_assert_eq(bc_arr_init(&bc, 32), 0, "bc_arr_init");
+
+	cr_assert_eq(bc_arr_insert(&bc, 8), 0, "bc_arr_insert");
+	cr_assert_eq(bc_arr_insert(&bc, 9), 1, "bc_arr_insert");
+
+	cr_assert_eq(memcmp(&cmp0, bc.arr, sizeof(cmp0)), 0, "memcmp");
+	cr_assert_eq(bc_arr_count(&bc), 2, "bc_arr_count");
+
+
+	cr_assert(bc_arr_remove(&bc, 1));  // remove [1]
+	cr_assert_eq(memcmp(&cmp1, bc.arr, sizeof(cmp1)), 0, "memcmp");
+	cr_assert_eq(bc_arr_count(&bc), 1, "bc_arr_count");
+
+	cr_assert_eq(bc_arr_insert(&bc, 11), 1, "bc_arr_insert");  // insert(11)
+	cr_assert_eq(memcmp(&cmp2, bc.arr, sizeof(cmp2)), 0, "memcmp");
+	cr_assert_eq(bc_arr_count(&bc), 2, "bc_arr_count");
+
+	cr_assert(bc_arr_remove(&bc, 0));  // remove [0]
+	cr_assert_eq(memcmp(&cmp3, bc.arr, sizeof(cmp3)), 0, "memcmp");
+	cr_assert_eq(bc_arr_count(&bc), 1, "bc_arr_count");
+
+	cr_assert(bc_arr_remove(&bc, 0));  // remove [0]
+	cr_assert_eq(bc_arr_count(&bc), 0, "bc_arr_count");
+
+	cr_assert(!bc_arr_remove(&bc, 0));  // remove returns false
+	cr_assert_eq(bc_arr_count(&bc), 0, "bc_arr_count");
 
 	bc_arr_destroy(&bc);
 }

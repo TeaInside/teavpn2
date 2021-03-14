@@ -1066,7 +1066,7 @@ static gt_cli_evt_t handle_clpkt_iface_ack(struct client_slot *client,
 		pr_err("Bug bc_arr_insert");
 		return HCE_CLOSE;
 	}
-	client->bc_arr_idx = (uint16_t)k;
+	client->bc_arr_idx = k;
 
 	return HCE_OK;
 }
@@ -1359,6 +1359,7 @@ out_close:
 		uint32_t ipv4 = client->ipv4;
 		uint16_t i = ipv4 & 0xffu;
 		uint16_t j = (ipv4 >> 8) & 0xffu;
+		prl_notice(0, "Reset state->ip_map[%u][%u]", i, j);
 		state->ip_map[i][j] = IP_MAP_TO_NOP;
 	}
 
