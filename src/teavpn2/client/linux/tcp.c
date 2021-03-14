@@ -517,6 +517,13 @@ static gt_srv_evt_t handle_srpkt_welcome(uint16_t data_len,
 }
 
 
+static gt_srv_evt_t handle_srpkt_auth_ok(tsrv_pkt_t *srv_pkt, uint16_t data_len,
+					 struct cli_tcp_state *state)
+{
+	return HSE_OK;
+}
+
+
 static gt_srv_evt_t process_server_pkt(tsrv_pkt_t *srv_pkt, uint16_t data_len,
 				       struct cli_tcp_state *state)
 {
@@ -528,7 +535,7 @@ static gt_srv_evt_t process_server_pkt(tsrv_pkt_t *srv_pkt, uint16_t data_len,
 	if (likely(pkt_type == TSRV_PKT_WELCOME))
 		return handle_srpkt_welcome(data_len, state);
 	if (likely(pkt_type == TSRV_PKT_AUTH_OK))
-		return HSE_OK;
+		return handle_srpkt_auth_ok(srv_pkt, data_len, state);
 	if (likely(pkt_type == TSRV_PKT_AUTH_REJECT))
 		return HSE_OK;
 	if (likely(pkt_type == TSRV_PKT_REQSYNC))

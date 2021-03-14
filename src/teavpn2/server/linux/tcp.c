@@ -65,7 +65,7 @@ struct client_slot {
 
 	char			src_ip[IPV4_L];
 	uint16_t		src_port;
-	struct_pad(0, 4);
+	uint32_t		ipv4; /* Private IP */
 
 	/* Number of unprocessed bytes in recv_buf */
 	size_t			recv_s;
@@ -614,7 +614,7 @@ static int handle_tun_event(int tun_fd, struct srv_tcp_state *state,
 }
 
 
-static const char* resolve_new_client_ip(struct sockaddr_in *saddr,
+static const char *resolve_new_client_ip(struct sockaddr_in *saddr,
 					 char *ip_buf)
 {
 	int err;
@@ -813,6 +813,32 @@ static bool send_b_welcome(struct client_slot *client,
 }
 
 
+/* _b_ means return bool */
+static bool send_b_auth_reject(struct client_slot *client,
+			       struct srv_tcp_state *state)
+{
+	size_t send_len;
+	tsrv_pkt_t *srv_pkt = state->send_buf.__pkt_chk;
+
+	send_len = set_srv_pkt_buf(srv_pkt, TSRV_PKT_AUTH_REJECT, 0);
+	return send_to_client(client, state, send_len) > 0;
+}
+
+
+/* _b_ means return bool */
+static bool send_b_auth_ok(struct client_slot *client,
+			   struct srv_tcp_state *state)
+{
+	size_t send_len;
+	uint16_t data_len;
+	tsrv_pkt_t *srv_pkt = state->send_buf.__pkt_chk;
+
+	data_len = sizeof(struct tsrv_aok_pkt);
+	send_len = set_srv_pkt_buf(srv_pkt, TSRV_PKT_AUTH_OK, data_len);
+	return send_to_client(client, state, send_len) > 0;
+}
+
+
 static gt_cli_evt_t handle_clpkt_hello(tcli_pkt_t *cli_pkt,
 				       struct client_slot *client,
 				       uint16_t data_len,
@@ -872,11 +898,16 @@ static gt_cli_evt_t handle_clpkt_auth(tcli_pkt_t *cli_pkt,
 				      struct srv_tcp_state *state)
 {
 	bool is_auth_succeed;
+	struct srv_cfg *cfg = state->cfg;
 	tsrv_pkt_t *srv_pkt = state->send_buf.__pkt_chk;
 	struct auth_ret	*aret = &srv_pkt->auth_ok.aret;
+	struct iface_cfg *iff = &aret->iface;
 	struct tcli_auth_pkt *auth_pkt = &cli_pkt->auth_pkt;
 	char *uname = auth_pkt->uname;
 	char *pass  = auth_pkt->pass;
+	uint16_t ip_idx_i;
+	uint16_t ip_idx_j;
+	uint32_t ipv4;
 
 	if (unlikely(client->is_auth))
 		return HCE_OK;
@@ -889,9 +920,11 @@ static gt_cli_evt_t handle_clpkt_auth(tcli_pkt_t *cli_pkt,
 		return HCE_CLOSE;
 	}
 
-	strncpy(client->uname, uname, sizeof(client->uname) - 1);
+	strncpy(client->uname, uname, sizeof(client->uname));
+	client->uname[sizeof(client->uname) - 1] = '\0';
 
-	is_auth_succeed = teavpn_server_auth(aret, uname, pass);
+	memset(iff, 0, sizeof(struct iface_cfg));
+	is_auth_succeed = teavpn_server_auth(cfg, aret, uname, pass);
 	memzero_explicit(&auth_pkt->pass, sizeof(auth_pkt->pass));
 
 	if (unlikely(!is_auth_succeed)) {
@@ -900,19 +933,39 @@ static gt_cli_evt_t handle_clpkt_auth(tcli_pkt_t *cli_pkt,
 		goto out_auth_failed;
 	}
 
-	// if (unlikely(!send_auth_ok(client, state))) {
-	// 	prl_notice(0, "Authentication error from " PRWIU, W_IU(client));
-	// 	goto out_auth_failed;
-	// }
+	strncpy(iff->ipv4_dgateway, cfg->iface.ipv4,
+		sizeof(iff->ipv4_dgateway) - 1);
 
-	client->is_auth  = true;
+	errno = 0;
+	ipv4 = 0;
+	if (unlikely(!inet_pton(AF_INET, iff->ipv4, &ipv4))) {
+		int err = errno;
+		err = err ? err : EINVAL;
+		pr_err("inet_pton(%s) for " PRWIU ": " PRERF, iff->ipv4,
+		       W_IU(client), PREAR(err));
+		goto out_auth_failed;
+	}
+
+	ip_idx_i = ipv4 & 0xffu;
+	ip_idx_j = (ipv4 >> 8) & 0xffu;
+	client->ipv4 = ipv4;
 
 	/* TODO: Set IP Map, set index, etc. */
 
+	if (unlikely(!send_b_auth_ok(client, state))) {
+		prl_notice(0, "Authentication error from " PRWIU, W_IU(client));
+		goto out_auth_failed;
+	}
+
+	prl_notice(0, "Authentication success from " PRWIU, W_IU(client));
+	prl_notice(0, "Assigning IP %s to " PRWIU, iff->ipv4, W_IU(client));
+
+	client->is_auth = true;
+	state->ip_map[ip_idx_i][ip_idx_j] = client->client_idx + IP_MAP_SHIFT;
 	return HCE_OK;
 
 out_auth_failed:
-	// send_auth_fail(client, state);
+	send_b_auth_reject(client, state);
 	return HCE_CLOSE;
 }
 
