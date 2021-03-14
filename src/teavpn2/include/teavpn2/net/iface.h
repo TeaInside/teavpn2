@@ -50,6 +50,7 @@ static_assert(offsetof(struct iface_cfg, mtu)           == 16 + (IPV4_L * 4),
 	      "Bad offsetof(struct iface_cfg, mtu)");
 
 bool teavpn_iface_up(struct iface_cfg *iface);
+bool teavpn_iface_down(struct iface_cfg *iface);
 
 #if defined(__linux__)
 #  include <teavpn2/net/linux/iface.h>

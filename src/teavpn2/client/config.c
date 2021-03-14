@@ -69,7 +69,10 @@ static int parser_handler(void *user, const char *section, const char *name,
 	} else
 	rmatch_s("iface") {
 		rmatch_n("dev") {
-			iface->dev  = ar_strndup(value, 16);
+			iface->dev = ar_strndup(value, 16);
+		} else
+		rmatch_n("override_default") {
+			iface->override_default = atoi(value) ? true : false;
 		} else {
 			goto out_invalid_name;
 		}

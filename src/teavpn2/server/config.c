@@ -70,6 +70,9 @@ static int parser_handler(void *user, const char *section, const char *name,
 		} else
 		rmatch_n("backlog") {
 			sock->backlog = (int)atoi(ar_strndup(value, 6));
+		} else
+		rmatch_n("exposed_addr") {
+			sock->exposed_addr = ar_strndup(value, IPV4_L + 1);
 		} else {
 			goto out_invalid_name;
 		}

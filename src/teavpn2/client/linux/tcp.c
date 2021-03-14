@@ -43,6 +43,9 @@ struct cli_tcp_state {
 
 	utcli_pkt_t		send_buf;
 	utsrv_pkt_t		recv_buf;
+	struct iface_cfg	ciff;
+	bool			need_iface_down;
+	struct_pad(1, 5);
 };
 
 
@@ -70,6 +73,7 @@ static int init_state(struct cli_tcp_state *state)
 	state->recv_c       = 0;
 	state->read_tun_c   = 0;
 	state->write_tun_c  = 0;
+	state->need_iface_down = false;
 
 	return 0;
 }
@@ -520,6 +524,41 @@ static gt_srv_evt_t handle_srpkt_welcome(uint16_t data_len,
 static gt_srv_evt_t handle_srpkt_auth_ok(tsrv_pkt_t *srv_pkt, uint16_t data_len,
 					 struct cli_tcp_state *state)
 {
+	(void)state;
+	struct auth_ret	*aret = &srv_pkt->auth_ok.aret;
+	struct iface_cfg *iff = &aret->iface;
+	struct cli_iface_cfg *j = &state->cfg->iface;
+	bool override_default = state->cfg->iface.override_default;
+
+
+	/* Wrong data length */
+	if (unlikely(data_len != sizeof(struct auth_ret))) {
+		prl_notice(0, "Server sends invalid 'auth ok' packet length "
+			   "(expected: 0; got: %u)", data_len);
+		return HSE_CLOSE;
+	}
+
+	strncpy(iff->dev, j->dev, sizeof(iff->dev));
+	iff->dev[sizeof(iff->dev) - 1] = '\0';
+
+	iff->mtu = ntohs(iff->mtu);
+
+	prl_notice(0, "Authentication success");
+
+	if (!override_default) {
+		iff->ipv4_pub[0] = '\0';
+		iff->ipv4_dgateway[0] = '\0';
+	}
+
+	memcpy(&state->ciff, iff, sizeof(*iff));
+
+	if (unlikely(!teavpn_iface_up(iff))) {
+		pr_err("Cannot raise virtual network interface up");
+		return HSE_CLOSE;
+	}
+
+	state->need_iface_down = true;
+
 	return HSE_OK;
 }
 
@@ -732,6 +771,7 @@ out_err:
 	return 0;
 
 out_close:
+	state->stop = true;
 	epoll_delete(state->epoll_fd, tcp_fd);
 	close(tcp_fd);
 	prl_notice(0, "Closing connection...");
@@ -831,6 +871,10 @@ static void close_file_descriptors(struct cli_tcp_state *state)
 
 static void destroy_state(struct cli_tcp_state *state)
 {
+	if (state->need_iface_down) {
+		prl_notice(0, "Cleaning network interface...");
+		teavpn_iface_down(&state->ciff);
+	}
 	close_file_descriptors(state);
 }
 

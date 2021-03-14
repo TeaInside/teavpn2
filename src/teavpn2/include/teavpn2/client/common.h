@@ -7,6 +7,8 @@
 
 struct cli_iface_cfg {
 	char		*dev;		/* Virtual interface name    */
+	bool		override_default;
+	struct_pad(0, 7);
 };
 
 

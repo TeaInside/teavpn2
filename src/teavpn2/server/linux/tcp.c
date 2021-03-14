@@ -122,6 +122,9 @@ struct srv_tcp_state {
 
 	struct _bc_arr		bc_idx_arr;
 	utsrv_pkt_t		send_buf;
+	struct iface_cfg	siff;
+	bool			need_iface_down;
+	struct_pad(1, 5);
 };
 
 static struct srv_tcp_state *g_state;
@@ -314,6 +317,7 @@ static int init_state(struct srv_tcp_state *state)
 	state->stop         = false;
 	state->read_tun_c   = 0;
 	state->write_tun_c  = 0;
+	state->need_iface_down = false;
 
 	return 0;
 }
@@ -322,7 +326,7 @@ static int init_state(struct srv_tcp_state *state)
 static int init_iface(struct srv_tcp_state *state)
 {
 	int tun_fd;
-	struct iface_cfg i;
+	struct iface_cfg *i = &state->siff;
 	struct srv_iface_cfg *j = &state->cfg->iface;
 
 	prl_notice(0, "Creating virtual network interface: \"%s\"...", j->dev);
@@ -333,18 +337,22 @@ static int init_iface(struct srv_tcp_state *state)
 	if (unlikely(fd_set_nonblock(tun_fd) < 0))
 		goto out_err;
 
-	memset(&i, 0, sizeof(struct iface_cfg));
-	strncpy(i.dev, j->dev, sizeof(i.dev) - 1);
-	strncpy(i.ipv4, j->ipv4, sizeof(i.ipv4) - 1);
-	strncpy(i.ipv4_netmask, j->ipv4_netmask, sizeof(i.ipv4_netmask) - 1);
-	i.mtu = j->mtu;
+	memset(i, 0, sizeof(struct iface_cfg));
+	strncpy(i->dev, j->dev, sizeof(i->dev));
+	strncpy(i->ipv4, j->ipv4, sizeof(i->ipv4));
+	strncpy(i->ipv4_netmask, j->ipv4_netmask, sizeof(i->ipv4_netmask));
+	i->dev[sizeof(i->dev) - 1] = '\0';
+	i->ipv4[sizeof(i->ipv4) - 1] = '\0';
+	i->ipv4_netmask[sizeof(i->ipv4_netmask) - 1] = '\0';
+	i->mtu = j->mtu;
 
-	if (unlikely(!teavpn_iface_up(&i))) {
+	if (unlikely(!teavpn_iface_up(i))) {
 		pr_err("Cannot raise virtual network interface up");
 		goto out_err;
 	}
 
 	state->tun_fd = tun_fd;
+	state->need_iface_down = true;
 	return 0;
 out_err:
 	close(tun_fd);
@@ -935,6 +943,9 @@ static gt_cli_evt_t handle_clpkt_auth(tcli_pkt_t *cli_pkt,
 
 	strncpy(iff->ipv4_dgateway, cfg->iface.ipv4,
 		sizeof(iff->ipv4_dgateway) - 1);
+	strncpy(iff->ipv4_pub, cfg->sock.exposed_addr,
+		sizeof(iff->ipv4_pub) - 1);
+	iff->mtu = htons(iff->mtu);
 
 	errno = 0;
 	ipv4 = 0;
@@ -1345,6 +1356,11 @@ static void free_state(struct srv_tcp_state *state)
 
 static void destroy_state(struct srv_tcp_state *state)
 {
+	if (state->need_iface_down) {
+		prl_notice(0, "Cleaning network interface...");
+		teavpn_iface_down(&state->siff);
+	}
+
 	close_file_descriptors(state);
 	free_state(state);
 }
@@ -1352,7 +1368,6 @@ static void destroy_state(struct srv_tcp_state *state)
 
 int teavpn_server_tcp_handler(struct srv_cfg *cfg)
 {
-	(void)pop_client_stack;
 	int retval;
 	struct srv_tcp_state state;
 

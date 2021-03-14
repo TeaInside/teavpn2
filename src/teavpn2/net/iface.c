@@ -50,8 +50,22 @@ static __always_inline const char *find_ip_cmd(void)
 	return NULL;
 }
 
+static __no_inline bool teavpn_iface_toggle(struct iface_cfg *iface, bool up);
+
 
 bool teavpn_iface_up(struct iface_cfg *iface)
+{
+	return teavpn_iface_toggle(iface, true);
+}
+
+
+bool teavpn_iface_down(struct iface_cfg *iface)
+{
+	return teavpn_iface_toggle(iface, false);
+}
+
+
+static __no_inline bool teavpn_iface_toggle(struct iface_cfg *iface, bool up)
 {
 #ifdef TEAVPN_IPV6_SUPPORT
 	static_assert(0, "Fixme: Handle IPv6 assignment.");
@@ -159,13 +173,14 @@ bool teavpn_iface_up(struct iface_cfg *iface)
 	if (ip == NULL)
 		return false;
 
-	EXEC_CMD(&ret, cbuf, ip, "link set dev %s up mtu %d", edev, iface->mtu);
+	EXEC_CMD(&ret, cbuf, ip, "link set dev %s %s mtu %d", edev,
+		 (up ? "up" : "down"), iface->mtu);
 
 	if (unlikely(ret != 0))
 		return false;
 
-	EXEC_CMD(&ret, cbuf, ip, "addr add dev %s %s broadcast %s", edev, eipv4,
-		 eipv4_bc);
+	EXEC_CMD(&ret, cbuf, ip, "addr %s dev %s %s broadcast %s",
+		 (up ? "add" : "delete"), edev, eipv4, eipv4_bc);
 
 	if (unlikely(ret != 0))
 		return false;
@@ -193,6 +208,8 @@ bool teavpn_iface_up(struct iface_cfg *iface)
 			return false;
 		}
 
+		rdgw += sizeof("default via ") - 1;
+
 		/* Just cut */
 		tmpc = rdgw;
 		while ((*tmpc != ' ') && (*tmpc != '\0') && (*tmpc != '\n'))
@@ -203,8 +220,8 @@ bool teavpn_iface_up(struct iface_cfg *iface)
 		simple_esc_arg(eipv4_pub, ipv4_pub);
 
 		/* We have the real default gateway in rdgw */
-		EXEC_CMD(&ret, cbuf, ip, "route add %s/32 via %s", eipv4_pub,
-			 erdgw);
+		EXEC_CMD(&ret, cbuf, ip, "route %s %s/32 via %s",
+			 (up ? "add" : "delete"), eipv4_pub, erdgw);
 
 		if (unlikely(ret != 0))
 			return false;
@@ -215,14 +232,14 @@ bool teavpn_iface_up(struct iface_cfg *iface)
 
 			simple_esc_arg(edgw, iface->ipv4_dgateway);
 
-			EXEC_CMD(&ret, cbuf, ip, "route add 0.0.0.0/1 via %s",
-				 edgw);
+			EXEC_CMD(&ret, cbuf, ip, "route %s 0.0.0.0/1 via %s",
+				 (up ? "add" : "delete"), edgw);
 
 			if (unlikely(ret != 0))
 				return false;
 
-			EXEC_CMD(&ret, cbuf, ip, "route add 128.0.0.0/1 via %s",
-				 edgw);
+			EXEC_CMD(&ret, cbuf, ip, "route %s 128.0.0.0/1 via %s",
+				 (up ? "add" : "delete"), edgw);
 
 			if (unlikely(ret != 0))
 				return false;

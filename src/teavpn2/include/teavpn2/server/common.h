@@ -23,6 +23,7 @@ struct srv_sock_cfg {
 #if UINTPTR_MAX != 0xffffffffu
 	struct_pad(0, sizeof(char *) - sizeof(sock_type));
 #endif
+	char		*exposed_addr;	/* Exposed address       */
 	char		*bind_addr;	/* Bind address          */
 	uint16_t	bind_port;	/* Bind port             */
 	uint16_t	max_conn;	/* Max connections       */
