@@ -220,6 +220,8 @@ static void reset_client_slot(struct client_slot *client, uint16_t client_idx)
 	client->bc_arr_idx  = -1;
 	client->err_c       = 0;
 	client->recv_s      = 0;
+
+	client->ipv4        = 0;
 }
 
 
@@ -573,7 +575,7 @@ static size_t set_srv_pkt_buf(tsrv_pkt_t *srv_pkt, tsrv_pkt_type_t type,
 
 
 static ssize_t send_to_client(struct client_slot *client,
-			      tsrv_pkt_t *srv_pkt,
+			      const tsrv_pkt_t *srv_pkt,
 			      size_t len)
 {
 	int err;
@@ -593,7 +595,7 @@ static ssize_t send_to_client(struct client_slot *client,
 			 */
 		}
 
-		pr_err("send(fd=%d)" PRERF, cli_fd, PREAR(err));
+		pr_err("send(fd=%d) " PRERF, cli_fd, PREAR(err));
 		return -1;
 	}
 
@@ -1326,6 +1328,13 @@ out_err:
 out_close:
 	epoll_delete(state->epoll_fd, cli_fd);
 	close(cli_fd);
+
+	if (likely(client->ipv4 != 0)) {
+		uint32_t ipv4 = client->ipv4;
+		uint16_t i = ipv4 & 0xffu;
+		uint16_t j = (ipv4 >> 8) & 0xffu;
+		state->ip_map[i][j] = IP_MAP_TO_NOP;
+	}
 
 	if (likely(client->bc_arr_idx != -1)) {
 		bool ret;
