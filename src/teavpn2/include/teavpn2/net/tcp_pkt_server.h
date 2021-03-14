@@ -3,6 +3,7 @@
 #ifndef TEAVPN2__NET__TCP_PKT_SERVER_H
 #define TEAVPN2__NET__TCP_PKT_SERVER_H
 
+#include <linux/ip.h>
 #include <teavpn2/base.h>
 #include <teavpn2/auth.h>
 #include <teavpn2/net/iface.h>
@@ -43,20 +44,28 @@ typedef struct _tsrv_pkt_t {
 		struct tsrv_aok_pkt	auth_ok;
 
 		struct {
+			struct iphdr	header;
+			char		body[4096 - sizeof(struct iphdr)];
+		} net_pkt;
+
+		struct {
 			char		__dummy0[4095];
 			char		__end;
 		};
 	};
 } tsrv_pkt_t;
 
+#include <teavpn2/net/tcp_pkt_client.h>
+
 #define UTSRV_MUL 4
 
 typedef union _utsrv_pkt_t {
 	tsrv_pkt_t		srv_pkt;
+	tcli_pkt_t		__cvt_cli_pkt;
 	tsrv_pkt_t		__pkt_chk[UTSRV_MUL];
 	char			raw_buf[sizeof(tsrv_pkt_t) * UTSRV_MUL];
 	struct {
-		char		__dummy0[(sizeof(tcli_pkt_t) * UTCLI_MUL) - 1];
+		char		__dummy0[(sizeof(tcli_pkt_t) * UTSRV_MUL) - 1];
 		char		__end;
 	};
 } utsrv_pkt_t;

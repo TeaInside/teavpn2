@@ -52,10 +52,13 @@ typedef struct _tcli_pkt_t {
 	};
 } tcli_pkt_t;
 
+#include <teavpn2/net/tcp_pkt_server.h>
+
 #define UTCLI_MUL 4
 
 typedef union _utcli_pkt_t {
 	tcli_pkt_t		cli_pkt;
+	tsrv_pkt_t		__cvt_srv_pkt;
 	tcli_pkt_t		__pkt_chk[UTCLI_MUL];
 	char			raw_buf[sizeof(tcli_pkt_t) * UTCLI_MUL];
 	struct {

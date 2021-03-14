@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
+#include <linux/ip.h>
 #include <inttypes.h>
 #include <stdalign.h>
 #include <sys/epoll.h>
@@ -55,8 +56,8 @@ struct client_slot {
 	int			cli_fd;
 	uint32_t		recv_c;
 	uint32_t		send_c;
+	int32_t			bc_arr_idx;
 	uint16_t		client_idx;
-	uint16_t		bc_arr_idx;
 	char			uname[64];
 
 	bool			is_auth;
@@ -66,7 +67,6 @@ struct client_slot {
 
 	char			src_ip[IPV4_L];
 	uint16_t		src_port;
-	struct_pad(0, 2);
 	uint32_t		ipv4; /* Private IP */
 
 	/* Number of unprocessed bytes in recv_buf */
@@ -217,7 +217,7 @@ static void reset_client_slot(struct client_slot *client, uint16_t client_idx)
 	client->is_used     = false;
 	client->is_auth     = false;
 	client->is_conn     = false;
-
+	client->bc_arr_idx  = -1;
 	client->err_c       = 0;
 	client->recv_s      = 0;
 }
@@ -560,6 +560,109 @@ static int exec_epoll_wait(int epoll_fd, struct epoll_event *events,
 }
 
 
+
+static size_t set_srv_pkt_buf(tsrv_pkt_t *srv_pkt, tsrv_pkt_type_t type,
+			      uint16_t length)
+{
+	srv_pkt->type   = type;
+	srv_pkt->npad   = 0;
+	srv_pkt->length = htons(length);
+
+	return TSRV_PKT_MIN_L + length;
+}
+
+
+static ssize_t send_to_client(struct client_slot *client,
+			      tsrv_pkt_t *srv_pkt,
+			      size_t len)
+{
+	int err;
+	ssize_t send_ret;
+	int cli_fd = client->cli_fd;
+
+	client->send_c++;
+
+	send_ret = send(cli_fd, srv_pkt, len, 0);
+	if (unlikely(send_ret < 0)) {
+		err = errno;
+		if (err == EAGAIN) {
+			/*
+			 * TODO: Handle pending buffer
+			 *
+			 * For now, let it fallthrough to error.
+			 */
+		}
+
+		pr_err("send(fd=%d)" PRERF, cli_fd, PREAR(err));
+		return -1;
+	}
+
+	prl_notice(5, "[%10" PRIu32 "] send(fd=%d) %ld bytes to " PRWIU,
+		   client->send_c, cli_fd, send_ret, W_IU(client));
+
+	return send_ret;
+}
+
+
+static void route_ipv4(struct srv_tcp_state *state, tsrv_pkt_t *srv_pkt,
+		       size_t len)
+{
+	uint32_t dst;
+	uint16_t i;
+	uint16_t j;
+	uint16_t map_to;
+	size_t send_len;
+	struct client_slot *client;
+	uint16_t (*ip_map)[256] = state->ip_map;
+	struct iphdr *header = &srv_pkt->net_pkt.header;
+
+	dst = header->daddr;
+	i = dst & 0xffu;
+	j = (dst >> 8u) & 0xffu;
+
+	map_to = ip_map[i][j];
+	if (unlikely(map_to == IP_MAP_TO_NOP))
+		return;
+
+	map_to  -= IP_MAP_SHIFT;
+	client   = &state->clients[map_to];
+	send_len = set_srv_pkt_buf(srv_pkt, TSRV_PKT_IFACE_DATA, (uint16_t)len);
+	send_to_client(client, srv_pkt, send_len);
+}
+
+
+static void broadcast_packet(struct srv_tcp_state *state, tsrv_pkt_t *srv_pkt,
+			     size_t len)
+{
+	size_t send_len;
+	struct client_slot *client;
+	struct bc_arr *bc_arr_ct = &state->bc_arr_ct;
+
+	send_len = set_srv_pkt_buf(srv_pkt, TSRV_PKT_IFACE_DATA, (uint16_t)len);
+
+	BC_ARR_FOREACH(bc_arr_ct) {
+		client = &state->clients[__data];
+		send_to_client(client, srv_pkt, send_len);
+	}
+}
+
+
+static void route_packet(struct srv_tcp_state *state, tsrv_pkt_t *srv_pkt,
+			 size_t len)
+{
+	struct iphdr *header = &srv_pkt->net_pkt.header;
+
+	if (header->version == 4){
+		route_ipv4(state, srv_pkt, len);
+	} else {
+		/* TODO: Add IPv6 support */
+
+		/* We don't yet know where to send, so just broadcast it. */
+		broadcast_packet(state, srv_pkt, len);
+	}
+}
+
+
 static ssize_t handle_iface_read(int tun_fd, struct srv_tcp_state *state)
 {
 	int err;
@@ -581,7 +684,7 @@ static ssize_t handle_iface_read(int tun_fd, struct srv_tcp_state *state)
 	prl_notice(5, "[%10" PRIu32 "] read(fd=%d) %zd bytes from tun_fd",
 		   state->read_tun_c, tun_fd, read_ret);
 
-	/* TODO: Broadcast srv_pkt */
+	route_packet(state, srv_pkt, (size_t)read_ret);
 	return read_ret;
 }
 
@@ -740,50 +843,6 @@ static void print_corruption_notice(struct client_slot *client)
 }
 
 
-static ssize_t send_to_client(struct client_slot *client,
-			      struct srv_tcp_state *state,
-			      size_t len)
-{
-	int err;
-	ssize_t send_ret;
-	int cli_fd = client->cli_fd;	
-	tsrv_pkt_t *srv_pkt = state->send_buf.__pkt_chk;
-
-	client->send_c++;
-
-	send_ret = send(cli_fd, srv_pkt, len, 0);
-	if (unlikely(send_ret < 0)) {
-		err = errno;
-		if (err == EAGAIN) {
-			/*
-			 * TODO: Handle pending buffer
-			 *
-			 * For now, let it fallthrough to error.
-			 */
-		}
-
-		pr_err("send(fd=%d)" PRERF, cli_fd, PREAR(err));
-		return -1;
-	}
-
-	prl_notice(5, "[%10" PRIu32 "] send(fd=%d) %ld bytes to " PRWIU,
-		   client->send_c, cli_fd, send_ret, W_IU(client));
-
-	return send_ret;
-}
-
-
-static size_t set_srv_pkt_buf(tsrv_pkt_t *srv_pkt, tsrv_pkt_type_t type,
-			      uint16_t length)
-{
-	srv_pkt->type   = type;
-	srv_pkt->npad   = 0;
-	srv_pkt->length = htons(length);
-
-	return TSRV_PKT_MIN_L + length;
-}
-
-
 /* _b_ means return bool */
 static bool send_b_welcome(struct client_slot *client,
 			   struct srv_tcp_state *state)
@@ -792,7 +851,7 @@ static bool send_b_welcome(struct client_slot *client,
 	tsrv_pkt_t *srv_pkt = state->send_buf.__pkt_chk;
 
 	send_len = set_srv_pkt_buf(srv_pkt, TSRV_PKT_WELCOME, 0);
-	return send_to_client(client, state, send_len) > 0;
+	return send_to_client(client, srv_pkt, send_len) > 0;
 }
 
 
@@ -804,7 +863,7 @@ static bool send_b_auth_reject(struct client_slot *client,
 	tsrv_pkt_t *srv_pkt = state->send_buf.__pkt_chk;
 
 	send_len = set_srv_pkt_buf(srv_pkt, TSRV_PKT_AUTH_REJECT, 0);
-	return send_to_client(client, state, send_len) > 0;
+	return send_to_client(client, srv_pkt, send_len) > 0;
 }
 
 
@@ -818,7 +877,7 @@ static bool send_b_auth_ok(struct client_slot *client,
 
 	data_len = sizeof(struct tsrv_aok_pkt);
 	send_len = set_srv_pkt_buf(srv_pkt, TSRV_PKT_AUTH_OK, data_len);
-	return send_to_client(client, state, send_len) > 0;
+	return send_to_client(client, srv_pkt, send_len) > 0;
 }
 
 
@@ -1267,6 +1326,16 @@ out_err:
 out_close:
 	epoll_delete(state->epoll_fd, cli_fd);
 	close(cli_fd);
+
+	if (likely(client->bc_arr_idx != -1)) {
+		bool ret;
+		ret = bc_arr_remove(&state->bc_arr_ct,
+				    (uint16_t)client->bc_arr_idx);
+		if (unlikely(!ret)) {
+			state->stop = true;
+			pr_err("Bug detected on bc_arr_remove");
+		}
+	}
 
 	prl_notice(0, "Closing connection fd from " PRWIU, W_IU(client));
 
