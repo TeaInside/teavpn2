@@ -26,7 +26,7 @@ int tun_alloc(const char *dev, short flags)
 	int err;
 	struct ifreq ifr;
 	bool retried = false;
-	static const char *dtf = "/dev/net/tunx";
+	static const char *dtf = "/dev/net/tun";
 
 	if (unlikely((dev == NULL) || (*dev == '\0'))) {
 		pr_error("tun_alloc(): dev cannot be empty");
