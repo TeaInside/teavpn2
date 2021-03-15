@@ -17,11 +17,6 @@
 #include <teavpn2/server/tcp.h>
 #include <teavpn2/net/tcp_pkt.h>
 
-#if defined(__clang__)
-#  pragma clang diagnostic push
-#  pragma clang diagnostic ignored "-Wunused-macros"
-#endif
-
 #define MAX_ERR_C	(0xfu)
 
 #define EPL_MAP_SIZE	(0xffffu)
@@ -40,10 +35,6 @@
 #define W_UN(CLIENT) ((CLIENT)->uname)
 #define W_IU(CLIENT) W_IP(CLIENT), W_UN(CLIENT)
 #define PRWIU "%s:%d (%s)"
-
-#if defined(__clang__)
-#  pragma clang diagnostic pop
-#endif
 
 
 typedef enum _gt_cli_evt_t {
@@ -141,6 +132,7 @@ static int32_t push_client_stack(struct cl_slot_stk *client_stack, uint16_t val)
 	TASSERT(sp > 0);
 	client_stack->arr[--sp] = val;
 	client_stack->sp = sp;
+	prl_notice(5, "push_client_stack() = %d", val);
 	return (int32_t)val;
 }
 
@@ -161,6 +153,7 @@ static int32_t pop_client_stack(struct cl_slot_stk *client_stack)
 
 	val = (int32_t)client_stack->arr[sp];
 	client_stack->sp = ++sp;
+	prl_notice(5, "pop_client_stack() = %d", val);
 	return val;
 }
 
@@ -208,22 +201,17 @@ static int init_state_client_stack(struct srv_tcp_state *state)
 static void reset_client_slot(struct client_slot *client, uint16_t client_idx)
 {
 	client->cli_fd      = -1;
-
 	client->recv_c      = 0;
 	client->send_c      = 0;
-
 	client->client_idx  = client_idx;
-
 	client->uname[0]    = '_';
 	client->uname[1]    = '\0';
-
 	client->is_used     = false;
 	client->is_auth     = false;
 	client->is_conn     = false;
 	client->bc_arr_idx  = -1;
 	client->err_c       = 0;
 	client->recv_s      = 0;
-
 	client->ipv4        = 0;
 }
 
@@ -565,18 +553,24 @@ out_err:
 
 
 static int exec_epoll_wait(int epoll_fd, struct epoll_event *events,
-			   int maxevents)
+			   int maxevents, struct srv_tcp_state *state)
 {
 	int err;
 	int retval;
 
-	retval = epoll_wait(epoll_fd, events, maxevents, 1000);
+	retval = epoll_wait(epoll_fd, events, maxevents, 50);
 	if (unlikely(retval == 0)) {
 		/*
 		 * epoll_wait() reaches timeout
 		 *
 		 * TODO: Do something meaningful here.
 		 */
+
+		/*
+		 * Always re-read memory when idle, at least keep it
+		 * on L2d/L3d cache.
+		 */
+		memcmp_explicit(state, state, sizeof(*state));
 		return 0;
 	}
 
@@ -730,8 +724,10 @@ static int handle_tun_event(int tun_fd, struct srv_tcp_state *state,
 {
 	const uint32_t err_mask = EPOLLERR | EPOLLHUP;
 
-	if (unlikely(revents & err_mask))
+	if (unlikely(revents & err_mask)) {
+		pr_err("TUN/TAP error");
 		return -1;
+	}
 
 	return (int)handle_iface_read(tun_fd, state);
 }
@@ -1454,7 +1450,7 @@ static int event_loop(struct srv_tcp_state *state)
 	memset(events, 0, sizeof(events));
 
 	while (likely(!state->stop)) {
-		retval = exec_epoll_wait(epoll_fd, events, maxevents);
+		retval = exec_epoll_wait(epoll_fd, events, maxevents, state);
 
 		if (unlikely(retval == 0))
 			continue;

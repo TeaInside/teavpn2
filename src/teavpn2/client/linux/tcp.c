@@ -426,7 +426,7 @@ static int exec_epoll_wait(int epoll_fd, struct epoll_event *events,
 	int err;
 	int retval;
 
-	retval = epoll_wait(epoll_fd, events, maxevents, 1000);
+	retval = epoll_wait(epoll_fd, events, maxevents, 50);
 	if (unlikely(retval == 0)) {
 		/*
 		 * epoll_wait() reaches timeout
@@ -436,7 +436,7 @@ static int exec_epoll_wait(int epoll_fd, struct epoll_event *events,
 
 		/*
 		 * Always re-read memory when idle, at least keep it
-		 * on L2d cache.
+		 * on L2d/L3d cache.
 		 */
 		memcmp_explicit(state, state, sizeof(*state));
 		return 0;
