@@ -13,10 +13,10 @@ struct parse_struct {
 };
 
 /* ---------------------- Default configuration values ---------------------- */
-#ifdef SERVER_DEFAULT_CONFIG_FILE
-	char d_srv_cfg_file[] = SERVER_DEFAULT_CONFIG_FILE;
+#ifdef SERVER_DEFAULT_CFG_FILE
+char d_srv_cfg_file[] = SERVER_DEFAULT_CFG_FILE;
 #else
-	char d_srv_cfg_file[] = "/etc/teavpn2/server.ini";
+char d_srv_cfg_file[] = "/etc/teavpn2/server.ini";
 #endif
 
 /* Default config for virtual network interface */
@@ -29,26 +29,9 @@ char d_srv_ipv4_netmask[] = "255.255.255.0";
 sock_type d_srv_sock_type = SOCK_TCP;
 char d_srv_bind_addr[] = "0.0.0.0";
 uint16_t d_srv_bind_port = 55555u;
-int d_srv_max_conn = 10;
+uint16_t d_srv_max_conn = 10;
 int d_srv_backlog = 5;
 /* -------------------------------------------------------------------------- */
-
-
-/*
- * ---- Short technical overview about config ---- 
- *
- * Note that cfg->cfg_file is a pointer (`char *`). If it contains an empty
- * string then the app takes default config value and override it with command
- * line arguments.
- * 
- * If cfg->cfg_file contains non empty string, it will open a file with name
- * taken from such a string. If the file does not exists, it will check the file
- * name, whether it is equals to d_srv_cfg_file or not, if it is equal, then
- * it does nothing and continue the execution like when cfg->cfg_file contains
- * and empty string, but if it is not equal to d_srv_cfg_file, then it errors
- * and extis immediately.
- *
- */
 
 
 static __always_inline void init_default_cfg(struct srv_cfg *cfg)
@@ -129,7 +112,7 @@ static __always_inline int getopt_handler(int argc, char *argv[],
 			teavpn_server_show_help(ctx->app);
 			goto out_exit;
 		case 'v':
-			teavpn_server_show_version();
+			teavpn_print_version();
 			goto out_exit;
 		case 'c':
 			cfg->cfg_file = trunc_str(optarg, 255);
@@ -157,27 +140,26 @@ static __always_inline int getopt_handler(int argc, char *argv[],
 			iface->ipv6_netmask = trunc_str(optarg, 64);
 			break;
 #endif
-		case 's':
-			{
-				union {
-					char		targ[4];
-					uint32_t	int_rep;
-				} tmp;
-				tmp.int_rep = 0;
-				strncpy(tmp.targ, optarg, sizeof(tmp.targ) - 1);
-				tmp.int_rep |= 0x20202020u; /* tolower */
-				tmp.targ[3]  = '\0';
-				if (!memcmp(tmp.targ, "tcp", 4)) {
-					sock->type = SOCK_TCP;
-				} else
-				if (!memcmp(tmp.targ, "udp", 4)) {
-					sock->type = SOCK_UDP;
-				} else {
-					pr_error("Invalid socket type \"%s\"",
-						 optarg);
-					return -1;
-				}
+		case 's': {
+			union {
+				char		targ[4];
+				uint32_t	int_rep;
+			} t;
+			t.int_rep = 0;
+			sane_strncpy(t.targ, optarg, sizeof(t.targ));
+			t.int_rep |= 0x20202020u; /* tolower */
+			t.targ[3]  = '\0';
+			if (!memcmp(t.targ, "tcp", 4)) {
+				sock->type = SOCK_TCP;
+			} else
+			if (!memcmp(t.targ, "udp", 4)) {
+				sock->type = SOCK_UDP;
+			} else {
+				pr_error("Invalid socket type \"%s\"",
+					 optarg);
+				return -1;
 			}
+		}
 			break;
 		case 'H':
 			sock->bind_addr = trunc_str(optarg, 255);
@@ -205,8 +187,8 @@ int teavpn_server_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 {
 	struct parse_struct ctx;
 
-	ctx.app  = argv[0];
-	ctx.cfg  = cfg;
+	ctx.app = argv[0];
+	ctx.cfg = cfg;
 	init_default_cfg(cfg);
 	if (getopt_handler(argc - 1, argv + 1, &ctx) < 0)
 		return -1;

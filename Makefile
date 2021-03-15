@@ -1,16 +1,21 @@
 
 #
 # @author Ammar Faizi <ammarfaizi2@gmail.com> https://www.facebook.com/ammarfaizi2
-# @license GNU GPL-v3
+# @license GNU GPL-v2
 #
-# TeaVPN2
+# TeaVPN2 - Fast and Free VPN Software
 #
 
-TARGET_BIN	= teavpn2
-TEAVPN_SERVER_VERSION	= 0.0.1
-TEAVPN_CLIENT_VERSION	= 0.0.1
-SERVER_DEFAULT_CONFIG_FILE	= config/server.ini
-CLIENT_DEFAULT_CONFIG_FILE	= config/client.ini
+VERSION = 0
+PATCHLEVEL = 0
+SUBLEVEL = 1
+EXTRAVERSION = -rc1
+NAME = Frozen Wasteland
+
+SERVER_DEFAULT_CFG_FILE = config/server.ini
+CLIENT_DEFAULT_CFG_FILE = config/client.ini
+
+TARGET_BIN = teavpn2
 
 CC	:= cc
 CXX	:= c++
@@ -22,28 +27,49 @@ BASE_DIR := $(strip $(patsubst %/, %, $(BASE_DIR)))
 BASE_DEP_DIR := $(BASE_DIR)/.deps
 MAKEFILE_FILE := $(lastword $(MAKEFILE_LIST))
 
-WARN_FLAGS	:= \
-	-Wall \
-	-Wextra \
-	-Wstrict-aliasing=3 \
-	-Wformat \
-	-Wformat-security \
-	-Wformat-signedness \
-	-Wsequence-point \
-	-Wduplicated-cond \
-	-Wduplicated-branches \
-	-Wunsafe-loop-optimizations \
-	-Wstack-usage=2097152 \
-	-Wimplicit-fallthrough
+CC_BUILTIN_CONSTANTS := $(shell $(CC) -dM -E - < /dev/null)
+CXX_BUILTIN_CONSTANTS := $(shell $(CXX) -dM -E - < /dev/null)
 
+ifeq (,$(findstring __GNUC__,$(CXX_BUILTIN_CONSTANTS)))
+$(error I want __GNUC__!)
+endif
+
+ifneq ($(DO_TEST),1)
+	ifneq (,$(findstring __GNUC__,$(CC_BUILTIN_CONSTANTS)))
+		ifneq (,$(findstring __clang__,$(CC_BUILTIN_CONSTANTS)))
+			# Clang
+			WARN_FLAGS	:= \
+				-Wall \
+				-Werror \
+				-Wextra \
+				-Weverything \
+				-Wno-disabled-macro-expansion
+		else
+			# Pure GCC
+			WARN_FLAGS	:= \
+				-Wall \
+				-Werror \
+				-Wextra \
+				-Wstrict-aliasing=3 \
+				-Wformat \
+				-Wformat-security \
+				-Wformat-signedness \
+				-Wsequence-point \
+				-Wunsafe-loop-optimizations \
+				-Wstack-usage=2097152
+		endif
+	else
+	$(error I want __GNUC__!)
+	endif
+endif
 
 USE_CLIENT	:= 1
 USE_SERVER	:= 1
 
 DEPFLAGS	 = -MT "$@" -MMD -MP -MF "$(@:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)"
 LIB_LDFLAGS	:= -lpthread
-LDFLAGS		:= -fPIE -fpie $(WARN_FLAGS)
-CFLAGS		:= -fPIE -fpie -std=c11
+LDFLAGS		:= -fPIE -fpie
+CFLAGS		:= -fPIE -fpie # -std=c11
 CXXFLAGS	:= -fPIE -fpie -std=c++2a
 VGFLAGS		:= \
 	--leak-check=full \
@@ -64,15 +90,29 @@ CCXXFLAGS := \
 	-fstack-protector-strong \
 	-pedantic-errors \
 	-D_GNU_SOURCE \
-	-DTEAVPN_SERVER_VERSION="\"$(TEAVPN_SERVER_VERSION)\"" \
-	-DTEAVPN_CLIENT_VERSION="\"$(TEAVPN_CLIENT_VERSION)\""
+	-DVERSION=$(VERSION) \
+	-DPATCHLEVEL=$(PATCHLEVEL) \
+	-DSUBLEVEL=$(SUBLEVEL) \
+	-DEXTRAVERSION=\"$(EXTRAVERSION)\" \
+	-DSERVER_DEFAULT_CFG_FILE=\"$(SERVER_DEFAULT_CFG_FILE)\" \
+	-DCLIENT_DEFAULT_CFG_FILE=\"$(CLIENT_DEFAULT_CFG_FILE)\"
 
 ifeq ($(RELEASE_MODE),1)
 	REL := --- Build release mode
 	LDFLAGS		+= $(LDFLAGS) -O3
 	CCXXFLAGS	+= -O3 -DNDEBUG
-	NOTICE_STATIC_LEVEL	= 3
-	NOTICE_ALWAYS_EXEC	= 0
+
+	ifndef NOTICE_MAX_LEVEL
+		NOTICE_MAX_LEVEL = 4
+	endif
+
+	ifndef NOTICE_ALWAYS_EXEC
+		NOTICE_ALWAYS_EXEC = 0
+	endif
+
+	ifndef DEFAULT_NOTICE_LEVEL
+		DEFAULT_NOTICE_LEVEL = 4
+	endif
 else
 	REL := --- Build debug mode
 	LDFLAGS		+= $(DEFAULT_OPTIMIZATION)
@@ -81,14 +121,33 @@ else
 		-ggdb3 \
 		-grecord-gcc-switches \
 		-DTEAVPN_DEBUG
+
+	ifndef NOTICE_MAX_LEVEL
+		NOTICE_MAX_LEVEL = 10
+	endif
+
+	ifndef NOTICE_ALWAYS_EXEC
+		NOTICE_ALWAYS_EXEC = 1
+	endif
+
+	ifndef DEFAULT_NOTICE_LEVEL
+		DEFAULT_NOTICE_LEVEL = 5
+	endif
 endif
 
-ifdef NOTICE_STATIC_LEVEL
-	CCXXFLAGS := $(CCXXFLAGS) -DNOTICE_STATIC_LEVEL="$(NOTICE_STATIC_LEVEL)"
-endif
+CCXXFLAGS := \
+	$(CCXXFLAGS) \
+	-DNOTICE_MAX_LEVEL="$(NOTICE_MAX_LEVEL)" \
+	-DNOTICE_ALWAYS_EXEC="$(NOTICE_ALWAYS_EXEC)" \
+	-DDEFAULT_NOTICE_LEVEL="$(DEFAULT_NOTICE_LEVEL)"
 
-ifdef NOTICE_ALWAYS_EXEC
-	CCXXFLAGS := $(CCXXFLAGS) -DNOTICE_ALWAYS_EXEC="$(NOTICE_ALWAYS_EXEC)"
+ifeq ($(SANITIZE),1)
+	REL += with sanitize
+	CCXXFLAGS := \
+		$(CCXXFLAGS) \
+		-fsanitize=undefined \
+		-fno-sanitize-recover=undefined
+	LIB_LDFLAGS += -lubsan
 endif
 
 ifeq ($(OS),Windows_NT)
@@ -126,6 +185,7 @@ endif
 
 #######################################
 # Force these to be a simple variable
+TESTS		:=
 OBJ_CC		:=
 OBJ_PRE_CC	:=
 OBJ_TMP_CC	:=
@@ -140,6 +200,8 @@ include $(BASE_DIR)/src/ext/Makefile
 
 CFLAGS		:= $(INCLUDE_DIR) $(CFLAGS) $(CCXXFLAGS)
 CXXFLAGS	:= $(INCLUDE_DIR) $(CXXFLAGS) $(CCXXFLAGS)
+
+include $(BASE_DIR)/tests/Makefile
 
 $(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC)
 	@echo "   LD		" "$(@)"
@@ -159,7 +221,7 @@ $(OBJ_PRE_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
 -include $(OBJ_CC:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)
 -include $(OBJ_PRE_CC:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)
 
-clean:
+clean: clean_test
 	@rm -rfv $(DEP_DIRS) $(OBJ_CC) $(OBJ_PRE_CC) $(TARGET_BIN)
 
 server: $(TARGET_BIN)

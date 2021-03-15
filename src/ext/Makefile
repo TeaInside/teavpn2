@@ -1,5 +1,4 @@
 
-INCLUDE_DIR	+= -I$(BASE_DIR)/src/ext
+include $(BASE_DIR)/src/ext/criterion/Makefile
+include $(BASE_DIR)/src/ext/inih/Makefile
 
-DEP_DIRS	+= $(BASE_DEP_DIR)/src/ext/inih
-OBJ_CC		+= $(BASE_DIR)/src/ext/inih/inih.o

@@ -1,6 +1,6 @@
 
-#ifndef SRC_TEAVPN2__SERVER__TEAVPN2__TCP__LINUX_H
-#define SRC_TEAVPN2__SERVER__TEAVPN2__TCP__LINUX_H
+#ifndef SRC_TEAVPN2__SERVERTEAVPN2__TCP__LINUX_H
+#define SRC_TEAVPN2__SERVERTEAVPN2__TCP__LINUX_H
 
 #include <errno.h>
 #include <unistd.h>
@@ -60,4 +60,4 @@ ret:
 }
 
 
-#endif /* #ifndef SRC_TEAVPN2__SERVER__TEAVPN2__TCP__LINUX_H */
+#endif /* #ifndef SRC_TEAVPN2__SERVERTEAVPN2__TCP__LINUX_H */

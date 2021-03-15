@@ -13,15 +13,14 @@ struct parse_struct {
 };
 
 /* ---------------------- Default configuration values ---------------------- */
-#ifdef CLIENT_DEFAULT_CONFIG_FILE
-	char d_cli_cfg_file[] = CLIENT_DEFAULT_CONFIG_FILE;
+#ifdef CLIENT_DEFAULT_CFG_FILE
+char d_cli_cfg_file[] = CLIENT_DEFAULT_CFG_FILE;
 #else
-	char d_cli_cfg_file[] = "/etc/teavpn2/client.ini";
+char d_cli_cfg_file[] = "/etc/teavpn2/client.ini";
 #endif
 
 
 /* Default config for virtual network interface */
-uint16_t d_cli_mtu = 1500;
 char d_cli_dev[] = "teavpn2";
 
 
@@ -30,21 +29,6 @@ sock_type d_cli_sock_type = SOCK_TCP;
 uint16_t d_cli_server_port = 55555;
 /* -------------------------------------------------------------------------- */
 
-/*
- * ---- Short technical overview about config ---- 
- *
- * Note that cfg->cfg_file is a pointer (`char *`). If it contains an empty
- * string then the app takes default config value and override it with command
- * line arguments.
- * 
- * If cfg->cfg_file contains non empty string, it will open a file with name
- * taken from such a string. If the file does not exists, it will check the file
- * name, whether it is equals to d_cli_cli_cfg_file or not, if it is equal, then
- * it does nothing and continue the execution like when cfg->cfg_file contains
- * and empty string, but if it is not equal to d_cli_cli_cfg_file, then it errors
- * and extis immediately.
- *
- */
 
 static __always_inline void init_default_cfg(struct cli_cfg *cfg)
 {
@@ -56,7 +40,6 @@ static __always_inline void init_default_cfg(struct cli_cfg *cfg)
 	cfg->data_dir = NULL;
 
 	/* Virtual network interface. */
-	iface->mtu = d_cli_mtu;
 	iface->dev = d_cli_dev;
 
 	/* Socket config. */
@@ -80,7 +63,6 @@ static const struct option long_opt[] = {
 	{"data-dir",      required_argument, 0, 'D'},
 
 	/* Virtual network interface */
-	{"mtu",           required_argument, 0, 'm'},
 	{"dev",           required_argument, 0, 'd'},
 
 	/* Socket */
@@ -95,7 +77,7 @@ static const struct option long_opt[] = {
 	{0, 0, 0, 0}
 };
 
-static const char short_opt[] = "hvc:D:d:m:s:H:P:u:p:";
+static const char short_opt[] = "hvc:D:d:s:H:P:u:p:";
 
 static __always_inline int getopt_handler(int argc, char *argv[],
 					  struct parse_struct *cx)
@@ -117,16 +99,13 @@ static __always_inline int getopt_handler(int argc, char *argv[],
 			teavpn_client_show_help(cx->app);
 			goto out_exit;
 		case 'v':
-			teavpn_client_show_version();
+			teavpn_print_version();
 			goto out_exit;
 		case 'c':
 			cfg->cfg_file = trunc_str(optarg, 255);
 			break;
 		case 'D':
 			cfg->data_dir = trunc_str(optarg, 255);
-			break;
-		case 'm':
-			iface->mtu = (uint16_t)atoi(optarg);
 			break;
 		case 'd':
 			iface->dev = trunc_str(optarg, 255);
@@ -136,15 +115,15 @@ static __always_inline int getopt_handler(int argc, char *argv[],
 				union {
 					char 		targ[4];
 					uint32_t 	int_rep;
-				} tmp;
-				tmp.int_rep = 0;
-				strncpy(tmp.targ, optarg, sizeof(tmp.targ) - 1);
-				tmp.int_rep |= 0x20202020u; /* tolower */
-				tmp.targ[3]  = '\0';
-				if (!memcmp(tmp.targ, "tcp", 4)) {
+				} t;
+				t.int_rep = 0;
+				sane_strncpy(t.targ, optarg, sizeof(t.targ));
+				t.int_rep |= 0x20202020u; /* tolower */
+				t.targ[3]  = '\0';
+				if (!memcmp(t.targ, "tcp", 4)) {
 					sock->type = SOCK_TCP;
 				} else
-				if (!memcmp(tmp.targ, "udp", 4)) {
+				if (!memcmp(t.targ, "udp", 4)) {
 					sock->type = SOCK_UDP;
 				} else {
 					pr_error("Invalid socket type \"%s\"",
@@ -160,7 +139,7 @@ static __always_inline int getopt_handler(int argc, char *argv[],
 			sock->server_port = (uint16_t)atoi(optarg);
 			break;
 		case 'u':
-			auth->username = trunc_str(optarg, 255);
+			auth->username = trunc_str(optarg, 64);
 			break;
 		case 'p':
 			auth->password = ar_strndup(optarg, 255);

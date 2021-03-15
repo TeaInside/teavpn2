@@ -1,0 +1,12 @@
+prefix=/usr
+exec_prefix=${prefix}
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+Name: Criterion
+Description: A KISS, Cross platform unit testing framework for C and C++
+URL: https://github.com/Snaipe/Criterion/
+Version: 2.3.3
+Requires:
+Libs: -L${libdir} -lcriterion
+Cflags: -I${includedir}

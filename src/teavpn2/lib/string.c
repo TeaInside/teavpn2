@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <teavpn2/base.h>
 #include <teavpn2/lib/string.h>
 
 
@@ -39,7 +40,7 @@ char *escapeshellarg(char *alloc, const char *str, size_t len, size_t *res_len)
 			cmd[y++] = '\\';
 			cmd[y++] = '\'';
 #endif
-		/* fallthrough */
+		fallthrough;
 		default:
 			cmd[y++] = str[x];
 		}
@@ -154,4 +155,9 @@ char *trunc_str(char *str, size_t n)
 void *memzero_explicit(void *s, size_t n)
 {
 	return memset(s, '\0', n);
+}
+
+int memcmp_explicit(const void *s1, const void *s2, size_t n)
+{
+	return memcmp(s1, s2, n);
 }

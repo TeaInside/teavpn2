@@ -1,6 +1,6 @@
 
-#ifndef SRC_TEAVPN2__SERVER__TEAVPN2__IFACE__LINUX_H
-#define SRC_TEAVPN2__SERVER__TEAVPN2__IFACE__LINUX_H
+#ifndef SRC_TEAVPN2__SERVERTEAVPN2__IFACE__LINUX_H
+#define SRC_TEAVPN2__SERVERTEAVPN2__IFACE__LINUX_H
 
 #include <teavpn2/global/helpers/iface.h>
 
@@ -67,4 +67,4 @@ err:
   return false;
 }
 
-#endif /* #ifndef SRC_TEAVPN2__SERVER__TEAVPN2__IFACE__LINUX_H */
+#endif /* #ifndef SRC_TEAVPN2__SERVERTEAVPN2__IFACE__LINUX_H */

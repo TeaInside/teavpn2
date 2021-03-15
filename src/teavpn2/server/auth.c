@@ -1,55 +1,62 @@
 
-#include <errno.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
 #include <inih/inih.h>
+#include <teavpn2/auth.h>
 #include <teavpn2/lib/string.h>
-#include <teavpn2/server/auth.h>
+#include <teavpn2/server/common.h>
 
-struct parse_struct {
-	bool  			is_ok;
-	char			user_file[1024];
-	char			tmp_user[256];
-	char			tmp_pass[256];
+
+struct user_info {
 	struct iface_cfg	*iface;
-	struct auth_pkt		*auth;
+	char			ufile[1023];
+	bool			is_ok;
+	char			look_uname[64];
+	char			look_pass[64];
+};
+
+union const_castu {
+	void *_no_const;
+	const void *_const;
 };
 
 
-int parser_handler_czzz(void *user, const char *section, const char *name,
-			const char *value, int lineno)
+static int auth_parser_handler(void *user, const char *section,
+			       const char *name, const char *value, int lineno)
 {
-	struct parse_struct *ctx = (struct parse_struct *)user;
+	struct user_info *ctx   = (struct user_info *)user;
 	struct iface_cfg *iface = ctx->iface;
 
 	/* Section match */
-	#define RMATCH_S(STR) if (unlikely(!strcmp(section, (STR))))
+	#define rmatch_s(STR) if (unlikely(!strcmp(section, (STR))))
 
 	/* Name match */
-	#define RMATCH_N(STR) if (unlikely(!strcmp(name, (STR))))
+	#define rmatch_n(STR) if (unlikely(!strcmp(name, (STR))))
 
-	RMATCH_S("auth") {
-		RMATCH_N("username") {
-			strncpy(ctx->tmp_user, value, 0xffu - 1u);
-			ctx->tmp_user[0xffu - 1u] = '\0';
+	rmatch_s("auth") {
+		rmatch_n("username") {
+			sane_strncpy(ctx->look_uname, value,
+				     sizeof(ctx->look_uname));
 		} else
-		RMATCH_N("password") {
-			strncpy(ctx->tmp_pass, value, 0xffu - 1u);
-			ctx->tmp_pass[0xffu - 1u] = '\0';
-			memzero_explicit((void *)value, strnlen(value, 0xffu));
+		rmatch_n("password") {
+			union const_castu ptr;
+			ptr._const = value;
+
+			sane_strncpy(ctx->look_pass, value,
+				     sizeof(ctx->look_pass));
+			memzero_explicit(ptr._no_const, strnlen(value, 64));
+
 		} else {
 			goto out_invalid_name;
 		}
 	} else
-	RMATCH_S("iface") {
-		RMATCH_N("ipv4") {
-			strncpy(iface->ipv4, value, IPV4LEN);
+	rmatch_s("iface") {
+		rmatch_n("ipv4") {
+			sane_strncpy(iface->ipv4, value, sizeof(iface->ipv4));
 		} else
-		RMATCH_N("ipv4_netmask") {
-			strncpy(iface->ipv4_netmask, value, IPV4LEN);
+		rmatch_n("ipv4_netmask") {
+			sane_strncpy(iface->ipv4_netmask, value,
+				     sizeof(iface->ipv4_netmask));
 		} else
-		RMATCH_N("mtu") {
+		rmatch_n("mtu") {
 			iface->mtu = (uint16_t)atoi(value);
 		} else {
 			goto out_invalid_name;
@@ -63,88 +70,81 @@ int parser_handler_czzz(void *user, const char *section, const char *name,
 
 	#undef RMATCH_N
 	#undef RMATCH_S
+
 out_invalid_name:
 	pr_error("Invalid name \"%s\" in section \"%s\" on line %d in %s", name,
-		 section, lineno, ctx->user_file);
+		 section, lineno, ctx->ufile);
 out_err:
 	ctx->is_ok = false;
 	return false;
 }
 
 
-static bool validate_username(char *u)
+static bool validate_uname(const char *u)
 {
 	uint16_t i = 0;
-	while (*u) {
+	while (likely(*u)) {
 		char c = *u++;
-		bool cond =
-		       (('A' <= c) && (c <= 'Z'))
-		    || (('a' <= c) && (c <= 'z'))
-		    || (('0' <= c) && (c <= '9'))
-		    || ((c == '_') || (c == '-'));
+		bool is_allowed = (
+				(('0' <= c) && (c <= '9'))
+			||	(('A' <= c) && (c <= 'Z'))
+			||	(('a' <= c) && (c <= 'z'))
+			||	((c == '_') || (c == '-') || (c == '.'))
+		);
 
-		i++;
-		if (!cond)
+		if (unlikely(++i >= 64))
+			return false;
+		if (unlikely(!is_allowed))
 			return false;
 	}
-
-	return true && (i < 0xffu);
+	return true;
 }
 
 
-bool teavpn_server_get_auth(struct iface_cfg *iface, struct auth_pkt *auth,
-			    struct srv_cfg *cfg)
+bool teavpn_server_auth(struct srv_cfg *cfg, struct auth_ret *ret, char *uname,
+			char *pass)
 {
-	bool ret = true;
-	FILE *handle = NULL;
-	struct parse_struct ctx;
-	char *username = auth->username;
-	char *password = auth->password;
+	bool retval;
+	FILE *handle;
+	struct user_info ctx;
+	char *data_dir = cfg->data_dir;
 
-	ctx.is_ok = true;
-	ctx.iface = iface;
-	ctx.auth  = auth;
+	memset(&ctx, 0, sizeof(struct user_info));
 
-	if (!validate_username(username)) {
-		prl_notice(0, "Invalid username %s", username);
-		ret = false;
-		goto out;
+	if (unlikely(!validate_uname(uname))) {
+		uname[63] = '\0';
+		prl_notice(0, "Invalid username: \"%s\"", uname);
+		return false;
 	}
 
-	if (cfg->data_dir == NULL) {
-		pr_error("cfg->data_dir is NULL");
-		ret = false;
-		goto out;
+	snprintf(ctx.ufile, sizeof(ctx.ufile), "%s/users/%s.ini", data_dir,
+		 uname);
+
+	handle = fopen(ctx.ufile, "r");
+	if (unlikely(handle == NULL)) {
+		int err = errno;
+		prl_notice(0, "Cannot open user file (" PRERF "): %s",
+			   PREAR(err), ctx.ufile);
+		return false;
 	}
 
-	snprintf(ctx.user_file, sizeof(ctx.user_file) - 1, "%s/users/%s.ini",
-		 cfg->data_dir, username);
-
-	handle = fopen(ctx.user_file, "r");
-	if (handle == NULL) {
-		prl_notice(0, "Cannot open user file: \"%s\" (%s)",
-			   ctx.user_file, strerror(errno));
-		ret = false;
-		goto out;
+	ctx.iface = &ret->iface;
+	if (unlikely(ini_parse_file(handle, auth_parser_handler, &ctx) < 0)) {
+		prl_notice(0, "Cannot parse file \"%s\"", ctx.ufile);
+		retval = false;
+		goto out_fclose;
 	}
 
-	if (ini_parse_file(handle, parser_handler_czzz, &ctx) < 0) {
-		prl_notice(0, "Cannot parse file \"%s\"", ctx.user_file);
-		ret = false;
-		goto out;
+
+	if (unlikely(strncmp(ctx.look_pass, pass, 64) != 0)) {
+		prl_notice(0, "Wrong password for username %s", uname);
+		retval = false;
+		goto out_fclose;
 	}
 
-	if (strncmp(ctx.tmp_pass, password, 0xffu) != 0) {
-		prl_notice(0, "Wrong password for username %s", username);
-		ret = false;
-		goto out;
-	}
-
-out:
-	if (handle)
-		fclose(handle);
-
-	memzero_explicit(ctx.tmp_pass, sizeof(ctx.tmp_pass));
-	memzero_explicit(auth->password, sizeof(auth->password));
-	return ret;
+	retval = true;
+out_fclose:
+	memzero_explicit(ctx.look_pass, sizeof(ctx.look_pass));
+	fclose(handle);
+	return retval;
 }

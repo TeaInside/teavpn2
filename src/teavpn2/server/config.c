@@ -6,11 +6,12 @@
 #include <teavpn2/server/common.h>
 
 
-extern int8_t __notice_level;
+extern uint8_t __notice_level;
 extern char d_srv_cfg_file[];
 
 struct parse_struct {
 	bool  		exec;
+	struct_pad(0, sizeof(struct srv_cfg *) - sizeof(bool));
 	struct srv_cfg	*cfg;
 };
 
@@ -23,23 +24,23 @@ static int parser_handler(void *user, const char *section, const char *name,
 	struct srv_iface_cfg *iface = &cfg->iface;
 
 	/* Section match */
-	#define RMATCH_S(STR) if (unlikely(!strcmp(section, (STR))))
+	#define rmatch_s(STR) if (unlikely(!strcmp(section, (STR))))
 
 	/* Name match */
-	#define RMATCH_N(STR) if (unlikely(!strcmp(name, (STR))))
+	#define rmatch_n(STR) if (unlikely(!strcmp(name, (STR))))
 
-	RMATCH_S("basic") {
-		RMATCH_N("data_dir") {
+	rmatch_s("basic") {
+		rmatch_n("data_dir") {
 			cfg->data_dir = ar_strndup(value, 255);
 		} else
-		RMATCH_N("verbose_level") {
-			__notice_level = (int8_t)atoi(value);
+		rmatch_n("verbose_level") {
+			__notice_level = (uint8_t)atoi(value);
 		} else {
 			goto out_invalid_name;
 		}
 	} else
-	RMATCH_S("socket") {
-		RMATCH_N("sock_type") {
+	rmatch_s("socket") {
+		rmatch_n("sock_type") {
 			union {
 				char		targ[4];
 				uint32_t	int_rep;
@@ -58,40 +59,43 @@ static int parser_handler(void *user, const char *section, const char *name,
 				goto out_err;
 			}
 		} else
-		RMATCH_N("bind_addr") {
+		rmatch_n("bind_addr") {
 			sock->bind_addr = ar_strndup(value, 32);
 		} else
-		RMATCH_N("bind_port") {
+		rmatch_n("bind_port") {
 			sock->bind_port = (uint16_t)atoi(ar_strndup(value, 6));
 		} else
-		RMATCH_N("max_conn") {
+		rmatch_n("max_conn") {
 			sock->max_conn = (uint16_t)atoi(ar_strndup(value, 6));
 		} else
-		RMATCH_N("backlog") {
+		rmatch_n("backlog") {
 			sock->backlog = (int)atoi(ar_strndup(value, 6));
+		} else
+		rmatch_n("exposed_addr") {
+			sock->exposed_addr = ar_strndup(value, IPV4_L + 1);
 		} else {
 			goto out_invalid_name;
 		}
 	} else
-	RMATCH_S("iface") {
-		RMATCH_N("dev") {
+	rmatch_s("iface") {
+		rmatch_n("dev") {
 			iface->dev  = ar_strndup(value, 16);
 		} else
-		RMATCH_N("mtu") {
+		rmatch_n("mtu") {
 			iface->mtu = (uint16_t)atoi(ar_strndup(value, 6));
 		} else
-		RMATCH_N("ipv4") {
-			iface->ipv4 = ar_strndup(value, IPV4LEN + 1);
+		rmatch_n("ipv4") {
+			iface->ipv4 = ar_strndup(value, IPV4_L + 1);
 		} else
-		RMATCH_N("ipv4_netmask") {
-			iface->ipv4_netmask = ar_strndup(value, IPV4LEN + 1);
+		rmatch_n("ipv4_netmask") {
+			iface->ipv4_netmask = ar_strndup(value, IPV4_L + 1);
 #ifdef TEAVPN_IPV6_SUPPORT
 		} else
-		RMATCH_N("ipv6") {
-			iface->ipv6 = ar_strndup(value, IPV6LEN + 1);
+		rmatch_n("ipv6") {
+			iface->ipv6 = ar_strndup(value, IPV6_L + 1);
 		} else
-		RMATCH_N("ipv6_netmask") {
-			iface->ipv6_netmask = ar_strndup(value, IPV6LEN + 1);
+		rmatch_n("ipv6_netmask") {
+			iface->ipv6_netmask = ar_strndup(value, IPV6_L + 1);
 #endif
 		} else {
 			goto out_invalid_name;
@@ -103,8 +107,8 @@ static int parser_handler(void *user, const char *section, const char *name,
 
 	return true;
 
-	#undef RMATCH_N
-	#undef RMATCH_S
+	#undef rmatch_n
+	#undef rmatch_s
 out_invalid_name:
 	pr_error("Invalid name \"%s\" in section \"%s\" on line %d", name,
 		 section, lineno);
@@ -116,6 +120,7 @@ out_err:
 
 int teavpn_server_cfg_parse(struct srv_cfg *cfg)
 {
+	int err;
 	int retval = 0;
 	FILE *fhandle = NULL;
 	struct parse_struct ctx;
@@ -128,13 +133,13 @@ int teavpn_server_cfg_parse(struct srv_cfg *cfg)
 
 	fhandle = fopen(cfg_file, "r");
 	if (fhandle == NULL) {
-		int tmp = errno;
 		if (strcmp(cfg_file, d_srv_cfg_file) == 0)
 			return 0;
 
-		pr_error("Cannot open config file: %s (%s)", cfg_file,
-			 strerror(tmp));
-		return -tmp;
+		err = errno;
+		pr_err("Can't open config file: \"%s\" " PRERF, cfg_file,
+		       PREAR(err));
+		return -err;
 	}
 
 	if (ini_parse_file(fhandle, parser_handler, &ctx) < 0) {
@@ -144,7 +149,7 @@ int teavpn_server_cfg_parse(struct srv_cfg *cfg)
 
 	if (!ctx.exec) {
 		retval = -EINVAL;
-		pr_error("Error loading config file!");
+		pr_err("Error loading config file \"%s\"!", cfg_file);
 		goto out;
 	}
 
