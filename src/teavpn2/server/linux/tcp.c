@@ -1020,7 +1020,7 @@ static gt_cli_evt_t handle_clpkt_auth(tcli_pkt_t *cli_pkt,
 		goto out_auth_failed;
 	}
 
-	ipv4 = ntohs(ipv4);
+	ipv4 = ntohl(ipv4);
 	client->ipv4 = ipv4;
 
 	if (unlikely(!send_b_auth_ok(client, state))) {
