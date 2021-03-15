@@ -21,7 +21,7 @@ void __pr_notice(const char *fmt, ...)
 	__attribute__((format(printf, 1, 2)));
 
 
-#define PRERF "(%d) %s"
+#define PRERF "(errno=%d) %s"
 #define PREAR(NUM) NUM, strerror(NUM)
 
 #ifndef NOTICE_ALWAYS_EXEC
@@ -53,26 +53,23 @@ do {							\
 } while (0)
 
 
-#define prl_em_notice(LEVEL, ...)			\
-do {							\
-	if (LEVEL == 0) {				\
-		pr_notice(__VA_ARGS__);			\
-	} else						\
-	if (likely((LEVEL) <= __notice_level)) {	\
-		pr_notice(__VA_ARGS__);			\
-	}						\
-} while (0)
-
-
 #define prl_notice(LEVEL, ...)					\
 do {								\
-	if (NOTICE_ALWAYS_EXEC) {				\
+	bool __execute = (					\
+		(NOTICE_ALWAYS_EXEC) ||				\
+		(						\
+			((LEVEL) <= (NOTICE_MAX_LEVEL)) &&	\
+			(					\
+				(LEVEL) <  (__notice_level) ||	\
+				(LEVEL) == (__notice_level)	\
+			)					\
+		)						\
+	);							\
+	if (likely(__execute))					\
 		pr_notice(__VA_ARGS__);				\
-	} else							\
-	if (likely((LEVEL) <= (NOTICE_MAX_LEVEL))) {		\
-		prl_em_notice(LEVEL, __VA_ARGS__);		\
-	}							\
 } while (0)
+
+
 
 #include <teavpn2/base.h>
 
