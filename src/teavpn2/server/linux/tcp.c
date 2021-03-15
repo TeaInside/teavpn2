@@ -397,6 +397,14 @@ static int socket_setup(int fd, struct srv_tcp_state *state)
 		}
 	}
 
+	y = 6;
+	rv = setsockopt(fd, SOL_SOCKET, SO_PRIORITY, pv, len);
+	if (unlikely(rv < 0)) {
+		lv = "SOL_SOCKET";
+		on = "SO_PRIORITY";
+		goto out_err;
+	}
+
 	y = 1024 * 1024 * 4;
 	rv = setsockopt(fd, SOL_SOCKET, SO_RCVBUFFORCE, pv, len);
 	if (unlikely(rv < 0)) {
@@ -413,7 +421,7 @@ static int socket_setup(int fd, struct srv_tcp_state *state)
 		goto out_err;
 	}
 
-	y = 30000;
+	y = 50000;
 	rv = setsockopt(fd, SOL_SOCKET, SO_BUSY_POLL, pv, len);
 	if (unlikely(rv < 0)) {
 		lv = "SOL_SOCKET";
@@ -562,7 +570,7 @@ static int exec_epoll_wait(int epoll_fd, struct epoll_event *events,
 	int err;
 	int retval;
 
-	retval = epoll_wait(epoll_fd, events, maxevents, 3000);
+	retval = epoll_wait(epoll_fd, events, maxevents, 1000);
 	if (unlikely(retval == 0)) {
 		/*
 		 * epoll_wait() reaches timeout

@@ -13,6 +13,8 @@ char *trim(char *str);
 char *trim_cpy(char *str);
 char *trunc_str(char *str, size_t n);
 void *memzero_explicit(void *s, size_t n);
+int memcmp_explicit(const void *s1, const void *s2, size_t n);
+
 
 inline static char *sane_strncpy(char * __restrict__ dest,
 				 const char * __restrict__ src,

@@ -73,6 +73,7 @@ static int init_state(struct cli_tcp_state *state)
 		memcpy(&state->aff, &cri.affinity, sizeof(state->aff));
 		state->aff_ok = true;
 	} else {
+		CPU_ZERO(&state->aff);
 		state->aff_ok = false;
 	}
 
@@ -160,6 +161,14 @@ static int socket_setup(int fd, struct cli_tcp_state *state)
 		}
 	}
 
+	y = 6;
+	rv = setsockopt(fd, SOL_SOCKET, SO_PRIORITY, pv, len);
+	if (unlikely(rv < 0)) {
+		lv = "SO_PRIORITY";
+		on = "SO_RCVBUFFORCE";
+		goto out_err;
+	}
+
 	y = 1024 * 1024 * 4;
 	rv = setsockopt(fd, SOL_SOCKET, SO_RCVBUFFORCE, pv, len);
 	if (unlikely(rv < 0)) {
@@ -176,7 +185,7 @@ static int socket_setup(int fd, struct cli_tcp_state *state)
 		goto out_err;
 	}
 
-	y = 30000;
+	y = 50000;
 	rv = setsockopt(fd, SOL_SOCKET, SO_BUSY_POLL, pv, len);
 	if (unlikely(rv < 0)) {
 		lv = "SOL_SOCKET";
@@ -238,7 +247,9 @@ again:
 		err = errno;
 		if ((err == EINPROGRESS) || (err == EALREADY)) {
 			usleep(5000);
-			goto again;
+
+			if (likely(!state->stop))
+				goto again;
 		}
 
 		retval = -err;
@@ -410,18 +421,24 @@ static int send_hello(struct cli_tcp_state *state)
 
 
 static int exec_epoll_wait(int epoll_fd, struct epoll_event *events,
-			   int maxevents)
+			   int maxevents, struct cli_tcp_state *state)
 {
 	int err;
 	int retval;
 
-	retval = epoll_wait(epoll_fd, events, maxevents, 3000);
+	retval = epoll_wait(epoll_fd, events, maxevents, 1000);
 	if (unlikely(retval == 0)) {
 		/*
 		 * epoll_wait() reaches timeout
 		 *
 		 * TODO: Do something meaningful here.
 		 */
+
+		/*
+		 * Always re-read memory when idle, at least keep it
+		 * on L2d cache.
+		 */
+		memcmp_explicit(state, state, sizeof(*state));
 		return 0;
 	}
 
@@ -447,7 +464,9 @@ static ssize_t handle_iface_read(int tun_fd, struct cli_tcp_state *state)
 	size_t send_len;
 	ssize_t read_ret;
 	tcli_pkt_t *cli_pkt;
+	uint8_t busy_read_count = 0;
 
+read_again:
 	state->read_tun_c++;
 
 	cli_pkt  = state->send_buf.__pkt_chk;
@@ -460,12 +479,19 @@ static ssize_t handle_iface_read(int tun_fd, struct cli_tcp_state *state)
 		return -1;
 	}
 
+	if (unlikely(read_ret == 0))
+		return 0;
+
 	prl_notice(5, "[%10" PRIu32 "] read(fd=%d) %zd bytes from tun_fd",
 		   state->read_tun_c, tun_fd, read_ret);
 
 	send_len = set_cli_pkt_buf(cli_pkt, TCLI_PKT_IFACE_DATA,
 				   (uint16_t)read_ret);
 	send_to_server(state, cli_pkt, send_len);
+
+	if (likely(busy_read_count++ < 10))
+		goto read_again;
+
 	return read_ret;
 }
 
@@ -788,7 +814,10 @@ static gt_srv_evt_t handle_server_event2(int tcp_fd,
 	char *recv_buf;
 	size_t recv_len;
 	ssize_t recv_ret;
+	uint8_t busy_recv_count = 0;
+	gt_srv_evt_t retval;
 
+recv_again:
 	recv_s   = state->recv_s;
 	recv_buf = state->recv_buf.raw_buf;
 	recv_len = TSRV_PKT_RECV_L - recv_s;
@@ -816,7 +845,14 @@ static gt_srv_evt_t handle_server_event2(int tcp_fd,
 	prl_notice(5, "[%10" PRIu32 "] recv(fd=%d) %zd bytes from server"
 		   " (recv_s = %zu)", state->recv_c, tcp_fd, recv_ret, recv_s);
 
-	return handle_client_event3(recv_s, state);
+	retval = handle_client_event3(recv_s, state);
+	if (unlikely(retval != HSE_OK))
+		return retval;
+
+	if (likely(busy_recv_count++ < 10))
+		goto recv_again;
+
+	return HSE_OK;
 }
 
 
@@ -826,8 +862,10 @@ static int handle_server_event(int tcp_fd, struct cli_tcp_state *state,
 	gt_srv_evt_t jump_to;
 	const uint32_t err_mask = EPOLLERR | EPOLLHUP;
 
-	if (unlikely(revents & err_mask))
-		return -1;
+	if (unlikely(revents & err_mask)) {
+		prl_notice(0, "Server has closed its connection");
+		goto out_close;
+	}
 
 	jump_to = handle_server_event2(tcp_fd, state);
 	if (likely(jump_to == HSE_OK)) {
@@ -915,7 +953,7 @@ static int event_loop(struct cli_tcp_state *state)
 	memset(events, 0, sizeof(events));
 
 	while (likely(!state->stop)) {
-		retval = exec_epoll_wait(epoll_fd, events, maxevents);
+		retval = exec_epoll_wait(epoll_fd, events, maxevents, state);
 
 		if (unlikely(retval == 0))
 			continue;
