@@ -140,27 +140,26 @@ static __always_inline int getopt_handler(int argc, char *argv[],
 			iface->ipv6_netmask = trunc_str(optarg, 64);
 			break;
 #endif
-		case 's':
-			{
-				union {
-					char		targ[4];
-					uint32_t	int_rep;
-				} t;
-				t.int_rep = 0;
-				sane_strncpy(t.targ, optarg, sizeof(t.targ));
-				t.int_rep |= 0x20202020u; /* tolower */
-				t.targ[3]  = '\0';
-				if (!memcmp(t.targ, "tcp", 4)) {
-					sock->type = SOCK_TCP;
-				} else
-				if (!memcmp(t.targ, "udp", 4)) {
-					sock->type = SOCK_UDP;
-				} else {
-					pr_error("Invalid socket type \"%s\"",
-						 optarg);
-					return -1;
-				}
+		case 's': {
+			union {
+				char		targ[4];
+				uint32_t	int_rep;
+			} t;
+			t.int_rep = 0;
+			sane_strncpy(t.targ, optarg, sizeof(t.targ));
+			t.int_rep |= 0x20202020u; /* tolower */
+			t.targ[3]  = '\0';
+			if (!memcmp(t.targ, "tcp", 4)) {
+				sock->type = SOCK_TCP;
+			} else
+			if (!memcmp(t.targ, "udp", 4)) {
+				sock->type = SOCK_UDP;
+			} else {
+				pr_error("Invalid socket type \"%s\"",
+					 optarg);
+				return -1;
 			}
+		}
 			break;
 		case 'H':
 			sock->bind_addr = trunc_str(optarg, 255);

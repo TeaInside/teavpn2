@@ -25,14 +25,15 @@ int tun_alloc(const char *dev, short flags)
 	int fd;
 	int err;
 	struct ifreq ifr;
-	static bool retried = false;
-	static const char *dtf = "/dev/net/tun";
+	bool retried = false;
+	static const char *dtf = "/dev/net/tunx";
 
 	if (unlikely((dev == NULL) || (*dev == '\0'))) {
 		pr_error("tun_alloc(): dev cannot be empty");
 		return -EINVAL;
 	}
 
+again:
 	fd = open(dtf, O_RDWR | O_NONBLOCK);
 	if (unlikely(fd < 0)) {
 		err = errno;
@@ -41,8 +42,8 @@ int tun_alloc(const char *dev, short flags)
 		if ((!retried) && (err == ENOENT)) {
 			dtf = "/dev/tun";
 			retried = !retried;
-			prl_notice(0, "Set fallback to /dev/tun");
-			return tun_alloc(dev, flags);
+			prl_notice(0, "Set fallback to %s", dtf);
+			goto again;
 		}
 
 		return -err;
@@ -94,7 +95,7 @@ int fd_set_nonblock(int fd)
 #else
 	/* Otherwise, use the old way of doing it */
 	flags = 1;
-	if (ioctl(fd, FIONBIO, &flags) < 0) {
+	if (unlikely(ioctl(fd, FIONBIO, &flags) < 0)) {
 		err = errno;
 		pr_err("ioctl(%d, FIONBIO, &flags): " PRERF, fd, PREAR(err));
 		return -err;
