@@ -205,7 +205,7 @@ include $(BASE_DIR)/tests/Makefile
 
 $(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC)
 	@echo "   LD		" "$(@)"
-	$(LD) $(LDFLAGS) $(OBJ_CC) $(OBJ_PRE_CC) -o "$@" $(LIB_LDFLAGS)
+	@$(LD) $(LDFLAGS) $(OBJ_CC) $(OBJ_PRE_CC) -o "$@" $(LIB_LDFLAGS)
 	@chmod a+x teavpn2 || true
 
 $(DEP_DIRS):
