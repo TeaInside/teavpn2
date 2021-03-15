@@ -1020,9 +1020,8 @@ static gt_cli_evt_t handle_clpkt_auth(tcli_pkt_t *cli_pkt,
 		goto out_auth_failed;
 	}
 
+	ipv4 = ntohs(ipv4);
 	client->ipv4 = ipv4;
-
-	/* TODO: Set IP Map, set index, etc. */
 
 	if (unlikely(!send_b_auth_ok(client, state))) {
 		prl_notice(0, "Authentication error from " PRWIU, W_IU(client));
@@ -1059,6 +1058,7 @@ static gt_cli_evt_t handle_clpkt_iface_ack(struct client_slot *client,
 	i = ipv4 & 0xffu;
 	j = (ipv4 >> 8u) & 0xffu;
 	state->ip_map[i][j] = client->client_idx + IP_MAP_SHIFT;
+	prl_notice(4, "Set state->ip_map[%u][%u]", i, j);
 
 	inet_ntop(AF_INET, &client->ipv4, priv_ip, sizeof(priv_ip));
 	prl_notice(0, PRWIU " acknowledged the IP assignment (%s)",
