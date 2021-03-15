@@ -646,8 +646,8 @@ static void route_ipv4(struct srv_tcp_state *state, tsrv_pkt_t *srv_pkt,
 	struct iphdr *header = &srv_pkt->net_pkt.header;
 
 	dst = header->daddr;
-	i = (ipv4 >> 8u) & 0xffu;
-	j = (ipv4 >> 0u) & 0xffu;
+	i = (dst >> 8u) & 0xffu;
+	j = (dst >> 0u) & 0xffu;
 
 	map_to = ip_map[i][j];
 	if (unlikely(map_to == IP_MAP_TO_NOP))
