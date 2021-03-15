@@ -132,7 +132,6 @@ static int32_t push_client_stack(struct cl_slot_stk *client_stack, uint16_t val)
 	TASSERT(sp > 0);
 	client_stack->arr[--sp] = val;
 	client_stack->sp = sp;
-	prl_notice(5, "push_client_stack() = %d", val);
 	return (int32_t)val;
 }
 
@@ -647,8 +646,8 @@ static void route_ipv4(struct srv_tcp_state *state, tsrv_pkt_t *srv_pkt,
 	struct iphdr *header = &srv_pkt->net_pkt.header;
 
 	dst = header->daddr;
-	i = dst & 0xffu;
-	j = (dst >> 8u) & 0xffu;
+	i = (ipv4 >> 8u) & 0xffu;
+	j = (ipv4 >> 0u) & 0xffu;
 
 	map_to = ip_map[i][j];
 	if (unlikely(map_to == IP_MAP_TO_NOP))
@@ -1055,8 +1054,8 @@ static gt_cli_evt_t handle_clpkt_iface_ack(struct client_slot *client,
 		return HCE_CLOSE;
 	}
 
-	i = ipv4 & 0xffu;
-	j = (ipv4 >> 8u) & 0xffu;
+	i = (ipv4 >> 8u) & 0xffu;
+	j = (ipv4 >> 0u) & 0xffu;
 	state->ip_map[i][j] = client->client_idx + IP_MAP_SHIFT;
 	prl_notice(4, "Set state->ip_map[%u][%u]", i, j);
 
@@ -1065,11 +1064,14 @@ static gt_cli_evt_t handle_clpkt_iface_ack(struct client_slot *client,
 		   W_IU(client), priv_ip);
 
 	k = bc_arr_insert(&state->bc_arr_ct, client->client_idx);
+	prl_notice(5, "bc_arr_insert() = %d", k);
+
 	if (unlikely(k == -1)) {
 		state->stop = true;
-		pr_err("Bug bc_arr_insert");
+		panic("Bug on bc_arr_insert");
 		return HCE_CLOSE;
 	}
+
 	client->bc_arr_idx = k;
 
 	return HCE_OK;
@@ -1228,7 +1230,6 @@ process_again:
 		goto out;
 	}
 
-	assert(cdata_len >= fdata_len);
 	retval = process_client_pkt(cli_pkt, client, data_len, state);
 	if (unlikely(retval != HCE_OK))
 		return retval;
@@ -1361,8 +1362,11 @@ out_close:
 
 	if (likely(client->ipv4 != 0)) {
 		uint32_t ipv4 = client->ipv4;
-		uint16_t i = ipv4 & 0xffu;
-		uint16_t j = (ipv4 >> 8) & 0xffu;
+		uint16_t i;
+		uint16_t j;
+
+		i = (ipv4 >> 8u) & 0xffu;
+		j = (ipv4 >> 0u) & 0xffu;
 		prl_notice(0, "Reset state->ip_map[%u][%u]", i, j);
 		state->ip_map[i][j] = IP_MAP_TO_NOP;
 	}
