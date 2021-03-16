@@ -11,6 +11,8 @@ PATCHLEVEL = 0
 SUBLEVEL = 1
 EXTRAVERSION = -rc1
 NAME = Fresh Water
+PACKAGE_NAME = teavpn2-$(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)
+
 
 SERVER_DEFAULT_CFG_FILE = config/server.ini
 CLIENT_DEFAULT_CFG_FILE = config/client.ini
@@ -26,6 +28,12 @@ BASE_DIR := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
 BASE_DIR := $(strip $(patsubst %/, %, $(BASE_DIR)))
 BASE_DEP_DIR := $(BASE_DIR)/.deps
 MAKEFILE_FILE := $(lastword $(MAKEFILE_LIST))
+
+LICENSES_DIR := $(BASE_DIR)/LICENSES
+TEAVPN2_LICENSE_FILE := $(BASE_DIR)/LICENSE
+TEAVPN2_README_FILE := $(BASE_DIR)/README.md
+TEAVPN2_CONFIG_DIR := $(BASE_DIR)/config
+TEAVPN2_DATA_DIR := $(BASE_DIR)/data
 
 CC_BUILTIN_CONSTANTS := $(shell $(CC) -dM -E - < /dev/null)
 CXX_BUILTIN_CONSTANTS := $(shell $(CXX) -dM -E - < /dev/null)
@@ -68,7 +76,7 @@ USE_CLIENT	:= 1
 USE_SERVER	:= 1
 
 DEPFLAGS	 = -MT "$@" -MMD -MP -MF "$(@:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)"
-LIB_LDFLAGS	:= -lpthread
+LIB_LDFLAGS	:= -lpthread -lssl
 LDFLAGS		:= -fPIE -fpie
 CFLAGS		:= -fPIE -fpie -std=c11
 CXXFLAGS	:= -fPIE -fpie -std=c++2a
@@ -231,8 +239,29 @@ server: $(TARGET_BIN)
 client: $(TARGET_BIN)
 	sudo $(VG) $(VGFLAGS) ./$(TARGET_BIN) client
 
-release_pack: \
-	$(TARGET_BIN) \
-	$(SERVER_DEFAULT_CFG_FILE) \
-	$(CLIENT_DEFAULT_CFG_FILE)
+release_pack:
+	+$(MAKE) __build_release_pack RELEASE_MODE=1
 
+__build_release_pack: \
+		$(TARGET_BIN) \
+		$(SERVER_DEFAULT_CFG_FILE) \
+		$(CLIENT_DEFAULT_CFG_FILE) \
+		$(LICENSES_DIR) \
+		$(TEAVPN2_LICENSE_FILE) \
+		$(TEAVPN2_README_FILE) \
+		$(TEAVPN2_CONFIG_DIR) \
+		$(TEAVPN2_DATA_DIR)
+	@strip -s $(TARGET_BIN);
+	@mkdir -pv "$(PACKAGE_NAME)";
+	@cp -vrf $(TARGET_BIN) \
+		$(LICENSES_DIR) \
+		$(TEAVPN2_LICENSE_FILE) \
+		$(TEAVPN2_README_FILE) \
+		$(TEAVPN2_CONFIG_DIR) \
+		$(TEAVPN2_DATA_DIR) "$(PACKAGE_NAME)/";
+	@tar -c "$(PACKAGE_NAME)/" | gzip -9c > "$(PACKAGE_NAME).tar.gz";
+	@md5sum "$(PACKAGE_NAME).tar.gz" > "$(PACKAGE_NAME).tar.gz.md5sum";
+	@sha1sum "$(PACKAGE_NAME).tar.gz" > "$(PACKAGE_NAME).tar.gz.sha1sum";
+	@sha256sum "$(PACKAGE_NAME).tar.gz" > "$(PACKAGE_NAME).tar.gz.sha256sum";
+	@rm -rf "$(PACKAGE_NAME)";
+	ls -l "$(PACKAGE_NAME).tar.gz"*;

@@ -62,6 +62,8 @@ static __always_inline void init_default_cfg(struct srv_cfg *cfg)
 	sock->bind_port = d_srv_bind_port;
 	sock->max_conn = d_srv_max_conn;
 	sock->backlog = d_srv_backlog;
+	sock->ssl_cert = NULL;
+	sock->ssl_priv_key = NULL;
 }
 
 
@@ -90,6 +92,8 @@ static const struct option long_opt[] = {
 	{"bind-port",     required_argument, 0, 'P'},
 	{"max-conn",      required_argument, 0, 'k'},
 	{"backlog",       required_argument, 0, 'B'},
+	{"ssl-cert",      required_argument, 0, 'C'},
+	{"ssl-priv-key",  required_argument, 0, 'k'},
 
 	{0, 0, 0, 0}
 };
@@ -180,6 +184,12 @@ static __always_inline int getopt_handler(int argc, char *argv[],
 			break;
 		case 'B':
 			sock->backlog = (int)atoi(trunc_str(optarg, 6));
+			break;
+		case 'C':
+			sock->ssl_cert = trunc_str(optarg, 512);
+			break;
+		case 'K':
+			sock->ssl_priv_key = trunc_str(optarg, 512);
 			break;
 		default:
 			return -1;

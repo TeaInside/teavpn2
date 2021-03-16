@@ -31,6 +31,8 @@ struct srv_sock_cfg {
 #if UINTPTR_MAX != 0xffffffffu
 	struct_pad(0, sizeof(char *) - sizeof(sock_type));
 #endif
+	char		*ssl_cert;
+	char		*ssl_priv_key;
 	char		*exposed_addr;	/* Exposed address       */
 	char		*bind_addr;	/* Bind address          */
 	uint16_t	bind_port;	/* Bind port             */

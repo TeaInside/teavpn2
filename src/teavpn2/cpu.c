@@ -40,7 +40,7 @@ int optimize_cpu_affinity(int need, struct cpu_ret_info *ret)
 	CPU_ZERO(aff);
 	for (int i = 0; (i < CPU_SETSIZE) && (used < need); i++) {
 		if (likely(CPU_ISSET(i, &cs))) {
-			p += sprintf(p, "%s%d", (used ? " ," : ""), i);
+			p += sprintf(p, "%s%d", (used ? ", " : ""), i);
 			prl_notice(4, "CPU_SET(%d, &affinity)", i);
 			CPU_SET(i, aff);
 			used++;

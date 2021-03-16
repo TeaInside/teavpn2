@@ -53,6 +53,8 @@ void teavpn_server_show_help(const char *app)
 	       d_srv_max_conn);
 	printf("  -B, --backlog=N\t\tSet socket listen backlog (default: %d)"
 	       ".\n", d_srv_backlog);
+	printf("  -C, --ssl-cert=FILE\t\tSet SSL certificate\n");
+	printf("  -K, --ssl-priv-key=FILE\t\tSet SSL private key\n");
 
 	printf("\n");
 	printf("\n");

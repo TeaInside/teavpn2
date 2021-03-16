@@ -10,4 +10,4 @@
 *.gcda
 *.gcov
 /.deps/
-/teavpn2
+/teavpn2*

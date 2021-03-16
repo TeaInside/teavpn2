@@ -81,6 +81,12 @@ static int parser_handler(void *user, const char *section, const char *name,
 		} else
 		rmatch_n("exposed_addr") {
 			sock->exposed_addr = ar_strndup(value, IPV4_L + 1);
+		} else
+		rmatch_n("ssl_cert") {
+			sock->ssl_cert = ar_strndup(value, 512);
+		} else
+		rmatch_n("ssl_priv_key") {
+			sock->ssl_priv_key = ar_strndup(value, 512);
 		} else {
 			goto out_invalid_name;
 		}

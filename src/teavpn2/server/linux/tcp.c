@@ -104,6 +104,7 @@ struct srv_tcp_state {
 	int			tcp_fd;
 	int			tun_fd;
 
+	SSL_CTX			*ssl_ctx;
 	struct srv_cfg		*cfg;
 
 	/*
@@ -128,6 +129,7 @@ struct srv_tcp_state {
 	 */
 	uint16_t		(*ip_map)[256];
 	struct client_slot	*clients;
+	uint16_t		*epoll_map;
 
 
 	/* How many calls read(tun_fd, buf, size)? */
@@ -144,11 +146,422 @@ struct srv_tcp_state {
 
 	cpu_set_t		affinity;
 	utsrv_pkt_t		send_buf;
+
+	/* Thread to handle recv() from clients */
+	pthread_t		thread;
 };
 
 
 static struct srv_tcp_state *g_state;
 
+
+static void handle_interrupt(int sig)
+{
+	struct srv_tcp_state *state = g_state;
+	state->stop_event_loop = true;
+	putchar('\n');
+	pr_notice("Signal %d (%s) has been caught", sig, strsignal(sig));
+}
+
+
+static inline void reset_client_slot(struct client_slot *client,
+				     uint16_t slot_index)
+{
+	client->is_auth    = false;
+	client->is_used    = false;
+	client->is_conn    = false;
+	client->err_c      = 0;
+	client->cli_fd     = -1;
+	client->recv_c     = 0;
+	client->send_c     = 0;
+	client->recv_s     = 0;
+	client->slot_index = slot_index;
+	client->src_port   = 0;
+	client->src_ip[0]  = '\0';
+	client->uname[0]   = '_';
+	client->uname[1]   = '\0';
+	client->private_ip = 0;
+	client->recv_s     = 0;
+}
+
+
+static void *calloc_wrp(size_t nmemb, size_t size)
+{
+	void *ret;
+	ret = calloc(nmemb, size);
+	if (unlikely(ret == NULL)) {
+		int err = errno;
+		pr_err("calloc: Cannot allocate memory: " PRERF, PREAR(err));
+		return NULL;
+	}
+
+	return ret;
+}
+
+
+static int init_state_ip_map(struct srv_tcp_state *state)
+{
+	uint16_t (*ip_map)[256];
+
+	ip_map = calloc_wrp(256, sizeof(*ip_map));
+	if (unlikely(ip_map == NULL))
+		return -1;
+
+	for (uint16_t i = 0; i < 256; i++) {
+		for (uint16_t j = 0; j < 256; j++) {
+			ip_map[i][j] = IP_MAP_TO_NOP;
+		}
+	}
+
+	state->ip_map = ip_map;
+	return 0;
+}
+
+
+static int init_state_client_slot(struct srv_tcp_state *state)
+{
+	uint16_t max_conn = state->cfg->sock.max_conn;
+	struct client_slot *clients;
+
+	clients = calloc_wrp(max_conn, sizeof(*clients));
+	if (unlikely(clients == NULL))
+		return -1;
+
+	while (max_conn--)
+		reset_client_slot(&clients[max_conn], max_conn);
+
+	state->clients = clients;
+	return 0;
+}
+
+
+static int init_state_epoll_map(struct srv_tcp_state *state)
+{
+	uint16_t *epoll_map;
+
+	epoll_map = calloc_wrp(EPOLL_CLIENT_MAP_SIZE, sizeof(*epoll_map));
+	if (unlikely(epoll_map == NULL))
+		return -1;
+
+	state->epoll_map = epoll_map;
+	return 0;
+}
+
+
+static int init_state(struct srv_tcp_state *state)
+{
+	state->stop_event_loop = false;
+	state->need_iface_down = false;
+	state->set_affinity_ok = false;
+	state->err_c           = 0;
+	state->epoll_fd        = -1;
+	state->tun_fd          = -1;
+	state->tcp_fd          = -1;
+	state->ssl_ctx         = NULL;
+	state->read_tun_c      = 0;
+	state->write_tun_c     = 0;
+	state->up_bytes        = 0;
+	state->down_bytes      = 0;
+
+	if (unlikely(init_state_ip_map(state) < 0))
+		return -1;
+	if (unlikely(init_state_client_slot(state) < 0))
+		return -1;
+	if (unlikely(init_state_epoll_map(state) < 0))
+		return -1;
+
+	return 0;
+}
+
+
+static int init_cpu(struct srv_tcp_state *state)
+{
+	struct cpu_ret_info cri;
+
+	if (optimize_cpu_affinity(2, &cri) == 0) {
+		memcpy(&state->affinity, &cri.affinity,
+		       sizeof(state->affinity));
+		state->set_affinity_ok = true;
+	} else {
+		state->set_affinity_ok = false;
+	}
+
+	optimize_process_priority(-20, &cri);
+	return 0;
+}
+
+
+static int set_socket_so_incoming_cpu(int tcp_fd, struct srv_tcp_state *state)
+{
+	int first_isset = -1, second_isset = -1, incoming_cpu = -1;
+	const void *ptr = (const void *)&incoming_cpu;
+	socklen_t len = sizeof(incoming_cpu);
+
+	/*
+	 * Take second_isset CPU, if there is no second_isset CPU,
+	 * then use first_isset CPU
+	 */
+	for (int i = 0; i < CPU_SETSIZE; i++) {
+		if (!CPU_ISSET(i, &state->affinity))
+			continue;
+		
+		if (first_isset == -1) {
+			first_isset = i;
+		} else
+		if (second_isset == -1) {
+			second_isset = i;
+		} else {
+			break;
+		}
+	}
+
+	prl_notice(6, "first_isset CPU = %d", first_isset);
+	prl_notice(6, "second_isset CPU = %d", second_isset);
+
+	/* We have second_isset CPU */
+	if (second_isset != -1) {
+		incoming_cpu = second_isset;
+		goto out_set;
+	}
+
+	/*
+	 * We don't have second_isset CPU, but we have
+	 * fisrt_isset CPU.
+	 */
+	if (first_isset != -1) {
+		incoming_cpu = first_isset;
+		goto out_set;
+	}
+
+	/*
+	 * Wait what?
+	 * We don't have CPU affinity at all?!
+	 */
+	return 0;
+out_set:
+	return setsockopt(tcp_fd, SOL_SOCKET, SO_INCOMING_CPU, ptr, len);
+}
+
+
+static int socket_setup(int tcp_fd, struct srv_tcp_state *state)
+{
+	int y;
+	int err;
+	int retval;
+	const char *lv, *on; /* level and optname */
+	socklen_t len = sizeof(y);
+	struct srv_cfg *cfg = state->cfg;
+	const void *py = (const void *)&y;
+
+	y = 1;
+	retval = setsockopt(tcp_fd, SOL_SOCKET, SO_REUSEADDR, py, len);
+	if (unlikely(retval < 0)) {
+		lv = "SOL_SOCKET";
+		on = "SO_REUSEADDR";
+		goto out_err;
+	}
+
+	y = 1;
+	retval = setsockopt(tcp_fd, SOL_SOCKET, SO_REUSEADDR, py, len);
+	if (unlikely(retval < 0)) {
+		lv = "SOL_SOCKET";
+		on = "SO_REUSEADDR";
+		goto out_err;
+	}
+
+	y = 1;
+	retval = setsockopt(tcp_fd, IPPROTO_TCP, TCP_NODELAY, py, len);
+	if (unlikely(retval < 0)) {
+		lv = "IPPROTO_TCP";
+		on = "TCP_NODELAY";
+		goto out_err;
+	}
+
+	y = 6;
+	retval = setsockopt(tcp_fd, SOL_SOCKET, SO_PRIORITY, py, len);
+	if (unlikely(retval < 0)) {
+		lv = "SOL_SOCKET";
+		on = "SO_PRIORITY";
+		goto out_err;
+	}
+
+	y = 1024 * 1024 * 4;
+	retval = setsockopt(tcp_fd, SOL_SOCKET, SO_RCVBUFFORCE, py, len);
+	if (unlikely(retval < 0)) {
+		lv = "SOL_SOCKET";
+		on = "SO_RCVBUFFORCE";
+		goto out_err;
+	}
+
+	y = 1024 * 1024 * 4;
+	retval = setsockopt(tcp_fd, SOL_SOCKET, SO_SNDBUFFORCE, py, len);
+	if (unlikely(retval < 0)) {
+		lv = "SOL_SOCKET";
+		on = "SO_SNDBUFFORCE";
+		goto out_err;
+	}
+
+	y = 50000;
+	retval = setsockopt(tcp_fd, SOL_SOCKET, SO_BUSY_POLL, py, len);
+	if (unlikely(retval < 0)) {
+		lv = "SOL_SOCKET";
+		on = "SO_BUSY_POLL";
+		goto out_err;
+	}
+
+
+	retval = set_socket_so_incoming_cpu(tcp_fd, state);
+	if (unlikely(retval < 0)) {
+		lv  = "SOL_SOCKET";
+		on  = "SO_INCOMING_CPU";
+		err = errno;
+
+		/*
+		 * SO_INCOMING_CPU is not mandatory, so
+		 * if it fails, keep the success state.
+		 */
+		pr_err("setsockopt(tcp_fd, %s, %s): " PRERF, lv, on,
+		       PREAR(err));
+		retval = 0;
+	}
+
+
+	/*
+	 * Use cfg to set some socket options.
+	 */
+	(void)cfg;
+	return retval;
+out_err:
+	err = errno;
+	pr_err("setsockopt(tcp_fd, %s, %s): " PRERF, lv, on, PREAR(err));
+	return retval;
+}
+
+
+static int init_socket(struct srv_tcp_state *state)
+{
+	int err;
+	int tcp_fd;
+	int retval;
+	struct sockaddr_in addr;
+	struct srv_sock_cfg *sock = &state->cfg->sock;
+
+	prl_notice(0, "Creating TCP socket...");
+	tcp_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
+	if (unlikely(tcp_fd < 0)) {
+		err = errno;
+		pr_err("socket(): " PRERF, PREAR(err));
+		return -1;
+	}
+
+	prl_notice(0, "Setting socket file descriptor up...");
+	retval = socket_setup(tcp_fd, state);
+	if (unlikely(retval < 0))
+		goto out_err;
+
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(sock->bind_port);
+	addr.sin_addr.s_addr = inet_addr(sock->bind_addr);
+
+	retval = bind(tcp_fd, (struct sockaddr *)&addr, sizeof(addr));
+	if (unlikely(retval < 0)) {
+		err = errno;
+		pr_err("bind(): " PRERF, PREAR(err));
+		goto out_err;
+	}
+
+	retval = listen(tcp_fd, sock->backlog);
+	if (unlikely(retval < 0)) {
+		err = errno;
+		pr_err("listen(): " PRERF, PREAR(err));
+		goto out_err;
+	}
+
+	state->tcp_fd = tcp_fd;
+	prl_notice(0, "Listening on %s:%d...", sock->bind_addr,
+		   sock->bind_port);
+	return 0;
+out_err:
+	close(tcp_fd);
+	return -1;
+}
+
+
+static SSL_CTX *create_ssl_context()
+{
+	int err;
+	SSL_CTX *ctx;
+	const SSL_METHOD *method;
+
+	method = SSLv23_server_method();
+	ctx    = SSL_CTX_new(method);
+	if (unlikely(!ctx)) {
+		err = errno;
+		pr_err("Unable to create SSL context: " PRERF, PREAR(err));
+		return NULL;
+	}
+
+	return ctx;
+}
+
+
+static int configure_ssl_context(SSL_CTX *ssl_ctx, struct srv_tcp_state *state)
+{
+	int err;
+	int retval;
+	const char *cert, *key;
+	struct srv_cfg *cfg = state->cfg;
+
+	cert = cfg->sock.ssl_cert;
+	key  = cfg->sock.ssl_priv_key;
+
+	if (unlikely(cert == NULL)) {
+		pr_err("Missing sock->ssl_cert " PRERF, PREAR(EFAULT));
+		return -1;
+	}
+
+	if (unlikely(key == NULL)) {
+		pr_err("Missing sock->ssl_priv_key " PRERF, PREAR(EFAULT));
+		return -1;
+	}
+
+	retval = SSL_CTX_use_certificate_file(ssl_ctx, cert, SSL_FILETYPE_PEM);
+	if (unlikely(retval <= 0)) {
+		err = errno;
+		pr_err("SSL_CTX_use_certificate_file(%s): " PRERF, cert,
+		       PREAR(err));
+		return -1;
+	}
+
+	retval = SSL_CTX_use_PrivateKey_file(ssl_ctx, key, SSL_FILETYPE_PEM);
+	if (unlikely(retval <= 0)) {
+		err = errno;
+		pr_err("SSL_CTX_use_PrivateKey_file(%s): " PRERF, key,
+		       PREAR(err));
+		return -1;
+	}
+
+	return 0;
+}
+
+
+static int init_ssl_context(struct srv_tcp_state *state)
+{
+	SSL_CTX *ssl_ctx;
+
+	ssl_ctx = create_ssl_context();
+	if (unlikely(ssl_ctx == NULL))
+		return -1;
+
+	if (unlikely(configure_ssl_context(ssl_ctx, state) < 0)) {
+		SSL_CTX_free(ssl_ctx);
+		return -1;
+	}
+
+	state->ssl_ctx = ssl_ctx;
+	return 0;
+}
 
 
 int teavpn_server_tcp_handler(struct srv_cfg *cfg)
@@ -156,10 +569,29 @@ int teavpn_server_tcp_handler(struct srv_cfg *cfg)
 	int retval = 0;
 	struct srv_tcp_state state;
 
+	/* Shut the valgrind up! */
+	memset(&state, 0, sizeof(state));
+
 	state.cfg = cfg;
 	g_state = &state;
+	signal(SIGHUP, handle_interrupt);
+	signal(SIGINT, handle_interrupt);
+	signal(SIGTERM, handle_interrupt);
+	signal(SIGQUIT, handle_interrupt);
+	signal(SIGPIPE, SIG_IGN);
 
-	goto out;
+	retval = init_state(&state);
+	if (unlikely(retval < 0))
+		goto out;
+	retval = init_cpu(&state);
+	if (unlikely(retval < 0))
+		goto out;
+	retval = init_ssl_context(&state);
+	if (unlikely(retval < 0))
+		goto out;
+	retval = init_socket(&state);
+	if (unlikely(retval < 0))
+		goto out;
 out:
 	return retval;
 }
