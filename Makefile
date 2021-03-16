@@ -10,16 +10,16 @@ VERSION = 0
 PATCHLEVEL = 0
 SUBLEVEL = 1
 EXTRAVERSION = -rc1
-NAME = Frozen Wasteland
+NAME = Fresh Water
 
 SERVER_DEFAULT_CFG_FILE = config/server.ini
 CLIENT_DEFAULT_CFG_FILE = config/client.ini
 
 TARGET_BIN = teavpn2
 
-CC	:= clang
-CXX	:= clang++
-LD	:= $(CXX)
+CC	:= cc
+CXX	:= c++
+LD	:= $(CC)
 VG	:= valgrind
 
 BASE_DIR := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
@@ -70,7 +70,7 @@ USE_SERVER	:= 1
 DEPFLAGS	 = -MT "$@" -MMD -MP -MF "$(@:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)"
 LIB_LDFLAGS	:= -lpthread
 LDFLAGS		:= -fPIE -fpie
-CFLAGS		:= -fPIE -fpie # -std=c11
+CFLAGS		:= -fPIE -fpie -std=c11
 CXXFLAGS	:= -fPIE -fpie -std=c++2a
 VGFLAGS		:= \
 	--leak-check=full \

@@ -6,9 +6,8 @@
 # TeaVPN2 - Fast and Free VPN Software
 #
 
-include $(BASE_DIR)/tests/001_license/Makefile
-include $(BASE_DIR)/tests/002_string/Makefile
-include $(BASE_DIR)/tests/003_bc_arr/Makefile
+include $(BASE_DIR)/tests/001_string/Makefile
+include $(BASE_DIR)/tests/002_bc_arr/Makefile
 
 export VG
 export VGFLAGS
