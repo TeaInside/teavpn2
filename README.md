@@ -1,48 +1,47 @@
 
+
+
 # TeaVPN2
-TeaVPN2 is a fast and free VPN Software written in C. Currently supported
-platform is only Linux x86-64. We plan to expand to other plaforms and
-architectures too.
+TeaVPN2 is a fast and free VPN Software. Current supported platform is only
+Linux. We plan to expand to other platforms too, but that's not our priority.
 
 
-## Requirements
+# Requirements
 - GNU Make 4.3
+- OpenSSL 1.1.1
 - gcc 9.3.0 or gcc 10.2.1 (other versions are not tested yet).
 
-#### Tested on Ubuntu 20.04
-```
-sudo apt-get install gcc make -y;
-```
 
-## Build
+# Build
 ```
 git clone https://github.com/TeaInside/teavpn2
 cd teavpn2
 make RELEASE_MODE=1 -j$(nproc)
 ```
 
-## Issues
+# Issues
 We welcome bug reports, feature requests and questions through GitHub
 repository https://github.com/TeaInside/teavpn2.
 
 
-## Project Maintainers
+# Project Maintainers
 - Ammar Faizi ([@ammarfaizi2](https://github.com/ammarfaizi2))
 
 
-## Community
+# Community
 We are usually online on Telegram, see: https://t.me/TeaInside
 
 
-## Third Party Libraries
-- inih (under New BSD license) (https://github.com/benhoyt/inih)
+# Third Party Libraries
+- inih 53 (under New BSD license) (https://github.com/benhoyt/inih)
+- Criterion v2.3.3 (under MIT license) (https://github.com/Snaipe/Criterion)
 - OpenSSL 1.1.1 (under Apache-2.0 license) (https://github.com/openssl/openssl)
 
 
-## Contributing
+# Contributing
 We welcome contributors through GitHub pull request. Please read the
 `CONTRIBUTING.md` file for detailed information.
 
 
-## License
+# License
 This software is licensed under the GNU GPL-v2 license.
