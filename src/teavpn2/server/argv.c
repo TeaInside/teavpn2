@@ -93,7 +93,7 @@ static const struct option long_opt[] = {
 	{"max-conn",      required_argument, 0, 'k'},
 	{"backlog",       required_argument, 0, 'B'},
 	{"ssl-cert",      required_argument, 0, 'C'},
-	{"ssl-priv-key",  required_argument, 0, 'k'},
+	{"ssl-priv-key",  required_argument, 0, 'K'},
 
 	{0, 0, 0, 0}
 };
