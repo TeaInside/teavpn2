@@ -23,7 +23,7 @@ void teavpn_server_show_help(const char *app)
 	printf("  -v, --version\t\t\tShow application version.\n");
 	printf("  -c, --config=FILE\t\tSet config file (default: %s).\n",
 	       d_srv_cfg_file);
-	printf("  -D, --data-dir\t\tSet data directory.\n");
+	printf("  -D, --data-dir=DIR\t\tSet data directory.\n");
 
 	printf("\n");
 	printf("[Config options]\n");
@@ -53,8 +53,8 @@ void teavpn_server_show_help(const char *app)
 	       d_srv_max_conn);
 	printf("  -B, --backlog=N\t\tSet socket listen backlog (default: %d)"
 	       ".\n", d_srv_backlog);
-	printf("  -C, --ssl-cert=FILE\t\tSet SSL certificate\n");
-	printf("  -K, --ssl-priv-key=FILE\t\tSet SSL private key\n");
+	printf("  -C, --ssl-cert=FILE\t\tSet SSL certificate.\n");
+	printf("  -K, --ssl-priv-key=FILE\tSet SSL private key.\n");
 
 	printf("\n");
 	printf("\n");
@@ -62,5 +62,5 @@ void teavpn_server_show_help(const char *app)
 	       "\n");
 	printf("GitHub repository: https://github.com/TeaInside/teavpn2\n");
 	printf("\n");
-	printf("This software is licensed under the GPL-v3 license.\n");
+	printf("This software is licensed under GNU GPL-v2 license.\n");
 }
