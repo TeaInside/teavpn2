@@ -1,3 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# @author Ammar Faizi <ammarfaizi2@gmail.com> https://www.facebook.com/ammarfaizi2
+# @license GNU GPL-v2
+#
+# TeaVPN2 - Fast and Free VPN Software
+#
 
 include $(BASE_DIR)/tests/001_license/Makefile
 include $(BASE_DIR)/tests/002_string/Makefile

@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  teavpn2/print.c
+ *
+ *  Printing functions
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 
 #include <stdio.h>
 #include <string.h>

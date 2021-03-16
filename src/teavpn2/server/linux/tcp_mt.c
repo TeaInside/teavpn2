@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  teavpn2/server/linux/tcp.c
+ *
+ *  TCP handler for TeaVPN2 server
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 
 /*
  * Multithreading draft.

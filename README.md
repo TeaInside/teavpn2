@@ -29,12 +29,14 @@ repository https://github.com/TeaInside/teavpn2.
 ## Project Maintainers
 - Ammar Faizi ([@ammarfaizi2](https://github.com/ammarfaizi2))
 
+
 ## Community
 We are usually online on Telegram, see: https://t.me/TeaInside
 
 
 ## Third Party Libraries
 - inih (under New BSD license) (https://github.com/benhoyt/inih)
+- OpenSSL 1.1.1 (under Apache-2.0 license) (https://github.com/openssl/openssl)
 
 
 ## Contributing
@@ -44,5 +46,3 @@ We welcome contributors through GitHub pull request. Please read the
 
 ## License
 This software is licensed under the GNU GPL-v2 license.
-
-Tea Inside (2021)

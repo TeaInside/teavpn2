@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  teavpn2/include/base.h
+ *
+ *  Base header for TeaVPN2
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 
 #ifndef TEAVPN2__BASE_H
 #define TEAVPN2__BASE_H
@@ -76,7 +84,7 @@ typedef enum {
 	SOCK_UDP = 1
 } sock_type;
 
-int print_license(unsigned short i);
+int print_license(void);
 void teavpn_print_version(void);
 int set_cpu_init(void);
 

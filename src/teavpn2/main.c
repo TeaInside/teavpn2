@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  teavpn2/main.c
+ *
+ *  Entry point of TeaVPN2
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 
 #include <stdio.h>
 #include <string.h>
@@ -16,9 +24,8 @@ static __always_inline void usage(const char *app)
 	printf(" [Version]\n");
 	printf("   %s --version\n", app);
 	printf("\n");
-	printf(" [Licenses]\n");
-	printf("   %s --license 0\t\tTeaVPN2 License\n", app);
-	printf("   %s --license 1\t\tInih License\n", app);
+	printf(" [License]\n");
+	printf("   %s --license\t\tShow TeaVPN2 license text\n", app);
 }
 
 
@@ -44,8 +51,8 @@ int main(int argc, char *argv[])
 		teavpn_print_version();
 		return 0;
 	} else
-	if ((strncmp(argv[1], "--license", 9) == 0) && (argc == 3)) {
-		return print_license((unsigned short)atoi(argv[2]));
+	if (strncmp(argv[1], "--license", 9) == 0) {
+		return print_license();
 	}
 
 	printf("Invalid argument: \"%s\"\n", argv[1]);

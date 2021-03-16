@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  teavpn2/server/entry.c
+ *
+ *  Entry point for TeaVPN2 server
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 
 #include <string.h>
 #include <teavpn2/server/tcp.h>

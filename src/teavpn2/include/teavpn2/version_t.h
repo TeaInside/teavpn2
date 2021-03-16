@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  teavpn2/include/print.h
+ *
+ *  Version T header for TeaVPN2
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 
 #ifndef TEAVPN2__VERSION_T_H
 #define TEAVPN2__VERSION_T_H

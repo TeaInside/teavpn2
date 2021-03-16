@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  teavpn2/server/auth.c
+ *
+ *  Auth parser for TeaVPN2 server
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 
 #include <inih/inih.h>
 #include <teavpn2/auth.h>

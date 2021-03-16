@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  teavpn2/server/linux/tcp.c
+ *
+ *  TCP handler for TeaVPN2 server
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 
 #include <assert.h>
 #include <stdlib.h>
@@ -16,6 +24,20 @@
 #include <teavpn2/lib/string.h>
 #include <teavpn2/server/tcp.h>
 #include <teavpn2/net/tcp_pkt.h>
+
+
+/* Shut the clang up! */
+#if defined(__clang__)
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Weverything"
+#endif
+
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+
+#if defined(__clang__)
+#  pragma clang diagnostic pop
+#endif
 
 
 #define CLIENT_MAX_ERROR	(0x0fu)

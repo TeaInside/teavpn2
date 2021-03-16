@@ -1,4 +1,11 @@
-
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  teavpn2/include/net/tcp_pkt_client.h
+ *
+ *  Packet structure header for TeaVPN2 client
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 
 #ifndef TEAVPN2__NET__TCP_PKT_CLIENT_H
 #define TEAVPN2__NET__TCP_PKT_CLIENT_H

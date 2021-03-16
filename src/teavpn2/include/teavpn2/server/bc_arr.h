@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  teavpn2/include/server/bc_arr.h
+ *
+ *  Broadcast array header for TeaVPN2
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 
 #ifndef TEAVPN2__SERVER__BC_LIST_H
 #define TEAVPN2__SERVER__BC_LIST_H

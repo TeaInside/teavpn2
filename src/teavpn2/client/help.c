@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  teavpn2/client/help.c
+ *
+ *  Print help for TeaVPN2 client
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 
 #include <stdio.h>
 #include <teavpn2/client/common.h>

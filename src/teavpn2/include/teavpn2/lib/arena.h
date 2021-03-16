@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  teavpn2/include/lib/arena.h
+ *
+ *  Arena header for TeaVPN2
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 
 #ifndef TEAVPN2__LIB__ARENA_H
 #define TEAVPN2__LIB__ARENA_H

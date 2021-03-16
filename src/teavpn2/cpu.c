@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  teavpn2/cpu.c
+ *
+ *  CPU affinity and nice setup
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 
 #include <sched.h>
 #include <unistd.h>
@@ -32,12 +40,10 @@ int optimize_cpu_affinity(int need, struct cpu_ret_info *ret)
 	CPU_ZERO(aff);
 	for (int i = 0; (i < CPU_SETSIZE) && (used < need); i++) {
 		if (likely(CPU_ISSET(i, &cs))) {
-
 			p += sprintf(p, "%s%d", (used ? " ," : ""), i);
-
-			used++;
 			prl_notice(4, "CPU_SET(%d, &affinity)", i);
 			CPU_SET(i, aff);
+			used++;
 		}
 	}
 
@@ -73,7 +79,7 @@ int optimize_process_priority(int nice_val, struct cpu_ret_info *ret)
 	errno = 0;
 	nice_ret = nice(nice_val);
 	err = errno;
-	if (err != 0) {
+	if (unlikely(err != 0)) {
 		pr_err("nice(%d): " PRERF, nice_val, PREAR(err));
 		return -1;
 	}

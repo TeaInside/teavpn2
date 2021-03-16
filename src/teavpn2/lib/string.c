@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  teavpn2/lib/string.c
+ *
+ *  String helpers for TeaVPN2
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 
 #include <stdlib.h>
 #include <string.h>
@@ -152,10 +160,12 @@ char *trunc_str(char *str, size_t n)
 	return str;
 }
 
+
 void *memzero_explicit(void *s, size_t n)
 {
 	return memset(s, '\0', n);
 }
+
 
 int memcmp_explicit(const void *s1, const void *s2, size_t n)
 {

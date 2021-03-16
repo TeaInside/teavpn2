@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  teavpn2/include/print.h
+ *
+ *  Hexdump macro for TeaVPN2
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 
 #ifndef TEAVPN2__VT_HEXDUMP_H
 #define TEAVPN2__VT_HEXDUMP_H

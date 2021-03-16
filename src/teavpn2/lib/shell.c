@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  teavpn2/lib/shell.c
+ *
+ *  Function to spawn shell for TeaVPN2
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 
 #include <errno.h>
 #include <stdio.h>

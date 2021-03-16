@@ -1,13 +1,16 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  teavpn2/license.c
+ *
+ *  License print
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 
 #include <stdio.h>
 #include <teavpn2/base.h>
 
-
-extern const char license_text_teavpn2[];
-extern const char license_text_inih[];
-
-
-const char license_text_teavpn2[] = "\n\
+static const char license_text_teavpn2[] = "\n\
 https://github.com/TeaInside/teavpn2\n\
 \n\
 TeaVPN2 - Fast and Free VPN Software\n\
@@ -28,54 +31,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,\n\
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.\n\
 ";
 
-
-const char license_text_inih[] = "\n\
-https://github.com/benhoyt/inih\n\
-\n\
-The \"inih\" library is distributed under the New BSD license:\n\
-\n\
-Copyright (c) 2009, Ben Hoyt\n\
-All rights reserved.\n\
-\n\
-Redistribution and use in source and binary forms, with or without\n\
-modification, are permitted provided that the following conditions are met:\n\
-    * Redistributions of source code must retain the above copyright\n\
-      notice, this list of conditions and the following disclaimer.\n\
-    * Redistributions in binary form must reproduce the above copyright\n\
-      notice, this list of conditions and the following disclaimer in the\n\
-      documentation and/or other materials provided with the distribution.\n\
-    * Neither the name of Ben Hoyt nor the names of its contributors\n\
-      may be used to endorse or promote products derived from this software\n\
-      without specific prior written permission.\n\
-\n\
-THIS SOFTWARE IS PROVIDED BY BEN HOYT ''AS IS'' AND ANY\n\
-EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED\n\
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\n\
-DISCLAIMED. IN NO EVENT SHALL BEN HOYT BE LIABLE FOR ANY\n\
-DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES\n\
-(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;\n\
-LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND\n\
-ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n\
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\n\
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\
-";
-
-static const char invalid[] = "Invalid license index\n";
-
-int print_license(unsigned short i)
+int print_license(void)
 {
-	int retval = 0;
-	const char *p = NULL;
-
-	switch (i) {
-	case 0: p = license_text_teavpn2; break;
-	case 1: p = license_text_inih; break;
-	default:
-		p = invalid;
-		retval = 1;
-		break;
-	}
-
-	printf("%s", p);
-	return retval;
+	printf("%s", license_text_teavpn2);
+	return 0;
 }

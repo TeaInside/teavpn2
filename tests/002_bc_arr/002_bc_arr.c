@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  tests/001_string/001_string.c
+ *
+ *  Test case for broadcast array
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 
 #include <criterion/criterion.h>
 

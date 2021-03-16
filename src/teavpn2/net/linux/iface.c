@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  teavpn2/net/linux/iface.c
+ *
+ *  Network interface for TeaVPN2 (linux platform)
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 
 #include <errno.h>
 #include <fcntl.h>

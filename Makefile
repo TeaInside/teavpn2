@@ -1,4 +1,4 @@
-
+# SPDX-License-Identifier: GPL-2.0
 #
 # @author Ammar Faizi <ammarfaizi2@gmail.com> https://www.facebook.com/ammarfaizi2
 # @license GNU GPL-v2
@@ -230,3 +230,9 @@ server: $(TARGET_BIN)
 
 client: $(TARGET_BIN)
 	sudo $(VG) $(VGFLAGS) ./$(TARGET_BIN) client
+
+release_pack: \
+	$(TARGET_BIN) \
+	$(SERVER_DEFAULT_CFG_FILE) \
+	$(CLIENT_DEFAULT_CFG_FILE)
+
