@@ -17,8 +17,8 @@ CLIENT_DEFAULT_CFG_FILE = config/client.ini
 
 TARGET_BIN = teavpn2
 
-CC	:= cc
-CXX	:= c++
+CC	:= clang
+CXX	:= clang++
 LD	:= $(CXX)
 VG	:= valgrind
 
@@ -43,7 +43,8 @@ ifneq ($(DO_TEST),1)
 				-Werror \
 				-Wextra \
 				-Weverything \
-				-Wno-disabled-macro-expansion
+				-Wno-disabled-macro-expansion \
+				-Wno-unused-macros
 		else
 			# Pure GCC
 			WARN_FLAGS	:= \
