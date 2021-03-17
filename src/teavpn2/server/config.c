@@ -43,6 +43,9 @@ static int parser_handler(void *user, const char *section, const char *name,
 		} else
 		rmatch_n("verbose_level") {
 			__notice_level = (uint8_t)atoi(value);
+		} else
+		rmatch_n("thread") {
+			cfg->num_of_threads = (uint8_t)atoi(value);
 		} else {
 			goto out_invalid_name;
 		}

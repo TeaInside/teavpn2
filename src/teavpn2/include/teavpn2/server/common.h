@@ -46,6 +46,8 @@ struct srv_cfg {
 	char			*data_dir;  /* Data directory  */
 	struct srv_iface_cfg	iface;
 	struct srv_sock_cfg	sock;
+	uint8_t			num_of_threads;
+	struct_pad(0, 7);
 };
 
 int teavpn_server_entry(int argc, char *argv[]);
@@ -68,5 +70,6 @@ extern uint16_t d_srv_max_conn;
 extern int d_srv_backlog;
 
 extern char d_srv_cfg_file[];
+extern uint8_t d_num_of_threads;
 
 #endif /* #ifndef TEAVPN2__SERVER__COMMON_H */

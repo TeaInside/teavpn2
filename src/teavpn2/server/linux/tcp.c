@@ -330,6 +330,112 @@ out_err:
 }
 
 
+static int init_openssl(struct srv_tcp_state *state)
+{
+	SSL_load_error_strings();
+	OpenSSL_add_ssl_algorithms();
+	state->need_ssl_cleanup = true;
+	return 0;
+}
+
+
+static void cleanup_openssl(struct srv_tcp_state *state)
+{
+	if (likely(state->need_ssl_cleanup)) {
+		CRYPTO_cleanup_all_ex_data();
+		ERR_free_strings();
+		EVP_cleanup();
+		state->need_ssl_cleanup = false;
+	}
+}
+
+
+static SSL_CTX *create_ssl_context()
+{
+	int err;
+	SSL_CTX *ctx;
+	const SSL_METHOD *method;
+
+	method = SSLv23_server_method();
+	ctx    = SSL_CTX_new(method);
+	if (unlikely(!ctx)) {
+		err = errno;
+		pr_err("Unable to create SSL context: " PRERF, PREAR(err));
+		return NULL;
+	}
+
+	return ctx;
+}
+
+
+static int configure_ssl_context(SSL_CTX *ssl_ctx, struct srv_tcp_state *state)
+{
+	int retval;
+	unsigned long err;
+	const char *cert, *key;
+	struct srv_cfg *cfg = state->cfg;
+
+	cert = cfg->sock.ssl_cert;
+	key  = cfg->sock.ssl_priv_key;
+
+	if (unlikely(cert == NULL)) {
+		pr_err("Missing sock->ssl_cert " PRERF, PREAR(EFAULT));
+		return -1;
+	}
+
+	if (unlikely(key == NULL)) {
+		pr_err("Missing sock->ssl_priv_key " PRERF, PREAR(EFAULT));
+		return -1;
+	}
+
+	retval = SSL_CTX_use_certificate_file(ssl_ctx, cert, SSL_FILETYPE_PEM);
+	if (unlikely(retval <= 0)) {
+		err = ERR_get_error();
+		pr_err("SSL_CTX_use_certificate_file(\"%s\"): "
+		       "[%lu]:[%s]:[%s]:[%s]",
+		       key,
+		       err,
+		       ERR_lib_error_string(err),
+		       ERR_func_error_string(err),
+		       ERR_reason_error_string(err));
+		return -1;
+	}
+
+	retval = SSL_CTX_use_PrivateKey_file(ssl_ctx, key, SSL_FILETYPE_PEM);
+	if (unlikely(retval <= 0)) {
+		err = ERR_get_error();
+		pr_err("SSL_CTX_use_PrivateKey_file(\"%s\"): "
+		       "[%lu]:[%s]:[%s]:[%s]",
+		       key,
+		       err,
+		       ERR_lib_error_string(err),
+		       ERR_func_error_string(err),
+		       ERR_reason_error_string(err));
+		return -1;
+	}
+
+	return 0;
+}
+
+
+static int init_ssl_context(struct srv_tcp_state *state)
+{
+	SSL_CTX *ssl_ctx;
+
+	ssl_ctx = create_ssl_context();
+	if (unlikely(ssl_ctx == NULL))
+		return -1;
+
+	if (unlikely(configure_ssl_context(ssl_ctx, state) < 0)) {
+		SSL_CTX_free(ssl_ctx);
+		return -1;
+	}
+
+	state->ssl_ctx = ssl_ctx;
+	return 0;
+}
+
+
 static int set_socket_so_incoming_cpu(int tcp_fd, struct srv_tcp_state *state)
 {
 	int first_isset = -1, second_isset = -1, incoming_cpu = -1;
@@ -527,109 +633,62 @@ out_err:
 }
 
 
-static int init_openssl(struct srv_tcp_state *state)
-{
-	SSL_load_error_strings();
-	OpenSSL_add_ssl_algorithms();
-	state->need_ssl_cleanup = true;
-	return 0;
-}
-
-
-static void cleanup_openssl(struct srv_tcp_state *state)
-{
-	if (likely(state->need_ssl_cleanup)) {
-		CRYPTO_cleanup_all_ex_data();
-		ERR_free_strings();
-		EVP_cleanup();
-		state->need_ssl_cleanup = false;
-	}
-}
-
-
-static SSL_CTX *create_ssl_context()
+static int epoll_add(int epl_fd, int fd, uint32_t events)
 {
 	int err;
-	SSL_CTX *ctx;
-	const SSL_METHOD *method;
+	struct epoll_event event;
 
-	method = SSLv23_server_method();
-	ctx    = SSL_CTX_new(method);
-	if (unlikely(!ctx)) {
+	/* Shut the valgrind up! */
+	memset(&event, 0, sizeof(struct epoll_event));
+
+	event.events = events;
+	event.data.fd = fd;
+	if (unlikely(epoll_ctl(epl_fd, EPOLL_CTL_ADD, fd, &event) < 0)) {
 		err = errno;
-		pr_err("Unable to create SSL context: " PRERF, PREAR(err));
-		return NULL;
-	}
-
-	return ctx;
-}
-
-
-static int configure_ssl_context(SSL_CTX *ssl_ctx, struct srv_tcp_state *state)
-{
-	int retval;
-	unsigned long err;
-	const char *cert, *key;
-	struct srv_cfg *cfg = state->cfg;
-
-	cert = cfg->sock.ssl_cert;
-	key  = cfg->sock.ssl_priv_key;
-
-	if (unlikely(cert == NULL)) {
-		pr_err("Missing sock->ssl_cert " PRERF, PREAR(EFAULT));
+		pr_err("epoll_ctl(EPOLL_CTL_ADD): " PRERF, PREAR(err));
 		return -1;
 	}
-
-	if (unlikely(key == NULL)) {
-		pr_err("Missing sock->ssl_priv_key " PRERF, PREAR(EFAULT));
-		return -1;
-	}
-
-	retval = SSL_CTX_use_certificate_file(ssl_ctx, cert, SSL_FILETYPE_PEM);
-	if (unlikely(retval <= 0)) {
-		err = ERR_get_error();
-		pr_err("SSL_CTX_use_certificate_file(\"%s\"): "
-		       "[%lu]:[%s]:[%s]:[%s]",
-		       key,
-		       err,
-		       ERR_lib_error_string(err),
-		       ERR_func_error_string(err),
-		       ERR_reason_error_string(err));
-		return -1;
-	}
-
-	retval = SSL_CTX_use_PrivateKey_file(ssl_ctx, key, SSL_FILETYPE_PEM);
-	if (unlikely(retval <= 0)) {
-		err = ERR_get_error();
-		pr_err("SSL_CTX_use_PrivateKey_file(\"%s\"): "
-		       "[%lu]:[%s]:[%s]:[%s]",
-		       key,
-		       err,
-		       ERR_lib_error_string(err),
-		       ERR_func_error_string(err),
-		       ERR_reason_error_string(err));
-		return -1;
-	}
-
 	return 0;
 }
 
 
-static int init_ssl_context(struct srv_tcp_state *state)
+static int init_epoll(struct srv_tcp_state *state)
 {
-	SSL_CTX *ssl_ctx;
+	int err;
+	int ret;
+	int epoll_fd = -1;
+	int tun_fd = state->tun_fd;
+	int tcp_fd = state->tcp_fd;
 
-	ssl_ctx = create_ssl_context();
-	if (unlikely(ssl_ctx == NULL))
-		return -1;
+	prl_notice(0, "Initializing epoll fd...");
+	epoll_fd = epoll_create((int)state->cfg->sock.max_conn + 3);
+	if (unlikely(epoll_fd < 0))
+		goto out_create_err;
 
-	if (unlikely(configure_ssl_context(ssl_ctx, state) < 0)) {
-		SSL_CTX_free(ssl_ctx);
-		return -1;
-	}
+	ret = epoll_add(epoll_fd, tun_fd, EPOLL_INPUT_EVENTS);
+	if (unlikely(ret < 0))
+		goto out_err;
 
-	state->ssl_ctx = ssl_ctx;
+	ret = epoll_add(epoll_fd, tcp_fd, EPOLL_INPUT_EVENTS);
+	if (unlikely(ret < 0))
+		goto out_err;
+
+	state->epoll_fd = epoll_fd;
 	return 0;
+
+out_create_err:
+	err = errno;
+	pr_err("epoll_create(): " PRERF, PREAR(err));
+out_err:
+	if (epoll_fd > 0)
+		close(epoll_fd);
+	return -1;
+}
+
+
+static int init_thread(struct srv_tcp_state *state)
+{
+
 }
 
 
@@ -704,6 +763,13 @@ int teavpn_server_tcp_handler(struct srv_cfg *cfg)
 	retval = init_socket(&state);
 	if (unlikely(retval < 0))
 		goto out;
+	retval = init_epoll(&state);
+	if (unlikely(retval < 0))
+		goto out;
+	retval = init_thread(&state);
+	if (unlikely(retval < 0))
+		goto out;
+	prl_notice(0, "Initialization Sequence Completed");
 out:
 	destroy_state(&state);
 	return retval;

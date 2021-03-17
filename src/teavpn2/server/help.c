@@ -24,6 +24,8 @@ void teavpn_server_show_help(const char *app)
 	printf("  -c, --config=FILE\t\tSet config file (default: %s).\n",
 	       d_srv_cfg_file);
 	printf("  -D, --data-dir=DIR\t\tSet data directory.\n");
+	printf("  -t, --thread=N\t\tSet number of threads (default: %u)\n",
+	       d_num_of_threads);
 
 	printf("\n");
 	printf("[Config options]\n");

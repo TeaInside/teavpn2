@@ -27,6 +27,8 @@ char d_srv_cfg_file[] = SERVER_DEFAULT_CFG_FILE;
 char d_srv_cfg_file[] = "/etc/teavpn2/server.ini";
 #endif
 
+uint8_t d_num_of_threads = 2;
+
 /* Default config for virtual network interface */
 uint16_t d_srv_mtu = 1500u;
 char d_srv_dev[] = "teavpn2";
@@ -49,6 +51,7 @@ static __always_inline void init_default_cfg(struct srv_cfg *cfg)
 
 	cfg->cfg_file = d_srv_cfg_file;
 	cfg->data_dir = NULL;
+	cfg->num_of_threads = d_num_of_threads;
 
 	/* Virtual network interface config */
 	iface->mtu = d_srv_mtu;
@@ -71,6 +74,7 @@ static __always_inline void init_default_cfg(struct srv_cfg *cfg)
 static const struct option long_opt[] = {
 	{"help",          no_argument,       0, 'h'},
 	{"version",       no_argument,       0, 'v'},
+	{"thread",        required_argument, 0, 't'},
 
 	/* Config file and data dir */
 	{"config",        required_argument, 0, 'c'},
@@ -99,11 +103,11 @@ static const struct option long_opt[] = {
 };
 
 static const char short_opt[] =
-	"hvc:D:m:d:4:N:"
+	"hvt:c:D:m:d:4:N:"
 #ifdef TEAVPN_IPV6_SUPPORT
 	"6:M:"
 #endif
-	"s:H:P:k:B:";
+	"s:H:P:k:B:C:K:";
 
 static __always_inline int getopt_handler(int argc, char *argv[],
 					  struct parse_struct *ctx)
@@ -126,6 +130,9 @@ static __always_inline int getopt_handler(int argc, char *argv[],
 		case 'v':
 			teavpn_print_version();
 			goto out_exit;
+		case 't':
+			cfg->num_of_threads = (uint8_t)atoi(optarg);
+			break;
 		case 'c':
 			cfg->cfg_file = trunc_str(optarg, 255);
 			break;
