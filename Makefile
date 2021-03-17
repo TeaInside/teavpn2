@@ -19,8 +19,8 @@ CLIENT_DEFAULT_CFG_FILE = config/client.ini
 
 TARGET_BIN = teavpn2
 
-CC	:= cc
-CXX	:= c++
+CC	:= clang
+CXX	:= clang++
 LD	:= $(CC)
 VG	:= valgrind
 
@@ -50,6 +50,7 @@ ifneq ($(DO_TEST),1)
 				-Wall \
 				-Werror \
 				-Wextra \
+				-Wpadded \
 				-Weverything \
 				-Wno-disabled-macro-expansion \
 				-Wno-unused-macros
@@ -76,7 +77,7 @@ USE_CLIENT	:= 1
 USE_SERVER	:= 1
 
 DEPFLAGS	 = -MT "$@" -MMD -MP -MF "$(@:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)"
-LIB_LDFLAGS	:= -lpthread -lssl
+LIB_LDFLAGS	:= -lpthread -lssl -lcrypto
 LDFLAGS		:= -fPIE -fpie
 CFLAGS		:= -fPIE -fpie -std=c11
 CXXFLAGS	:= -fPIE -fpie -std=c++2a

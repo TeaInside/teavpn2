@@ -94,10 +94,12 @@ struct client_slot {
 
 
 struct srv_tcp_state {
+	struct_pad(0, 7);
+	bool			need_ssl_cleanup;
 	bool			stop_event_loop;
 	bool			need_iface_down;
 	bool			set_affinity_ok;
-	bool			err_c;
+	uint8_t			err_c;
 
 	/* File descriptors */
 	int			epoll_fd;
@@ -191,7 +193,7 @@ static void *calloc_wrp(size_t nmemb, size_t size)
 	ret = calloc(nmemb, size);
 	if (unlikely(ret == NULL)) {
 		int err = errno;
-		pr_err("calloc: Cannot allocate memory: " PRERF, PREAR(err));
+		pr_err("calloc(): " PRERF, PREAR(err));
 		return NULL;
 	}
 
@@ -250,18 +252,19 @@ static int init_state_epoll_map(struct srv_tcp_state *state)
 
 static int init_state(struct srv_tcp_state *state)
 {
-	state->stop_event_loop = false;
-	state->need_iface_down = false;
-	state->set_affinity_ok = false;
-	state->err_c           = 0;
-	state->epoll_fd        = -1;
-	state->tun_fd          = -1;
-	state->tcp_fd          = -1;
-	state->ssl_ctx         = NULL;
-	state->read_tun_c      = 0;
-	state->write_tun_c     = 0;
-	state->up_bytes        = 0;
-	state->down_bytes      = 0;
+	state->need_ssl_cleanup   = false;
+	state->stop_event_loop    = false;
+	state->need_iface_down    = false;
+	state->set_affinity_ok    = false;
+	state->err_c              = 0;
+	state->epoll_fd           = -1;
+	state->tun_fd             = -1;
+	state->tcp_fd             = -1;
+	state->ssl_ctx            = NULL;
+	state->read_tun_c         = 0;
+	state->write_tun_c        = 0;
+	state->up_bytes           = 0;
+	state->down_bytes         = 0;
 
 	if (unlikely(init_state_ip_map(state) < 0))
 		return -1;
@@ -488,6 +491,24 @@ out_err:
 }
 
 
+static int init_openssl(struct srv_tcp_state *state)
+{
+	SSL_load_error_strings();
+	OpenSSL_add_ssl_algorithms();
+	state->need_ssl_cleanup = true;
+	return 0;
+}
+
+
+static void cleanup_openssl(struct srv_tcp_state *state)
+{
+	if (likely(state->need_ssl_cleanup)) {
+		EVP_cleanup();
+		state->need_ssl_cleanup = false;
+	}
+}
+
+
 static SSL_CTX *create_ssl_context()
 {
 	int err;
@@ -508,8 +529,8 @@ static SSL_CTX *create_ssl_context()
 
 static int configure_ssl_context(SSL_CTX *ssl_ctx, struct srv_tcp_state *state)
 {
-	int err;
 	int retval;
+	unsigned long err;
 	const char *cert, *key;
 	struct srv_cfg *cfg = state->cfg;
 
@@ -528,17 +549,27 @@ static int configure_ssl_context(SSL_CTX *ssl_ctx, struct srv_tcp_state *state)
 
 	retval = SSL_CTX_use_certificate_file(ssl_ctx, cert, SSL_FILETYPE_PEM);
 	if (unlikely(retval <= 0)) {
-		err = errno;
-		pr_err("SSL_CTX_use_certificate_file(%s): " PRERF, cert,
-		       PREAR(err));
+		err = ERR_get_error();
+		pr_err("SSL_CTX_use_certificate_file(\"%s\"): "
+		       "[%lu]:[%s]:[%s]:[%s]",
+		       key,
+		       err,
+		       ERR_lib_error_string(err),
+		       ERR_func_error_string(err),
+		       ERR_reason_error_string(err));
 		return -1;
 	}
 
 	retval = SSL_CTX_use_PrivateKey_file(ssl_ctx, key, SSL_FILETYPE_PEM);
 	if (unlikely(retval <= 0)) {
-		err = errno;
-		pr_err("SSL_CTX_use_PrivateKey_file(%s): " PRERF, key,
-		       PREAR(err));
+		err = ERR_get_error();
+		pr_err("SSL_CTX_use_PrivateKey_file(\"%s\"): "
+		       "[%lu]:[%s]:[%s]:[%s]",
+		       key,
+		       err,
+		       ERR_lib_error_string(err),
+		       ERR_func_error_string(err),
+		       ERR_reason_error_string(err));
 		return -1;
 	}
 
@@ -564,6 +595,43 @@ static int init_ssl_context(struct srv_tcp_state *state)
 }
 
 
+static void close_file_descriptors(struct srv_tcp_state *state)
+{
+	int tun_fd   = state->tun_fd;
+	int tcp_fd   = state->tcp_fd;
+	int epoll_fd = state->epoll_fd;
+
+	if (likely(tun_fd != -1)) {
+		prl_notice(0, "Closing state->tun_fd (%d)", tun_fd);
+		close(tun_fd);
+	}
+
+	if (likely(tcp_fd != -1)) {
+		prl_notice(0, "Closing state->tcp_fd (%d)", tcp_fd);
+		close(tcp_fd);
+	}
+
+	if (likely(epoll_fd != -1)) {
+		prl_notice(0, "Closing state->epoll_fd (%d)", epoll_fd);
+		close(epoll_fd);
+	}
+}
+
+
+static void destroy_state(struct srv_tcp_state *state)
+{
+	close_file_descriptors(state);
+
+	if (likely(state->ssl_ctx != NULL))
+		SSL_CTX_free(state->ssl_ctx);
+
+	cleanup_openssl(state);
+	free(state->ip_map);
+	free(state->clients);
+	free(state->epoll_map);
+}
+
+
 int teavpn_server_tcp_handler(struct srv_cfg *cfg)
 {
 	int retval = 0;
@@ -586,6 +654,9 @@ int teavpn_server_tcp_handler(struct srv_cfg *cfg)
 	retval = init_cpu(&state);
 	if (unlikely(retval < 0))
 		goto out;
+	retval = init_openssl(&state);
+	if (unlikely(retval < 0))
+		goto out;
 	retval = init_ssl_context(&state);
 	if (unlikely(retval < 0))
 		goto out;
@@ -593,5 +664,6 @@ int teavpn_server_tcp_handler(struct srv_cfg *cfg)
 	if (unlikely(retval < 0))
 		goto out;
 out:
+	destroy_state(&state);
 	return retval;
 }
