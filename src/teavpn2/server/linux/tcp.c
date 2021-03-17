@@ -151,8 +151,8 @@ struct srv_tcp_state {
 	cpu_set_t		affinity;
 	utsrv_pkt_t		send_buf;
 
-	/* Thread to handle recv() from clients */
-	pthread_t		thread;
+	/* Array of threads */
+	pthread_t		*threads;
 };
 
 
@@ -209,7 +209,7 @@ static int init_state_ip_map(struct srv_tcp_state *state)
 
 	ip_map = calloc_wrp(256, sizeof(*ip_map));
 	if (unlikely(ip_map == NULL))
-		return -1;
+		return -ENOMEM;
 
 	for (uint16_t i = 0; i < 256; i++) {
 		for (uint16_t j = 0; j < 256; j++) {
@@ -229,7 +229,7 @@ static int init_state_client_slot(struct srv_tcp_state *state)
 
 	clients = calloc_wrp(max_conn, sizeof(*clients));
 	if (unlikely(clients == NULL))
-		return -1;
+		return -ENOMEM;
 
 	while (max_conn--)
 		reset_client_slot(&clients[max_conn], max_conn);
@@ -245,9 +245,32 @@ static int init_state_epoll_map(struct srv_tcp_state *state)
 
 	epoll_map = calloc_wrp(EPOLL_CLIENT_MAP_SIZE, sizeof(*epoll_map));
 	if (unlikely(epoll_map == NULL))
-		return -1;
+		return -ENOMEM;
 
 	state->epoll_map = epoll_map;
+	return 0;
+}
+
+
+static int init_state_pthreads(struct srv_tcp_state *state)
+{
+	pthread_t *threads;
+	struct srv_cfg *cfg = state->cfg;
+
+	if (unlikely(cfg->num_of_threads == 0)) {
+		pr_err("Number of threads cannot be zero, please fix your "
+		       "config");
+		return -EINVAL;
+	}
+
+	if (cfg->num_of_threads == 1)
+		return 0;
+
+	threads = calloc(cfg->num_of_threads - 1, sizeof(*threads));
+	if (unlikely(threads == NULL))
+		return -ENOMEM;
+
+	state->threads = threads;
 	return 0;
 }
 
@@ -267,12 +290,15 @@ static int init_state(struct srv_tcp_state *state)
 	state->write_tun_c        = 0;
 	state->up_bytes           = 0;
 	state->down_bytes         = 0;
+	state->threads            = NULL;
 
 	if (unlikely(init_state_ip_map(state) < 0))
 		return -1;
 	if (unlikely(init_state_client_slot(state) < 0))
 		return -1;
 	if (unlikely(init_state_epoll_map(state) < 0))
+		return -1;
+	if (unlikely(init_state_pthreads(state) < 0))
 		return -1;
 
 	return 0;
@@ -283,13 +309,15 @@ static int init_cpu(struct srv_tcp_state *state)
 {
 	struct cpu_ret_info cri;
 
-	if (optimize_cpu_affinity(2, &cri) == 0) {
-		memcpy(&state->affinity, &cri.affinity,
-		       sizeof(state->affinity));
-		state->set_affinity_ok = true;
-	} else {
-		state->set_affinity_ok = false;
-	}
+	/* TODO: Balance the affinity across multiple threads */
+	(void)state;
+	// if (optimize_cpu_affinity(2, &cri) == 0) {
+	// 	memcpy(&state->affinity, &cri.affinity,
+	// 	       sizeof(state->affinity));
+	// 	state->set_affinity_ok = true;
+	// } else {
+	// 	state->set_affinity_ok = false;
+	// }
 
 	optimize_process_priority(-20, &cri);
 	return 0;
@@ -652,7 +680,7 @@ static int epoll_add(int epl_fd, int fd, uint32_t events)
 }
 
 
-static int init_epoll(struct srv_tcp_state *state)
+static int init_main_epoll(struct srv_tcp_state *state)
 {
 	int err;
 	int ret;
@@ -686,9 +714,12 @@ out_err:
 }
 
 
-static int init_thread(struct srv_tcp_state *state)
+static int init_threads(struct srv_tcp_state *state)
 {
 
+
+
+	return 0;
 }
 
 
@@ -726,6 +757,7 @@ static void destroy_state(struct srv_tcp_state *state)
 	free(state->ip_map);
 	free(state->clients);
 	free(state->epoll_map);
+	free(state->threads);
 }
 
 
@@ -763,10 +795,10 @@ int teavpn_server_tcp_handler(struct srv_cfg *cfg)
 	retval = init_socket(&state);
 	if (unlikely(retval < 0))
 		goto out;
-	retval = init_epoll(&state);
+	retval = init_main_epoll(&state);
 	if (unlikely(retval < 0))
 		goto out;
-	retval = init_thread(&state);
+	retval = init_threads(&state);
 	if (unlikely(retval < 0))
 		goto out;
 	prl_notice(0, "Initialization Sequence Completed");
