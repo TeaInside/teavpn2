@@ -94,7 +94,9 @@ struct client_slot {
 
 
 struct srv_tcp_state {
-	struct_pad(0, 7);
+	struct iface_cfg	siff;
+	struct_pad(0, 1);
+	struct_pad(1, sizeof(int));
 	bool			need_ssl_cleanup;
 	bool			stop_event_loop;
 	bool			need_iface_down;
@@ -291,6 +293,40 @@ static int init_cpu(struct srv_tcp_state *state)
 
 	optimize_process_priority(-20, &cri);
 	return 0;
+}
+
+
+static int init_iface(struct srv_tcp_state *state)
+{
+	int tun_fd;
+	struct iface_cfg *i = &state->siff;
+	struct srv_iface_cfg *j = &state->cfg->iface;
+
+	prl_notice(0, "Creating virtual network interface: \"%s\"...", j->dev);
+
+	tun_fd = tun_alloc(j->dev, IFF_TUN | IFF_NO_PI);
+	if (unlikely(tun_fd < 0))
+		return -1;
+	if (unlikely(fd_set_nonblock(tun_fd) < 0))
+		goto out_err;
+
+	memset(i, 0, sizeof(struct iface_cfg));
+	sane_strncpy(i->dev, j->dev, sizeof(i->dev));
+	sane_strncpy(i->ipv4, j->ipv4, sizeof(i->ipv4));
+	sane_strncpy(i->ipv4_netmask, j->ipv4_netmask, sizeof(i->ipv4_netmask));
+	i->mtu = j->mtu;
+
+	if (unlikely(!teavpn_iface_up(i))) {
+		pr_err("Cannot raise virtual network interface up");
+		goto out_err;
+	}
+
+	state->tun_fd = tun_fd;
+	state->need_iface_down = true;
+	return 0;
+out_err:
+	close(tun_fd);
+	return -1;
 }
 
 
@@ -503,6 +539,8 @@ static int init_openssl(struct srv_tcp_state *state)
 static void cleanup_openssl(struct srv_tcp_state *state)
 {
 	if (likely(state->need_ssl_cleanup)) {
+		CRYPTO_cleanup_all_ex_data();
+		ERR_free_strings();
 		EVP_cleanup();
 		state->need_ssl_cleanup = false;
 	}
@@ -652,6 +690,9 @@ int teavpn_server_tcp_handler(struct srv_cfg *cfg)
 	if (unlikely(retval < 0))
 		goto out;
 	retval = init_cpu(&state);
+	if (unlikely(retval < 0))
+		goto out;
+	retval = init_iface(&state);
 	if (unlikely(retval < 0))
 		goto out;
 	retval = init_openssl(&state);

@@ -48,7 +48,6 @@ ifneq ($(DO_TEST),1)
 			# Clang
 			WARN_FLAGS	:= \
 				-Wall \
-				-Werror \
 				-Wextra \
 				-Wpadded \
 				-Weverything \
@@ -58,7 +57,6 @@ ifneq ($(DO_TEST),1)
 			# Pure GCC
 			WARN_FLAGS	:= \
 				-Wall \
-				-Werror \
 				-Wextra \
 				-Wstrict-aliasing=3 \
 				-Wformat \

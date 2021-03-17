@@ -13,7 +13,7 @@
 #include <teavpn2/server/bc_arr.h>
 
 
-Test(bc_arr, init_bc_arr_must_be_empty )
+Test(bc_arr, init_bc_arr_must_be_empty)
 {
 	struct bc_arr bc;
 
