@@ -1,6 +1,6 @@
 
 # TeaVPN2
-TeaVPN2 is a fast and free VPN Software written in C. Currently supported
+TeaVPN2 is a fast and free VPN Software written in C. Current supported
 platform is only Linux x86-64. We plan to expand to other plaforms and
 architectures too.
 

@@ -10,8 +10,7 @@ VERSION = 0
 PATCHLEVEL = 0
 SUBLEVEL = 1
 EXTRAVERSION = -rc1
-NAME = Frozen Wasteland
-
+NAME = Fresh Water
 SERVER_DEFAULT_CFG_FILE = config/server.ini
 CLIENT_DEFAULT_CFG_FILE = config/client.ini
 
@@ -40,7 +39,6 @@ ifneq ($(DO_TEST),1)
 			# Clang
 			WARN_FLAGS	:= \
 				-Wall \
-				-Werror \
 				-Wextra \
 				-Weverything \
 				-Wno-disabled-macro-expansion
@@ -48,7 +46,6 @@ ifneq ($(DO_TEST),1)
 			# Pure GCC
 			WARN_FLAGS	:= \
 				-Wall \
-				-Werror \
 				-Wextra \
 				-Wstrict-aliasing=3 \
 				-Wformat \
