@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- *  teavpn2/lib/arena.c
+ *  src/teavpn2/lib/arena.c
  *
  *  Arena memory manager for TeaVPN2
  *

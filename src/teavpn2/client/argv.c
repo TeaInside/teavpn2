@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- *  teavpn2/client/argv.c
+ *  src/teavpn2/client/argv.c
  *
  *  Argument parser for TeaVPN2 client
  *

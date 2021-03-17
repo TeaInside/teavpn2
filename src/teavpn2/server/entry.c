@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- *  teavpn2/server/entry.c
+ *  src/teavpn2/server/entry.c
  *
  *  Entry point for TeaVPN2 server
  *

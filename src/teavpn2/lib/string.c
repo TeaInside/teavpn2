@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- *  teavpn2/lib/string.c
+ *  src/teavpn2/lib/string.c
  *
  *  String helpers for TeaVPN2
  *
@@ -14,6 +14,10 @@
 #include <teavpn2/lib/string.h>
 
 
+/**
+ * Thanks to PHP
+ * https://github.com/php/php-src/blob/e9d78339e7ff2edb8a1eda93d047ccaac25efa24/ext/standard/exec.c#L388-L468
+ */
 char *escapeshellarg(char *alloc, const char *str, size_t len, size_t *res_len)
 {
 	size_t y = 0;

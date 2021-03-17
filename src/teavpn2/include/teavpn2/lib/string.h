@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- *  teavpn2/include/lib/string.h
+ *  src/teavpn2/include/lib/string.h
  *
  *  String helpers header for TeaVPN2
  *

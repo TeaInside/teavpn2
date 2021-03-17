@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- *  teavpn2/license.c
+ *  src/teavpn2/license.c
  *
  *  License print
  *

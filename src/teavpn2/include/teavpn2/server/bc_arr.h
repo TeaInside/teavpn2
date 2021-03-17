@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- *  teavpn2/include/server/bc_arr.h
+ *  src/teavpn2/include/server/bc_arr.h
  *
  *  Broadcast array header for TeaVPN2
  *

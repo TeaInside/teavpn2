@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- *  teavpn2/include/cpu.h
+ *  src/teavpn2/include/cpu.h
  *
  *  CPU affinity header for TeaVPN2
  *

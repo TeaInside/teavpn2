@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- *  teavpn2/net/iface.c
+ *  src/teavpn2/net/iface.c
  *
  *  Network interface for TeaVPN2
  *

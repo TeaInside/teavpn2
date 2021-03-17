@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- *  teavpn2/include/lib/arena.h
+ *  src/teavpn2/include/lib/arena.h
  *
  *  Arena header for TeaVPN2
  *
