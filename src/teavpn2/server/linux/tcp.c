@@ -645,7 +645,7 @@ static void route_ipv4(struct srv_tcp_state *state, tsrv_pkt_t *srv_pkt,
 	uint16_t (*ip_map)[256] = state->ip_map;
 	struct iphdr *header = &srv_pkt->net_pkt.header;
 
-	dst = header->daddr;
+	dst = ntohl(header->daddr);
 	i = (dst >> 8u) & 0xffu;
 	j = (dst >> 0u) & 0xffu;
 
