@@ -35,7 +35,8 @@ static __always_inline const char *find_ip_cmd(void)
 		"/usr/bin/ip",
 		"/usr/sbin/ip",
 		"/usr/local/bin/ip",
-		"/usr/local/sbin/ip"
+		"/usr/local/sbin/ip",
+		"/data/data/com.termux/files/usr/bin/ip"
 	};
 
 	for (size_t i = 0; i < (sizeof(ip_bin) / sizeof(*ip_bin)); i++) {
