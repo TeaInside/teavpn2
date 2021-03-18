@@ -36,6 +36,7 @@ We are usually online on Telegram, see: https://t.me/TeaInside
 - inih 53 (under New BSD license) (https://github.com/benhoyt/inih)
 - Criterion v2.3.3 (under MIT license) (https://github.com/Snaipe/Criterion)
 - OpenSSL 1.1.1 (under Apache-2.0 license) (https://github.com/openssl/openssl)
+- liburing-2.0 (under LGPG + MIT) (https://github.com/axboe/liburing)
 
 
 # Contributing

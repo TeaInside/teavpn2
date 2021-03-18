@@ -15,6 +15,7 @@
 #include <linux/ip.h>
 #include <inttypes.h>
 #include <stdalign.h>
+#include <stdatomic.h>
 #include <sys/epoll.h>
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
@@ -48,6 +49,8 @@
 
 #define IP_MAP_SHIFT		(0x00001u)	/* Preserve map to nop */
 #define IP_MAP_TO_NOP		(0x00000u)	/* Unused map slot     */
+
+#define THREAD_MAX_WAIT_ITR	(10000)
 
 /* Macros for printing  */
 #define W_IP(CLIENT) ((CLIENT)->src_ip), ((CLIENT)->src_port)
@@ -93,18 +96,35 @@ struct client_slot {
 };
 
 
+typedef enum srv_thread_type_t_{
+	ST_ACCEPT_AND_TUN_TAP,
+	ST_CLIENTS_ONLY,
+	ST_MIXED
+} srv_thread_type_t;
+
+
+struct srv_thread {
+	srv_thread_type_t	type;
+	int			epoll_fd;
+	struct srv_tcp_state	*state;
+	pthread_mutex_t		mutex;
+	pthread_t		thread;
+	bool			mutex_need_destroy;
+	struct_pad(0, 7);
+};
+
+
 struct srv_tcp_state {
 	struct iface_cfg	siff;
-	struct_pad(0, 1);
-	struct_pad(1, sizeof(int));
+
 	bool			need_ssl_cleanup;
 	bool			stop_event_loop;
 	bool			need_iface_down;
 	bool			set_affinity_ok;
+	bool			mutex_need_destroy;
 	uint8_t			err_c;
 
 	/* File descriptors */
-	int			epoll_fd;
 	int			tcp_fd;
 	int			tun_fd;
 
@@ -152,7 +172,8 @@ struct srv_tcp_state {
 	utsrv_pkt_t		send_buf;
 
 	/* Array of threads */
-	pthread_t		*threads;
+	struct srv_thread 	*threads;
+	pthread_mutex_t		global_mutex;
 };
 
 
@@ -252,23 +273,49 @@ static int init_state_epoll_map(struct srv_tcp_state *state)
 }
 
 
-static int init_state_pthreads(struct srv_tcp_state *state)
+static int init_state_threads(struct srv_tcp_state *state)
 {
-	pthread_t *threads;
+	struct srv_thread *threads;
 	struct srv_cfg *cfg = state->cfg;
+	uint8_t num_of_threads = cfg->num_of_threads;
 
-	if (unlikely(cfg->num_of_threads == 0)) {
+	if (unlikely(num_of_threads == 0)) {
 		pr_err("Number of threads cannot be zero, please fix your "
 		       "config");
 		return -EINVAL;
 	}
 
-	if (cfg->num_of_threads == 1)
-		return 0;
-
-	threads = calloc(cfg->num_of_threads - 1, sizeof(*threads));
+	threads = calloc(num_of_threads, sizeof(*threads));
 	if (unlikely(threads == NULL))
 		return -ENOMEM;
+
+	for (uint8_t i = 0; i < num_of_threads; i++) {
+		threads[i].state    = state;
+		threads[i].epoll_fd = -1;
+	}
+
+	if (num_of_threads == 1) {
+		/*
+		 * We only have one thread, so we have to mix
+		 * the workloads (accept, read, write) and
+		 * (recv, send).
+		 */
+		threads[0].type  = ST_MIXED;
+	} else
+	if (num_of_threads > 1) {
+		/*
+		 * We have more than one thread, so we distribute
+		 * the workloads.
+		 *
+		 * Main thread     : (accept, read, write)
+		 * Other thread(s) : (recv, send)
+		 */
+		threads[0].type  = ST_ACCEPT_AND_TUN_TAP;
+
+		for (uint8_t i = 1; i < num_of_threads; i++) {
+			threads[i].type  = ST_CLIENTS_ONLY;
+		}
+	}
 
 	state->threads = threads;
 	return 0;
@@ -277,12 +324,14 @@ static int init_state_pthreads(struct srv_tcp_state *state)
 
 static int init_state(struct srv_tcp_state *state)
 {
+	int retval;
+
 	state->need_ssl_cleanup   = false;
 	state->stop_event_loop    = false;
 	state->need_iface_down    = false;
 	state->set_affinity_ok    = false;
+	state->mutex_need_destroy = false;
 	state->err_c              = 0;
-	state->epoll_fd           = -1;
 	state->tun_fd             = -1;
 	state->tcp_fd             = -1;
 	state->ssl_ctx            = NULL;
@@ -298,28 +347,16 @@ static int init_state(struct srv_tcp_state *state)
 		return -1;
 	if (unlikely(init_state_epoll_map(state) < 0))
 		return -1;
-	if (unlikely(init_state_pthreads(state) < 0))
+	if (unlikely(init_state_threads(state) < 0))
 		return -1;
 
-	return 0;
-}
-
-
-static int init_cpu(struct srv_tcp_state *state)
-{
-	struct cpu_ret_info cri;
-
-	/* TODO: Balance the affinity across multiple threads */
-	(void)state;
-	// if (optimize_cpu_affinity(2, &cri) == 0) {
-	// 	memcpy(&state->affinity, &cri.affinity,
-	// 	       sizeof(state->affinity));
-	// 	state->set_affinity_ok = true;
-	// } else {
-	// 	state->set_affinity_ok = false;
-	// }
-
-	optimize_process_priority(-20, &cri);
+	retval = pthread_mutex_init(&state->global_mutex, NULL);
+	if (unlikely(retval != 0)) {
+		int err = (retval > 0) ? retval : -retval;
+		pr_err("pthread_mutex_init(): " PRERF, PREAR(err));
+		return -1;
+	}
+	state->mutex_need_destroy = true;
 	return 0;
 }
 
@@ -680,54 +717,78 @@ static int epoll_add(int epl_fd, int fd, uint32_t events)
 }
 
 
-static int init_main_epoll(struct srv_tcp_state *state)
+static int init_epoll_for_threads(struct srv_thread *threads,
+				  uint8_t num_of_threads, uint16_t max_conn)
 {
-	int err;
-	int ret;
-	int epoll_fd = -1;
-	int tun_fd = state->tun_fd;
-	int tcp_fd = state->tcp_fd;
+	uint8_t i;
+	for (i = 0; i < num_of_threads; i++) {
+		int num, epoll_fd;
+		switch (threads[i].type) {
+		case ST_MIXED:
+			num = (int)max_conn + 3;
+			break;
+		case ST_ACCEPT_AND_TUN_TAP:
+			num = 3;
+			break;
+		case ST_CLIENTS_ONLY:
+			num = (int)max_conn;
+			break;
+		}
 
-	prl_notice(0, "Initializing epoll fd...");
-	epoll_fd = epoll_create((int)state->cfg->sock.max_conn + 3);
-	if (unlikely(epoll_fd < 0))
-		goto out_create_err;
+		epoll_fd = epoll_create(num);
+		if (unlikely(epoll_fd < 0)) {
+			int err = errno;
+			pr_err("epoll_create(): " PRERF, PREAR(err));
+			goto out_err;
+		}
+		threads[i].epoll_fd = epoll_fd;
+	}
 
-	ret = epoll_add(epoll_fd, tun_fd, EPOLL_INPUT_EVENTS);
-	if (unlikely(ret < 0))
-		goto out_err;
-
-	ret = epoll_add(epoll_fd, tcp_fd, EPOLL_INPUT_EVENTS);
-	if (unlikely(ret < 0))
-		goto out_err;
-
-	state->epoll_fd = epoll_fd;
 	return 0;
 
-out_create_err:
-	err = errno;
-	pr_err("epoll_create(): " PRERF, PREAR(err));
 out_err:
-	if (epoll_fd > 0)
-		close(epoll_fd);
+	while (i--)
+		close(threads[i].epoll_fd);
 	return -1;
 }
 
 
-static int init_threads(struct srv_tcp_state *state)
+static int run_workers(struct srv_tcp_state *state)
 {
+	int retval;
+	struct srv_thread *threads = state->threads;
+	uint16_t max_conn = state->cfg->sock.max_conn;
+	uint8_t num_of_threads = state->cfg->num_of_threads;
 
+	prl_notice(0, "Initializing worker(s)...");
 
-
+	retval = init_epoll_for_threads(threads, num_of_threads, max_conn);
+	if (unlikely(retval < 0))
+		return -1;
 	return 0;
+}
+
+
+static void close_epoll(struct srv_thread *threads, uint8_t num_of_threads)
+{
+	if (unlikely(!threads))
+		return;
+
+	for (uint8_t i = 0; i < num_of_threads; i++) {
+		int epoll_fd = threads[i].epoll_fd;
+		if (likely(epoll_fd != -1)) {
+			prl_notice(0, "Closing state->threads[%u].epoll_fd "
+				   "(%d)", i, epoll_fd);
+			close(epoll_fd);
+		}
+	}
 }
 
 
 static void close_file_descriptors(struct srv_tcp_state *state)
 {
-	int tun_fd   = state->tun_fd;
-	int tcp_fd   = state->tcp_fd;
-	int epoll_fd = state->epoll_fd;
+	int tun_fd = state->tun_fd;
+	int tcp_fd = state->tcp_fd;
 
 	if (likely(tun_fd != -1)) {
 		prl_notice(0, "Closing state->tun_fd (%d)", tun_fd);
@@ -739,10 +800,9 @@ static void close_file_descriptors(struct srv_tcp_state *state)
 		close(tcp_fd);
 	}
 
-	if (likely(epoll_fd != -1)) {
-		prl_notice(0, "Closing state->epoll_fd (%d)", epoll_fd);
-		close(epoll_fd);
-	}
+	/* TODO: close clients file descriptors */
+
+	close_epoll(state->threads, state->cfg->num_of_threads);
 }
 
 
@@ -750,8 +810,11 @@ static void destroy_state(struct srv_tcp_state *state)
 {
 	close_file_descriptors(state);
 
-	if (likely(state->ssl_ctx != NULL))
+	if (state->ssl_ctx != NULL)
 		SSL_CTX_free(state->ssl_ctx);
+
+	if (state->mutex_need_destroy)
+		pthread_mutex_destroy(&state->global_mutex);
 
 	cleanup_openssl(state);
 	free(state->ip_map);
@@ -780,9 +843,6 @@ int teavpn_server_tcp_handler(struct srv_cfg *cfg)
 	retval = init_state(&state);
 	if (unlikely(retval < 0))
 		goto out;
-	retval = init_cpu(&state);
-	if (unlikely(retval < 0))
-		goto out;
 	retval = init_iface(&state);
 	if (unlikely(retval < 0))
 		goto out;
@@ -795,13 +855,7 @@ int teavpn_server_tcp_handler(struct srv_cfg *cfg)
 	retval = init_socket(&state);
 	if (unlikely(retval < 0))
 		goto out;
-	retval = init_main_epoll(&state);
-	if (unlikely(retval < 0))
-		goto out;
-	retval = init_threads(&state);
-	if (unlikely(retval < 0))
-		goto out;
-	prl_notice(0, "Initialization Sequence Completed");
+	retval = run_workers(&state);
 out:
 	destroy_state(&state);
 	return retval;
