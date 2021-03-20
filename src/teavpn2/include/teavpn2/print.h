@@ -28,6 +28,8 @@ void __pr_debug(const char *fmt, ...)
 void __pr_notice(const char *fmt, ...)
 	__attribute__((format(printf, 1, 2)));
 
+void __pr_notice_nm(const char *fmt, ...)
+	__attribute__((format(printf, 1, 2)));
 
 #define PRERF "(errno=%d) %s"
 #define PREAR(NUM) NUM, strerror(NUM)
@@ -53,6 +55,7 @@ void __pr_notice(const char *fmt, ...)
 #define pr_dbg    __pr_debug
 
 #define pr_notice __pr_notice
+#define pr_notice_nm __pr_notice_nm
 
 #define panic(...)					\
 do {							\

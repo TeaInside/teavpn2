@@ -29,13 +29,13 @@ struct bc_arr {
 };
 
 #ifdef BC_ARR_TEST
-#  define bc_arr_inline __no_inline
+#  define inline_prod __no_inline
 #else
-#  define bc_arr_inline inline
+#  define inline_prod inline
 #endif
 
 
-static bc_arr_inline int bc_arr_init(struct bc_arr *bc, uint16_t arr_size)
+static inline_prod int bc_arr_init(struct bc_arr *bc, uint16_t arr_size)
 {
 	uint16_t *arr;
 
@@ -50,7 +50,7 @@ static bc_arr_inline int bc_arr_init(struct bc_arr *bc, uint16_t arr_size)
 }
 
 
-static bc_arr_inline bool bc_arr_remove(struct bc_arr *bc, uint16_t idx)
+static inline_prod bool bc_arr_remove(struct bc_arr *bc, uint16_t idx)
 {
 	uint16_t n = bc->n;
 	uint16_t max_idx = n - 1;
@@ -74,7 +74,7 @@ static bc_arr_inline bool bc_arr_remove(struct bc_arr *bc, uint16_t idx)
 /*
  * Return index
  */
-static bc_arr_inline int32_t bc_arr_insert(struct bc_arr *bc, uint16_t data)
+static inline_prod int32_t bc_arr_insert(struct bc_arr *bc, uint16_t data)
 {
 	uint16_t n = bc->n;
 
@@ -88,13 +88,13 @@ static bc_arr_inline int32_t bc_arr_insert(struct bc_arr *bc, uint16_t data)
 }
 
 
-static bc_arr_inline uint16_t bc_arr_count(struct bc_arr *bc)
+static inline_prod uint16_t bc_arr_count(struct bc_arr *bc)
 {
 	return bc->n;
 }
 
 
-static bc_arr_inline void bc_arr_destroy(struct bc_arr *bc)
+static inline_prod void bc_arr_destroy(struct bc_arr *bc)
 {
 	free(bc->arr);
 	bc->arr = NULL;

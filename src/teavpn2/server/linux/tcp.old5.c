@@ -7,7 +7,6 @@
  *  Copyright (C) 2021  Ammar Faizi
  */
 
-#include <alloca.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -28,6 +27,7 @@
 #include <teavpn2/server/tcp.h>
 #include <teavpn2/net/tcp_pkt.h>
 
+
 /* Shut the clang up! */
 #if defined(__clang__)
 #  pragma clang diagnostic push
@@ -42,29 +42,15 @@
 #endif
 
 
-/*
- * We tolerate small number of errors
- */
-#define CLIENT_MAX_ERR		(0x0fu)
-#define SERVER_MAX_ERR		(0x0fu)
+#define CLIENT_MAX_ERROR	(0x0fu)
+#define SERVER_MAX_ERROR	(0x0fu)
+#define EPOLL_CLIENT_MAP_SIZE	(0xffffu)
+#define EPOLL_INPUT_EVENTS	(EPOLLIN | EPOLLPRI)
 
+#define IP_MAP_SHIFT		(0x00001u)	/* Preserve map to nop */
+#define IP_MAP_TO_NOP		(0x00000u)	/* Unused map slot     */
 
-#define EPOLL_INPUT_EVT		(EPOLLIN | EPOLLPRI)
-#define EPOLL_MAP_SIZE		(0xffffu)
-#define EPOLL_MAP_TO_NOP	(0x0000u)
-#define EPOLL_MAP_TO_TCP	(0x0001u)
-#define EPOLL_MAP_TO_TUN	(0x0002u)
-#define EPOLL_MAX_MAP           (EPOLL_MAP_SIZE - 1u)
-/*
- * EPOLL_MAPCL_SHIFT is a shift for `map to` client file descriptors.
- * This value must be the number of `EPOLL_MAP_TO_*` constants.
- */
-#define EPOLL_MAPCL_SHIFT	(0x0003u)
-
-
-#define IP_MAP_SHIFT		(0x00001u)	/* Preserve IP_MAP_TO_NOP     */
-#define IP_MAP_TO_NOP		(0x00000u)	/* Represents unused map slot */
-
+#define THREAD_MAX_WAIT_ITR	(10000)
 
 /* Macros for printing  */
 #define W_IP(CLIENT) ((CLIENT)->src_ip), ((CLIENT)->src_port)
@@ -73,80 +59,78 @@
 #define PRWIU "%s:%d (%s)"
 
 
-typedef enum _clslot_state_t {
-	CT_DISCONNECTED = 0,
-	CT_NEW		= 1,
-	CT_ESTABLISHED	= 2,
-	CT_NOSYNC	= 3,
-} clslot_state_t;
-
-
-struct srv_client_slot {
+struct client_slot {
 	bool			is_auth;
+	bool			is_used;
+	bool			is_conn;
 	uint8_t			err_c;
-	struct_pad(0, 2);
-	clslot_state_t		state;
 
-	/*
-	 * Client file descriptor
-	 */
+	/* Client file descriptor */
 	int			cli_fd;
-	/*
-	 * send() and recv() counter
-	 */
+
+	/* Send counter */
 	uint32_t		send_c;
+
+	/* Recv counter */
 	uint32_t		recv_c;
+
 	/*
 	 * To find the index in client slots which
-	 * refers to "this" client struct, for example:
-	 *    
-	 *   state->clients[slot_idx]
+	 * refer to its client instance.
+	 *
+	 *   state->clients[slot_index]
+	 *
 	 */
-	uint16_t		slot_idx;
+	uint16_t		slot_index;
+
+	/* Remote address and port */
 	uint16_t		src_port;
 	char			src_ip[IPV4_L];
+
+	/* Client username */
 	char			uname[64];
-	struct_pad(1, 4);
+
 	uint32_t		private_ip;
 	size_t			recv_s;
 	utcli_pkt_t		recv_buf;
 };
 
 
-struct srv_tcp_thread {
+typedef enum srv_thread_type_t_{
+	ST_ACCEPT_AND_TUN_TAP,
+	ST_CLIENTS_ONLY,
+	ST_MIXED
+} srv_thread_type_t;
+
+
+struct srv_thread {
+	srv_thread_type_t	type;
 	int			epoll_fd;
-	int			epoll_timeout;
-	int			epoll_max_events;
-	uint16_t		epoll_queue_n;
-	uint8_t			thread_num;
-	bool			is_active;
 	struct srv_tcp_state	*state;
-	pthread_t		thread;
 	pthread_mutex_t		mutex;
+	pthread_t		thread;
+	bool			mutex_need_destroy;
+	struct_pad(0, 7);
 };
 
 
 struct srv_tcp_state {
-	bool			stop_event_loop;
+	struct iface_cfg	siff;
+
 	bool			need_ssl_cleanup;
+	bool			stop_event_loop;
 	bool			need_iface_down;
+	bool			set_affinity_ok;
+	bool			mutex_need_destroy;
 	uint8_t			err_c;
 
-	uint32_t		accept_c;
-	uint32_t		read_tun_c;
-	uint32_t		write_tun_c;
-
-	int			tun_fd;
+	/* File descriptors */
 	int			tcp_fd;
-
-	uint64_t		up_bytes;
-	uint64_t		down_bytes;
+	int			tun_fd;
 
 	SSL_CTX			*ssl_ctx;
 	struct srv_cfg		*cfg;
-	struct srv_tcp_thread	*threads;
-	struct srv_client_slot	*clients;
-	uint16_t		*epoll_map;
+
 	/*
 	 * We only support maximum of CIDR /16 number of clients.
 	 * So this will be `uint16_t [256][256]`.
@@ -168,9 +152,28 @@ struct srv_tcp_state {
 	 * ```
 	 */
 	uint16_t		(*ip_map)[256];
-	struct iface_cfg	siff;
-	struct_pad(0, 6);
+	struct client_slot	*clients;
+	uint16_t		*epoll_map;
+
+
+	/* How many calls read(tun_fd, buf, size)? */
+	uint32_t		read_tun_c;
+
+	/* How many calls write(tun_fd, buf, size)? */
+	uint32_t		write_tun_c;
+
+	/* How many bytes has been read() from tun_fd */
+	uint64_t		up_bytes;
+
+	/* How many bytes has been write()'en to tun_fd */
+	uint64_t		down_bytes;
+
 	cpu_set_t		affinity;
+	utsrv_pkt_t		send_buf;
+
+	/* Array of threads */
+	struct srv_thread 	*threads;
+	pthread_mutex_t		global_mutex;
 };
 
 
@@ -180,19 +183,30 @@ static struct srv_tcp_state *g_state;
 static void handle_interrupt(int sig)
 {
 	struct srv_tcp_state *state = g_state;
-
-	if (unlikely(state->stop_event_loop == true))
-		return;
-
 	state->stop_event_loop = true;
 	putchar('\n');
-	fflush(stdout);
-	/*
-	 * Must use `pr_notice_nm`, because it is possible to get deadlock
-	 * if we use `pr_notice`.
-	 */
-	pr_notice_nm("Signal %d (%s) has been caught", sig, strsignal(sig));
-	fflush(stdout);
+	pr_notice("Signal %d (%s) has been caught", sig, strsignal(sig));
+}
+
+
+static inline void reset_client_slot(struct client_slot *client,
+				     uint16_t slot_index)
+{
+	client->is_auth    = false;
+	client->is_used    = false;
+	client->is_conn    = false;
+	client->err_c      = 0;
+	client->cli_fd     = -1;
+	client->recv_c     = 0;
+	client->send_c     = 0;
+	client->recv_s     = 0;
+	client->slot_index = slot_index;
+	client->src_port   = 0;
+	client->src_ip[0]  = '\0';
+	client->uname[0]   = '_';
+	client->uname[1]   = '\0';
+	client->private_ip = 0;
+	client->recv_s     = 0;
 }
 
 
@@ -228,36 +242,11 @@ static int init_state_ip_map(struct srv_tcp_state *state)
 	return 0;
 }
 
-/*
- * Caller is responsible to maintain the slot_idx
- */
-static void reset_client_slot(struct srv_client_slot *client,
-			      uint16_t slot_idx)
-{
-	client->is_auth    = false;
-	client->err_c      = 0;
-	client->state      = CT_DISCONNECTED;
-
-	client->cli_fd     = -1;
-
-	client->send_c     = 0;
-	client->recv_c     = 0;
-
-	client->slot_idx   = slot_idx;
-
-	client->src_port   = 0;
-	client->src_ip[0]  = '\0';
-	client->uname[0]   = '_';
-	client->uname[1]   = '\0';
-	client->private_ip = 0;
-	client->recv_s     = 0;
-}
-
 
 static int init_state_client_slot(struct srv_tcp_state *state)
 {
 	uint16_t max_conn = state->cfg->sock.max_conn;
-	struct srv_client_slot *clients;
+	struct client_slot *clients;
 
 	clients = calloc_wrp(max_conn, sizeof(*clients));
 	if (unlikely(clients == NULL))
@@ -275,48 +264,82 @@ static int init_state_epoll_map(struct srv_tcp_state *state)
 {
 	uint16_t *epoll_map;
 
-	epoll_map = calloc_wrp(EPOLL_MAP_SIZE, sizeof(*epoll_map));
+	epoll_map = calloc_wrp(EPOLL_CLIENT_MAP_SIZE, sizeof(*epoll_map));
 	if (unlikely(epoll_map == NULL))
 		return -ENOMEM;
 
-	for (uint16_t i = 0; i < EPOLL_MAP_SIZE; i++) {
-		epoll_map[i] = EPOLL_MAP_TO_NOP;
-	}
 	state->epoll_map = epoll_map;
+	return 0;
+}
+
+
+static int init_state_threads(struct srv_tcp_state *state)
+{
+	struct srv_thread *threads;
+	struct srv_cfg *cfg = state->cfg;
+	uint8_t num_of_threads = cfg->num_of_threads;
+
+	if (unlikely(num_of_threads == 0)) {
+		pr_err("Number of threads cannot be zero, please fix your "
+		       "config");
+		return -EINVAL;
+	}
+
+	threads = calloc(num_of_threads, sizeof(*threads));
+	if (unlikely(threads == NULL))
+		return -ENOMEM;
+
+	for (uint8_t i = 0; i < num_of_threads; i++) {
+		threads[i].state    = state;
+		threads[i].epoll_fd = -1;
+	}
+
+	if (num_of_threads == 1) {
+		/*
+		 * We only have one thread, so we have to mix
+		 * the workloads (accept, read, write) and
+		 * (recv, send).
+		 */
+		threads[0].type  = ST_MIXED;
+	} else
+	if (num_of_threads > 1) {
+		/*
+		 * We have more than one thread, so we distribute
+		 * the workloads.
+		 *
+		 * Main thread     : (accept, read, write)
+		 * Other thread(s) : (recv, send)
+		 */
+		threads[0].type  = ST_ACCEPT_AND_TUN_TAP;
+
+		for (uint8_t i = 1; i < num_of_threads; i++) {
+			threads[i].type  = ST_CLIENTS_ONLY;
+		}
+	}
+
+	state->threads = threads;
 	return 0;
 }
 
 
 static int init_state(struct srv_tcp_state *state)
 {
-	if (unlikely(state->cfg->num_of_threads == 0)) {
-		pr_err("Number of threads cannot be zero!");
-		return -1;
-	}
+	int retval;
 
-	state->stop_event_loop    = false;
 	state->need_ssl_cleanup   = false;
+	state->stop_event_loop    = false;
 	state->need_iface_down    = false;
+	state->set_affinity_ok    = false;
+	state->mutex_need_destroy = false;
 	state->err_c              = 0;
-
-	state->accept_c           = 0;
-	state->read_tun_c         = 0;
-	state->write_tun_c        = 0;
-
 	state->tun_fd             = -1;
 	state->tcp_fd             = -1;
-
+	state->ssl_ctx            = NULL;
+	state->read_tun_c         = 0;
+	state->write_tun_c        = 0;
 	state->up_bytes           = 0;
 	state->down_bytes         = 0;
-
-	state->ssl_ctx            = NULL;
 	state->threads            = NULL;
-	state->clients            = NULL;
-	state->epoll_map          = NULL;
-	state->ip_map             = NULL;
-
-	memset(&state->siff, 0, sizeof(state->siff));
-	memset(&state->affinity, 0, sizeof(state->affinity));
 
 	if (unlikely(init_state_ip_map(state) < 0))
 		return -1;
@@ -324,7 +347,16 @@ static int init_state(struct srv_tcp_state *state)
 		return -1;
 	if (unlikely(init_state_epoll_map(state) < 0))
 		return -1;
+	if (unlikely(init_state_threads(state) < 0))
+		return -1;
 
+	retval = pthread_mutex_init(&state->global_mutex, NULL);
+	if (unlikely(retval != 0)) {
+		int err = (retval > 0) ? retval : -retval;
+		pr_err("pthread_mutex_init(): " PRERF, PREAR(err));
+		return -1;
+	}
+	state->mutex_need_destroy = true;
 	return 0;
 }
 
@@ -354,17 +386,9 @@ static int init_iface(struct srv_tcp_state *state)
 		goto out_err;
 	}
 
-	if (unlikely((uint32_t)tun_fd > EPOLL_MAX_MAP)) {
-		pr_err("tun_fd is too big (tun_fd=%d, EPOLL_MAX_MAP=%u)",
-		       tun_fd, EPOLL_MAX_MAP);
-		goto out_err;
-	}
-
 	state->tun_fd = tun_fd;
 	state->need_iface_down = true;
-	state->epoll_map[tun_fd] = EPOLL_MAP_TO_TUN;
 	return 0;
-
 out_err:
 	close(tun_fd);
 	return -1;
@@ -377,6 +401,17 @@ static int init_openssl(struct srv_tcp_state *state)
 	OpenSSL_add_ssl_algorithms();
 	state->need_ssl_cleanup = true;
 	return 0;
+}
+
+
+static void cleanup_openssl(struct srv_tcp_state *state)
+{
+	if (likely(state->need_ssl_cleanup)) {
+		CRYPTO_cleanup_all_ex_data();
+		ERR_free_strings();
+		EVP_cleanup();
+		state->need_ssl_cleanup = false;
+	}
 }
 
 
@@ -663,92 +698,90 @@ out_err:
 }
 
 
-static void *event_loop(void *thread_p)
+static int epoll_add(int epl_fd, int fd, uint32_t events)
 {
-	int epoll_fd;
-	int epoll_max_events;
-	struct epoll_event *events = NULL;
-	struct srv_tcp_thread *thread = thread_p;
-	struct srv_tcp_state *state = thread->state;
+	int err;
+	struct epoll_event event;
 
-	epoll_fd = thread->epoll_fd;
-	epoll_max_events = thread->epoll_max_events;
-	events = calloc_wrp((size_t)epoll_max_events, sizeof(*events));
-	if (unlikely(events == NULL))
-		goto out;
+	/* Shut the valgrind up! */
+	memset(&event, 0, sizeof(struct epoll_event));
 
-	memset(events, 0, (size_t)epoll_max_events * sizeof(*events));
-
-	thread->is_active = true;
-	while (likely(!state->stop_event_loop)) {
-		pr_notice("In event loop [%u]...", thread->thread_num);
+	event.events = events;
+	event.data.fd = fd;
+	if (unlikely(epoll_ctl(epl_fd, EPOLL_CTL_ADD, fd, &event) < 0)) {
+		err = errno;
+		pr_err("epoll_ctl(EPOLL_CTL_ADD): " PRERF, PREAR(err));
+		return -1;
 	}
-out:
-	free(events);
-	thread->is_active = false;
-	return NULL;
+	return 0;
 }
 
 
-static int spawn_sub_thread(uint8_t i, struct srv_tcp_thread *thread,
-			    struct srv_tcp_state *state)
+static int init_epoll_for_threads(struct srv_thread *threads,
+				  uint8_t num_of_threads, uint16_t max_conn)
 {
-	int err;
-	int ret;
-	thread->is_active = false;
-	thread->state = state;
-	thread->thread_num = i;
+	uint8_t i;
+	for (i = 0; i < num_of_threads; i++) {
+		int num, epoll_fd;
+		switch (threads[i].type) {
+		case ST_MIXED:
+			num = (int)max_conn + 3;
+			break;
+		case ST_ACCEPT_AND_TUN_TAP:
+			num = 3;
+			break;
+		case ST_CLIENTS_ONLY:
+			num = (int)max_conn;
+			break;
+		}
 
-	ret = pthread_mutex_init(&thread->mutex, NULL);
-	if (unlikely(ret != 0)) {
-		err = (ret > 0) ? ret : -ret;
-		pr_err("pthread_mutex_init(): " PRERF, PREAR(err));
-		return -err;
-	}
-
-	ret = pthread_create(&thread->thread, NULL, event_loop, thread);
-	if (unlikely(ret != 0)) {
-		err = (ret > 0) ? ret : -ret;
-		pr_err("pthread_create(): " PRERF, PREAR(err));
-		return -err;
-	}
-
-	ret = pthread_detach(thread->thread);
-	if (unlikely(ret != 0)) {
-		err = (ret > 0) ? ret : -ret;
-		pr_err("pthread_detach(): " PRERF, PREAR(err));
-		return -err;
+		epoll_fd = epoll_create(num);
+		if (unlikely(epoll_fd < 0)) {
+			int err = errno;
+			pr_err("epoll_create(): " PRERF, PREAR(err));
+			goto out_err;
+		}
+		threads[i].epoll_fd = epoll_fd;
 	}
 
 	return 0;
+
+out_err:
+	while (i--)
+		close(threads[i].epoll_fd);
+	return -1;
 }
 
 
 static int run_workers(struct srv_tcp_state *state)
 {
-	struct srv_tcp_thread *threads;
+	int retval;
+	struct srv_thread *threads = state->threads;
+	uint16_t max_conn = state->cfg->sock.max_conn;
 	uint8_t num_of_threads = state->cfg->num_of_threads;
 
-	threads = calloc_wrp(num_of_threads, sizeof(*threads));
-	if (unlikely(threads == NULL))
-		return -ENOMEM;
+	prl_notice(0, "Initializing worker(s)...");
 
-	state->threads = threads;
-	/*
-	 * We don't call pthread_create for threads[0],
-	 * because we are going to run the job of threads[0]
-	 * on the main thread.
-	 */
-	for (uint8_t i = 1; i < num_of_threads; i++) {
-		if (unlikely(spawn_sub_thread(i, &threads[i], state) != 0))
-			return -1;
-	}
-
-	threads[0].thread_num = 0;
-	threads[0].state = state;
-	event_loop(&threads[0]);
-
+	retval = init_epoll_for_threads(threads, num_of_threads, max_conn);
+	if (unlikely(retval < 0))
+		return -1;
 	return 0;
+}
+
+
+static void close_epoll(struct srv_thread *threads, uint8_t num_of_threads)
+{
+	if (unlikely(!threads))
+		return;
+
+	for (uint8_t i = 0; i < num_of_threads; i++) {
+		int epoll_fd = threads[i].epoll_fd;
+		if (likely(epoll_fd != -1)) {
+			prl_notice(0, "Closing state->threads[%u].epoll_fd "
+				   "(%d)", i, epoll_fd);
+			close(epoll_fd);
+		}
+	}
 }
 
 
@@ -767,55 +800,33 @@ static void close_file_descriptors(struct srv_tcp_state *state)
 		close(tcp_fd);
 	}
 
-	/* TODO: close epoll(s) and clients file descriptors */
-}
+	/* TODO: close clients file descriptors */
 
-
-static void clean_up_openssl(struct srv_tcp_state *state)
-{
-	if (likely(state->ssl_ctx != NULL))
-		SSL_CTX_free(state->ssl_ctx);
-
-	if (likely(state->need_ssl_cleanup)) {
-		CRYPTO_cleanup_all_ex_data();
-		ERR_free_strings();
-		EVP_cleanup();
-		state->need_ssl_cleanup = false;
-	}
-}
-
-
-static void wait_for_threads(struct srv_tcp_state *state)
-{
-	struct srv_tcp_thread *threads = state->threads;
-	uint8_t num_of_threads = state->cfg->num_of_threads;
-
-	for (uint8_t i = 1; i < num_of_threads; i++) {
-		if (!threads[i].is_active)
-			continue;
-
-		prl_notice(0, "Waiting for thread %u...", i);
-		while (threads[i].is_active)
-			usleep(300000);
-	}
+	close_epoll(state->threads, state->cfg->num_of_threads);
 }
 
 
 static void destroy_state(struct srv_tcp_state *state)
 {
-	wait_for_threads(state);
 	close_file_descriptors(state);
-	clean_up_openssl(state);
-	free(state->threads);
+
+	if (state->ssl_ctx != NULL)
+		SSL_CTX_free(state->ssl_ctx);
+
+	if (state->mutex_need_destroy)
+		pthread_mutex_destroy(&state->global_mutex);
+
+	cleanup_openssl(state);
+	free(state->ip_map);
 	free(state->clients);
 	free(state->epoll_map);
-	free(state->ip_map);
+	free(state->threads);
 }
 
 
 int teavpn_server_tcp_handler(struct srv_cfg *cfg)
 {
-	int ret;
+	int retval = 0;
 	struct srv_tcp_state state;
 
 	/* Shut the valgrind up! */
@@ -829,23 +840,23 @@ int teavpn_server_tcp_handler(struct srv_cfg *cfg)
 	signal(SIGQUIT, handle_interrupt);
 	signal(SIGPIPE, SIG_IGN);
 
-	ret = init_state(&state);
-	if (unlikely(ret < 0))
+	retval = init_state(&state);
+	if (unlikely(retval < 0))
 		goto out;
-	ret = init_iface(&state);
-	if (unlikely(ret < 0))
+	retval = init_iface(&state);
+	if (unlikely(retval < 0))
 		goto out;
-	ret = init_openssl(&state);
-	if (unlikely(ret < 0))
+	retval = init_openssl(&state);
+	if (unlikely(retval < 0))
 		goto out;
-	ret = init_ssl_context(&state);
-	if (unlikely(ret < 0))
+	retval = init_ssl_context(&state);
+	if (unlikely(retval < 0))
 		goto out;
-	ret = init_socket(&state);
-	if (unlikely(ret < 0))
+	retval = init_socket(&state);
+	if (unlikely(retval < 0))
 		goto out;
-	ret = run_workers(&state);
+	retval = run_workers(&state);
 out:
 	destroy_state(&state);
-	return ret;
+	return retval;
 }

@@ -25,4 +25,18 @@ struct cpu_ret_info {
 int optimize_cpu_affinity(int need, struct cpu_ret_info *ret);
 int optimize_process_priority(int nice_val, struct cpu_ret_info *ret);
 
+
+#if __has_include("immintrin.h")
+#  include <immintrin.h>
+#endif
+
+static __always_inline void __cpu_relax()
+{
+#if __has_include("immintrin.h")
+	_mm_pause();
+#endif
+}
+
+#define cpu_relax __cpu_relax
+
 #endif /* #ifndef TEAVPN2__CPU_H */

@@ -13,5 +13,5 @@ OBJ_TMP_CC	:= \
 OBJ_PRE_CC	+= $(OBJ_TMP_CC)
 
 $(OBJ_TMP_CC):
-	@echo "   CC		" "$(@:$(BASE_DIR)/%=%)"
-	@$(CC) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)
+	$(Q)echo "   CC		" "$(@:$(BASE_DIR)/%=%)"
+	$(Q)$(CC) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)

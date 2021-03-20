@@ -42,6 +42,14 @@ ifeq (,$(findstring __GNUC__,$(CXX_BUILTIN_CONSTANTS)))
 $(error I want __GNUC__!)
 endif
 
+ifeq ($(VERBOSE),1)
+	V = 1
+endif
+
+ifndef V
+	V = 0
+endif
+
 ifneq ($(DO_TEST),1)
 	ifneq (,$(findstring __GNUC__,$(CC_BUILTIN_CONSTANTS)))
 		ifneq (,$(findstring __clang__,$(CC_BUILTIN_CONSTANTS)))
@@ -89,6 +97,13 @@ VGFLAGS		:= \
 
 ifndef DEFAULT_OPTIMIZATION
 	DEFAULT_OPTIMIZATION = -O0
+endif
+
+# Quite
+ifeq ($(V),1)
+	Q=
+else
+	Q=@
 endif
 
 # CCXXFLAGS is a flag that applies to CFLAGS and CXXFLAGS
@@ -198,10 +213,11 @@ OBJ_CC		:=
 OBJ_PRE_CC	:=
 OBJ_TMP_CC	:=
 CFLAGS_TMP	:=
+SHARED_LIB	:=
 #######################################
 
 all: $(TARGET_BIN)
-	@echo $(REL)
+	$(Q)echo $(REL)
 
 include $(BASE_DIR)/src/teavpn2/Makefile
 include $(BASE_DIR)/src/ext/Makefile
@@ -211,18 +227,18 @@ CXXFLAGS	:= $(INCLUDE_DIR) $(CXXFLAGS) $(CCXXFLAGS)
 
 include $(BASE_DIR)/tests/Makefile
 
-$(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC)
-	@echo "   LD		" "$(@)"
-	@$(LD) $(LDFLAGS) $(OBJ_CC) $(OBJ_PRE_CC) -o "$@" $(LIB_LDFLAGS)
-	@chmod a+x teavpn2 || true
+$(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC) $(SHARED_LIB)
+	$(Q)echo "   LD		" "$(@)"
+	$(LD) $(LDFLAGS) $(OBJ_CC) $(OBJ_PRE_CC) -o "$@" $(LIB_LDFLAGS)
+	$(Q)chmod a+x teavpn2 || true
 
 $(DEP_DIRS):
-	@echo "   MKDIR	" "$(@:$(BASE_DIR)/%=%)"
-	@mkdir -p $(@)
+	$(Q)echo "   MKDIR	" "$(@:$(BASE_DIR)/%=%)"
+	$(Q)mkdir -p $(@)
 
 $(OBJ_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
-	@echo "   CC		" "$(@:$(BASE_DIR)/%=%)"
-	@$(CC) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)
+	$(Q)echo "   CC		" "$(@:$(BASE_DIR)/%=%)"
+	$(Q)$(CC) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)
 
 $(OBJ_PRE_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
 
@@ -230,7 +246,9 @@ $(OBJ_PRE_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
 -include $(OBJ_PRE_CC:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)
 
 clean: clean_test
-	@rm -rfv $(DEP_DIRS) $(OBJ_CC) $(OBJ_PRE_CC) $(TARGET_BIN)
+	$(Q)rm -rfv $(DEP_DIRS) $(OBJ_CC) $(OBJ_PRE_CC) $(TARGET_BIN)
+
+clean_all: clean clean_ext
 
 server: $(TARGET_BIN)
 	sudo $(VG) $(VGFLAGS) ./$(TARGET_BIN) server
@@ -250,17 +268,17 @@ __build_release_pack: \
 		$(TEAVPN2_README_FILE) \
 		$(TEAVPN2_CONFIG_DIR) \
 		$(TEAVPN2_DATA_DIR)
-	@strip -s $(TARGET_BIN);
-	@mkdir -pv "$(PACKAGE_NAME)";
-	@cp -vrf $(TARGET_BIN) \
+	$(Q)strip -s $(TARGET_BIN);
+	$(Q)mkdir -pv "$(PACKAGE_NAME)";
+	$(Q)cp -vrf $(TARGET_BIN) \
 		$(LICENSES_DIR) \
 		$(TEAVPN2_LICENSE_FILE) \
 		$(TEAVPN2_README_FILE) \
 		$(TEAVPN2_CONFIG_DIR) \
 		$(TEAVPN2_DATA_DIR) "$(PACKAGE_NAME)/";
-	@tar -c "$(PACKAGE_NAME)/" | gzip -9c > "$(PACKAGE_NAME).tar.gz";
-	@md5sum "$(PACKAGE_NAME).tar.gz" > "$(PACKAGE_NAME).tar.gz.md5sum";
-	@sha1sum "$(PACKAGE_NAME).tar.gz" > "$(PACKAGE_NAME).tar.gz.sha1sum";
-	@sha256sum "$(PACKAGE_NAME).tar.gz" > "$(PACKAGE_NAME).tar.gz.sha256sum";
-	@rm -rf "$(PACKAGE_NAME)";
+	$(Q)tar -c "$(PACKAGE_NAME)/" | gzip -9c > "$(PACKAGE_NAME).tar.gz";
+	$(Q)md5sum "$(PACKAGE_NAME).tar.gz" > "$(PACKAGE_NAME).tar.gz.md5sum";
+	$(Q)sha1sum "$(PACKAGE_NAME).tar.gz" > "$(PACKAGE_NAME).tar.gz.sha1sum";
+	$(Q)sha256sum "$(PACKAGE_NAME).tar.gz" > "$(PACKAGE_NAME).tar.gz.sha256sum";
+	$(Q)rm -rf "$(PACKAGE_NAME)";
 	ls -l "$(PACKAGE_NAME).tar.gz"*;

@@ -48,6 +48,7 @@ again:
 		pr_err("open(\"%s\", O_RDWR): " PRERF, dtf, PREAR(err));
 
 		if ((!retried) && (err == ENOENT)) {
+			/* On android, it is located at /dev/tun */
 			dtf = "/dev/tun";
 			retried = !retried;
 			prl_notice(0, "Set fallback to %s", dtf);

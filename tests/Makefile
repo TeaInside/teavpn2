@@ -8,6 +8,7 @@
 
 include $(BASE_DIR)/tests/001_string/Makefile
 include $(BASE_DIR)/tests/002_bc_arr/Makefile
+include $(BASE_DIR)/tests/003_tcp_buf_queue/Makefile
 
 export VG
 export VGFLAGS
