@@ -11,3 +11,4 @@
 *.gcov
 /.deps/
 /teavpn2*
+/dump.txt
