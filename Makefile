@@ -31,16 +31,26 @@ BASE_DIR	:= $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
 BASE_DIR	:= $(strip $(patsubst %/, %, $(BASE_DIR)))
 BASE_DEP_DIR	:= $(BASE_DIR)/.deps
 MAKEFILE_FILE	:= $(lastword $(MAKEFILE_LIST))
-
-
-
 TARGET_BIN	:= teavpn2
-LICENSES_DIR	:= $(BASE_DIR)/LICENSES
 
 
+#
+# Default config file
+#
+SERVER_DEF_CFG_FILE := /etc/teavpn2/server.ini
+CLIENT_DEF_CFG_FILE := /etc/teavpn2/client.ini
 
-USE_SERVER	:= 1
-USE_CLIENT	:= 1
+
+#
+# Package files
+#
+PACKAGE_FILES := \
+	$(TARGET_BIN) \
+	$(LICENSES_DIR) \
+	$(BASE_DIR)/LICENSES \
+	$(BASE_DIR)/README.md \
+	$(BASE_DIR)/config \
+	$(BASE_DIR)/data
 
 
 
@@ -142,7 +152,9 @@ CCXXFLAGS := \
 	-DPATCHLEVEL=$(PATCHLEVEL) \
 	-DSUBLEVEL=$(SUBLEVEL) \
 	-DEXTRAVERSION="\"$(EXTRAVERSION)\"" \
-	-DNAME="\"$(NAME)\""
+	-DNAME="\"$(NAME)\"" \
+	-DSERVER_DEF_CFG_FILE="\"$(SERVER_DEF_CFG_FILE)\"" \
+	-DCLIENT_DEF_CFG_FILE="\"$(CLIENT_DEF_CFG_FILE)\""
 
 
 
@@ -286,8 +298,29 @@ clean: clean_test
 	$(Q)rm -rfv $(DEP_DIRS) $(OBJ_CC) $(OBJ_PRE_CC) $(TARGET_BIN)
 
 
+
 clean_all: clean clean_test
 
 
 
-.PHONY: all clean clean_all
+release_pack:
+	+$(MAKE) --no-print-directory RELEASE_MODE=1
+	+$(MAKE) --no-print-directory test
+	+$(MAKE) --no-print-directory __build_release_pack RELEASE_MODE=1
+
+
+
+__build_release_pack: $(TARGET_BIN) $(PACKAGE_FILES)
+	$(Q)strip -s $(TARGET_BIN);
+	$(Q)mkdir -pv "$(PACKAGE_NAME)";
+	$(Q)cp -vrf $(PACKAGE_FILES) "$(PACKAGE_NAME)/";
+	$(Q)tar -c "$(PACKAGE_NAME)/" | gzip -9c > "$(PACKAGE_NAME).tar.gz";
+	$(Q)md5sum "$(PACKAGE_NAME).tar.gz" > "$(PACKAGE_NAME).tar.gz.md5sum";
+	$(Q)sha1sum "$(PACKAGE_NAME).tar.gz" > "$(PACKAGE_NAME).tar.gz.sha1sum";
+	$(Q)sha256sum "$(PACKAGE_NAME).tar.gz" > "$(PACKAGE_NAME).tar.gz.sha256sum";
+	$(Q)rm -rf "$(PACKAGE_NAME)";
+	ls -l "$(PACKAGE_NAME).tar.gz"*;
+
+
+
+.PHONY: all clean clean_all release_pack __build_release_pack
