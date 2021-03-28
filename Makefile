@@ -19,6 +19,8 @@ CXX	:= c++
 LD	:= $(CXX)
 VG	:= valgrind
 
+
+
 RM	:= rm
 MKDIR	:= mkdir
 STRIP	:= strip
@@ -77,9 +79,9 @@ DEPFLAGS = -MT "$@" -MMD -MP -MF "$(@:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)"
 
 
 LIB_LDFLAGS	:= -lpthread -lssl -lcrypto
-LDFLAGS		:= -fPIE -fpie
-CFLAGS		:= -fPIE -fpie -ggdb3
-CXXFLAGS	:= -fPIE -fpie -ggdb3 -std=c++2a
+LDFLAGS		:= -fPIE -fpie -flto -ggdb3
+CFLAGS		:= -fPIE -fpie -flto -ggdb3
+CXXFLAGS	:= -fPIE -fpie -flto -ggdb3 -std=c++2a
 VGFLAGS		:= \
 	--leak-check=full \
 	--show-leak-kinds=all \
@@ -98,10 +100,39 @@ endif
 
 
 #
-# `CCXXFLAGS` is a flag that applies to `CFLAGS` and `CXXFLAGS`
+# `CCXXFLAGS` is a flag that applies to `LDFLAGS`, `CFLAGS` and `CXXFLAGS`
 #
+ifeq ($(RELEASE_MODE),1)
+	CCXXFLAGS	:= -O3 -DNDEBUG
+else
+	CCXXFLAGS	:= \
+		$(DEFAULT_OPTIMIZATION) \
+		-grecord-gcc-switches \
+		-DTEAVPN_DEBUG
+
+
+	ifndef SANITIZE
+		SANITIZE := 1
+	endif
+endif
+
+
+
+ifeq ($(SANITIZE),1)
+	CCXXFLAGS := \
+		$(CCXXFLAGS) \
+		-fsanitize=undefined \
+		-fno-sanitize-recover=undefined
+	LIB_LDFLAGS += -lubsan
+endif
+
+
+
 CCXXFLAGS := \
 	$(WARN_FLAGS) \
+	$(CCXXFLAGS) \
+	-fchecking=2 \
+	-fcompare-debug \
 	-fstrict-aliasing \
 	-fstack-protector-strong \
 	-fno-omit-frame-pointer \
@@ -112,20 +143,6 @@ CCXXFLAGS := \
 	-DSUBLEVEL=$(SUBLEVEL) \
 	-DEXTRAVERSION="\"$(EXTRAVERSION)\"" \
 	-DNAME="\"$(NAME)\""
-
-
-
-ifeq ($(RELEASE_MODE),1)
-	LDFLAGS		+= $(LDFLAGS) -O3
-	CCXXFLAGS	+= -O3 -DNDEBUG
-else
-	LDFLAGS		+= $(DEFAULT_OPTIMIZATION)
-	CCXXFLAGS	+= \
-		$(DEFAULT_OPTIMIZATION) \
-		-grecord-gcc-switches \
-		-DTEAVPN_DEBUG
-endif
-
 
 
 
@@ -141,6 +158,41 @@ endif
 
 ifeq (,$(findstring __GNUC__,$(CXX_BUILTIN_CONSTANTS)))
 	CXX := /bin/echo I want __GNUC__! && false
+endif
+
+
+
+ifeq ($(OS),Windows_NT)
+	CCXXFLAGS += -DWIN32
+	ifeq ($(PROCESSOR_ARCHITEW6432),AMD64)
+		CCXXFLAGS += -DAMD64
+	else
+		ifeq ($(PROCESSOR_ARCHITECTURE),AMD64)
+			CCXXFLAGS += -DAMD64
+		endif
+		ifeq ($(PROCESSOR_ARCHITECTURE),x86)
+			CCXXFLAGS += -DIA32
+		endif
+	endif
+else
+	UNAME_S := $(shell uname -s)
+	ifeq ($(UNAME_S),Linux)
+		CCXXFLAGS += -DLINUX
+	endif
+	ifeq ($(UNAME_S),Darwin)
+		CCXXFLAGS += -DOSX
+	endif
+
+	UNAME_P := $(shell uname -p)
+	ifeq ($(UNAME_P),x86_64)
+		CCXXFLAGS += -DAMD64
+	endif
+	ifneq ($(filter %86,$(UNAME_P)),)
+		CCXXFLAGS += -DIA32
+	endif
+	ifneq ($(filter arm%,$(UNAME_P)),)
+		CCXXFLAGS += -DARM
+	endif
 endif
 
 
@@ -176,15 +228,20 @@ SHARED_LIB	:=
 
 
 
+ifneq ($(words $(subst :, ,$(BASE_DIR))), 1)
+$(error Source directory cannot contain spaces or colons)
+endif
+
+
+
 all: $(TARGET_BIN)
-
-
 
 include $(BASE_DIR)/src/ext/Makefile
 include $(BASE_DIR)/src/teavpn2/Makefile
 
 CFLAGS		:= $(INCLUDE_DIR) $(CFLAGS) $(CCXXFLAGS)
 CXXFLAGS	:= $(INCLUDE_DIR) $(CXXFLAGS) $(CCXXFLAGS)
+LDFLAGS		:= $(LDFLAGS) $(CCXXFLAGS)
 
 include $(BASE_DIR)/tests/Makefile
 
