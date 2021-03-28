@@ -14,8 +14,8 @@ EXTRAVERSION =
 NAME = Blue Tea
 PACKAGE_NAME = teavpn2-$(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)
 
-CC 	:= cc
-CXX	:= c++
+CC 	:= clang
+CXX	:= clang++
 LD	:= $(CXX)
 VG	:= valgrind
 
@@ -54,6 +54,23 @@ PACKAGE_FILES := \
 
 
 
+
+#
+# Make sure our compilers have `__GNUC__` support
+#
+CC_BUILTIN_CONSTANTS	:= $(shell $(CC) -dM -E - < /dev/null)
+CXX_BUILTIN_CONSTANTS	:= $(shell $(CXX) -dM -E - < /dev/null)
+
+ifeq (,$(findstring __GNUC__,$(CC_BUILTIN_CONSTANTS)))
+	CC := /bin/echo I want __GNUC__! && false
+endif
+
+ifeq (,$(findstring __GNUC__,$(CXX_BUILTIN_CONSTANTS)))
+	CXX := /bin/echo I want __GNUC__! && false
+endif
+
+
+
 ifneq (,$(findstring __clang__,$(CC_BUILTIN_CONSTANTS)))
 	# Clang
 	WARN_FLAGS := \
@@ -65,6 +82,9 @@ ifneq (,$(findstring __clang__,$(CC_BUILTIN_CONSTANTS)))
 		-Wno-covered-switch-default \
 		-Wno-disabled-macro-expansion \
 		-Wno-language-extension-token
+
+	CFLAGS		:=
+	CXXFLAGS	:=
 else
 	# Pure GCC
 	WARN_FLAGS := \
@@ -77,6 +97,9 @@ else
 		-Wstrict-aliasing=3 \
 		-Wstack-usage=2097152 \
 		-Wunsafe-loop-optimizations
+
+	CFLAGS		:= -fchecking=2 -fcompare-debug
+	CXXFLAGS	:= -fchecking=2 -fcompare-debug
 endif
 
 
@@ -90,8 +113,8 @@ DEPFLAGS = -MT "$@" -MMD -MP -MF "$(@:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)"
 
 LIB_LDFLAGS	:= -lpthread -lssl -lcrypto
 LDFLAGS		:= -fPIE -fpie -flto -ggdb3
-CFLAGS		:= -fPIE -fpie -flto -ggdb3
-CXXFLAGS	:= -fPIE -fpie -flto -ggdb3 -std=c++2a
+CFLAGS		+= -fPIE -fpie -flto -ggdb3
+CXXFLAGS	+= -fPIE -fpie -flto -ggdb3 -std=c++2a
 VGFLAGS		:= \
 	--leak-check=full \
 	--show-leak-kinds=all \
@@ -114,15 +137,36 @@ endif
 #
 ifeq ($(RELEASE_MODE),1)
 	CCXXFLAGS	:= -O3 -DNDEBUG
+
+
+	ifndef NOTICE_DEFAULT_LEVEL
+		NOTICE_DEFAULT_LEVEL = 3
+	endif
+
+	ifndef NOTICE_MAX_LEVEL
+		NOTICE_MAX_LEVEL = 5
+	endif
 else
 	CCXXFLAGS	:= \
 		$(DEFAULT_OPTIMIZATION) \
 		-grecord-gcc-switches \
-		-DTEAVPN_DEBUG
+		-DTEAVPN_DEBUG \
+		-DTEAVPN2_DEBUG
 
 
+	#
+	# Always sanitize debug build
+	#
 	ifndef SANITIZE
-		SANITIZE := 1
+		SANITIZE = 1
+	endif
+
+	ifndef NOTICE_DEFAULT_LEVEL
+		NOTICE_DEFAULT_LEVEL = 5
+	endif
+
+	ifndef NOTICE_MAX_LEVEL
+		NOTICE_MAX_LEVEL = 10
 	endif
 endif
 
@@ -141,8 +185,6 @@ endif
 CCXXFLAGS := \
 	$(WARN_FLAGS) \
 	$(CCXXFLAGS) \
-	-fchecking=2 \
-	-fcompare-debug \
 	-fstrict-aliasing \
 	-fstack-protector-strong \
 	-fno-omit-frame-pointer \
@@ -155,22 +197,6 @@ CCXXFLAGS := \
 	-DNAME="\"$(NAME)\"" \
 	-DSERVER_DEF_CFG_FILE="\"$(SERVER_DEF_CFG_FILE)\"" \
 	-DCLIENT_DEF_CFG_FILE="\"$(CLIENT_DEF_CFG_FILE)\""
-
-
-
-#
-# Make sure our compilers have `__GNUC__` support
-#
-CC_BUILTIN_CONSTANTS	:= $(shell $(CC) -dM -E - < /dev/null)
-CXX_BUILTIN_CONSTANTS	:= $(shell $(CXX) -dM -E - < /dev/null)
-
-ifeq (,$(findstring __GNUC__,$(CC_BUILTIN_CONSTANTS)))
-	CC := /bin/echo I want __GNUC__! && false
-endif
-
-ifeq (,$(findstring __GNUC__,$(CXX_BUILTIN_CONSTANTS)))
-	CXX := /bin/echo I want __GNUC__! && false
-endif
 
 
 
