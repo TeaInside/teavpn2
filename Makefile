@@ -32,6 +32,7 @@ BASE_DIR	:= $(strip $(patsubst %/, %, $(BASE_DIR)))
 BASE_DEP_DIR	:= $(BASE_DIR)/.deps
 MAKEFILE_FILE	:= $(lastword $(MAKEFILE_LIST))
 TARGET_BIN	:= teavpn2
+MSHARED_BIN	:= libteavpn2.so
 
 
 #
@@ -112,9 +113,9 @@ DEPFLAGS = -MT "$@" -MMD -MP -MF "$(@:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)"
 
 
 LIB_LDFLAGS	:= -lpthread -lssl -lcrypto
-LDFLAGS		:= -fPIE -fpie -flto -ggdb3
-CFLAGS		+= -fPIE -fpie -flto -ggdb3
-CXXFLAGS	+= -fPIE -fpie -flto -ggdb3 -std=c++2a
+LDFLAGS		:= -fPIC -fpic -ggdb3
+CFLAGS		+= -fPIC -fpic -ggdb3
+CXXFLAGS	+= -fPIC -fpic -ggdb3 -std=c++2a
 VGFLAGS		:= \
 	--leak-check=full \
 	--show-leak-kinds=all \
@@ -257,6 +258,7 @@ endif
 #######################################
 # Force these to be a simple variable
 TESTS		:=
+TEST_TVAR	:=
 OBJ_CC		:=
 OBJ_PRE_CC	:=
 OBJ_TMP_CC	:=
@@ -276,12 +278,17 @@ all: $(TARGET_BIN)
 
 include $(BASE_DIR)/src/ext/Makefile
 include $(BASE_DIR)/src/teavpn2/Makefile
+include $(BASE_DIR)/tests/Makefile
 
 CFLAGS		:= $(INCLUDE_DIR) $(CFLAGS) $(CCXXFLAGS)
 CXXFLAGS	:= $(INCLUDE_DIR) $(CXXFLAGS) $(CCXXFLAGS)
 LDFLAGS		:= $(LDFLAGS) $(CCXXFLAGS)
 
-include $(BASE_DIR)/tests/Makefile
+
+$(MSHARED_BIN): $(OBJ_CC) $(OBJ_PRE_CC)
+	$(S)echo "   LD		" "$(@)"
+	$(Q)$(LD) $(LDFLAGS) $(OBJ_CC) $(OBJ_PRE_CC) -shared -o "$@" $(LIB_LDFLAGS)
+
 
 
 $(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC)
@@ -310,6 +317,8 @@ $(OBJ_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
 # compiled from the main Makefile
 #
 $(OBJ_PRE_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
+$(TEST_OBJ): $(MAKEFILE_FILE) | $(DEP_DIRS)
+$(FWTEST_OBJ): $(MAKEFILE_FILE) | $(DEP_DIRS)
 
 
 #

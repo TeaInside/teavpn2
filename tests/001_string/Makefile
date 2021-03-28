@@ -1,15 +1,38 @@
+#
+# SPDX-License-Identifier: GPL-2.0
+#
+# @author Ammar Faizi <ammarfaizi2@gmail.com> https://www.facebook.com/ammarfaizi2
+# @license GNU GPL-v2
+#
+# TeaVPN2 - Fast and Free VPN Software
+#
 
-TESTS	+=	$(BASE_DIR)/tests/001_string/001_string.test__exec
-
-$(BASE_DIR)/tests/001_string/001_string.test: $(BASE_DIR)/tests/001_string/001_string.c \
-	$(TARGET_BIN) \
-	$(OBJ_CC) \
-	$(OBJ_PRE_CC)\
-	$(BASE_DIR)/tests/001_string/001_string.c
-	@echo "   CC		" "$(@:$(BASE_DIR)/%=%)"
-	@$(CC) $(CFLAGS) $(BASE_DIR)/tests/001_string/001_string.c \
-	-o $(@) $(OBJ_PRE_CC) $(OBJ_CC) $(TEST_LIB_LDFLAGS)
+DEP_DIRS	+= $(BASE_DEP_DIR)/tests/001_string
+TEST_TVAR	:= $(BASE_DIR)/tests/001_string/001_string
+TEST_EXEC	+= $(TEST_TVAR)__exec
+TEST_TVAR_OBJ	:= $(BASE_DIR)/tests/001_string/001_string.o
+TEST_OBJ	+= $(TEST_TVAR_OBJ)
 
 
-$(BASE_DIR)/tests/001_string/001_string.test__exec: $(BASE_DIR)/tests/001_string/001_string.test
-	@$(BASE_DIR)/tests/001_string/001_string.test
+$(TEST_TVAR_OBJ):
+	$(S)echo "   CC		" "$(@:$(BASE_DIR)/%=%)"
+	$(Q)$(CC) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)
+
+
+
+$(TEST_TVAR): $(TEST_TVAR_OBJ) $(FWTEST_SO)
+	$(S)echo "   LD		" "$(@)"
+	$(Q)$(LD) $(LDFLAGS) -o "$@" $(^) $(LIB_LDFLAGS)
+
+
+
+-include $(TEST_TVAR_OBJ:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)
+
+
+
+$(TEST_TVAR)__exec: $(TEST_TVAR)
+	$<
+
+
+
+.PHONY: $(TEST_TVAR)

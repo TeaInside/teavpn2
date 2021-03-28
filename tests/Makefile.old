@@ -7,11 +7,16 @@
 # TeaVPN2 - Fast and Free VPN Software
 #
 
-
 INCLUDE_DIR	+= -I$(BASE_DIR)/tests
 DEP_DIRS	+= $(BASE_DEP_DIR)/src/teavpn2/tests
+TEST_OBJ	:=
+TEST_FWOBJ	:= $(BASE_DIR)/tests/libteatest.so
 
 
+
+TEST_LIB_LDFLAGS := -L$(BASE_DIR)/tests -lteatest -L$(BASE_DIR) -lteavpn2
+LD_LIBRARY_PATH	:= $(LD_LIBRARY_PATH):$(BASE_DIR):$(BASE_DIR)/tests
+export LD_LIBRARY_PATH
 
 
 ###################################################################
@@ -19,38 +24,33 @@ DEP_DIRS	+= $(BASE_DEP_DIR)/src/teavpn2/tests
 # Build Tea Test (Unit Test Framework for C project)
 #
 ###################################################################
-FWTEST_SO	:= $(BASE_DIR)/tests/libteatest.so
-FWTEST_OBJ	:= $(BASE_DIR)/tests/teatest.o
-
-
-
-$(FWTEST_OBJ):
+$(BASE_DIR)/tests/teatest.o: $(BASE_DIR)/tests/teatest.c
 	$(S)echo "   CC		" "$(@:$(BASE_DIR)/%=%)"
 	$(Q)$(CC) $(DEPFLAGS) $(CFLAGS) -Wno-missing-noreturn -c $(@:.o=.c) -o $(@)
 
 
-
-$(FWTEST_SO): $(FWTEST_OBJ) $(OBJ_CC) $(OBJ_PRE_CC)
-	$(S)echo "   LD		" "$(@)"
-	$(Q)$(LD) $(LDFLAGS) $(^) -shared -o "$@" $(LIB_LDFLAGS)
+TEST_OBJ += $(BASE_DIR)/tests/teatest.o
+-include $($(BASE_DIR)/tests/teatest.o:$(BASE_DIR)/%.so=$(BASE_DEP_DIR)/%.d)
 
 
 
--include $(FWTEST_OBJ:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)
+$(TEST_FWOBJ): $(BASE_DIR)/tests/teatest.o $(SHARED_BIN)
+	$(S)echo "   LD		" "$(@:$(BASE_DIR)/%=%)"
+	$(Q)$(LD) $(DEPFLAGS) $(CFLAGS) -shared -o $(@) $(<) $(SHARED_BIN)
 ##################################################################
 
 
 include $(BASE_DIR)/tests/001_string/Makefile
-include $(BASE_DIR)/tests/002_bc_arr/Makefile
 
 
-test: $(FWTEST_SO) $(TEST_EXEC)
+$(TESTS): $(TEST_FWOBJ)
+
+test: $(TEST_OBJ) $(TESTS)
 
 
 
 clean_test:
-	$(Q)rm -vf $(FWTEST_OBJ) $(TEST_EXEC) $(TEST_OBJ)
-
+	$(Q)rm -vf $(TEST_OBJ)
 
 
 .PHONY: test clean_test
