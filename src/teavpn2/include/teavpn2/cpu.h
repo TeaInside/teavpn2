@@ -34,6 +34,10 @@ static __always_inline void __cpu_relax()
 {
 #if __has_include("immintrin.h")
 	_mm_pause();
+#else
+#  if defined(__x86_64__)
+	__asm__ volatile("rep; nop;" ::: "memory");
+#  endif
 #endif
 }
 
