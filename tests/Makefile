@@ -11,8 +11,8 @@
 INCLUDE_DIR	+= -I$(BASE_DIR)/tests
 DEP_DIRS	+= $(BASE_DEP_DIR)/src/teavpn2/tests
 
-
-
+LD_LIBRARY_PATH=$(LD_LIBRARY_PATH):$(BASE_DIR)/tests
+export LD_LIBRARY_PATH
 
 ###################################################################
 #
