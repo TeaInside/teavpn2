@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <signal.h>
+#include <string.h>
 #include <sys/wait.h>
 #include <teavpn2/base.h>
 
@@ -142,4 +143,65 @@ int run_test(const test_entry_t *tests)
 
 	print_info(ret, __total_credit, __credit);
 	return ret;
+}
+
+
+static int handle_wait(pid_t child)
+{
+	int wstatus;
+	pid_t wait_ret;
+
+	wait_ret = wait(&wstatus);
+	if (WIFEXITED(wstatus) && (wait_ret == child)) {
+		int exit_code = WEXITSTATUS(wstatus);
+
+		if (exit_code == 0) {
+			/* Success */
+			return 0;
+		}
+
+		pr_err("\x1b[31mTEST FAILED!\x1b[0m");
+		pr_err("Exit code: %d", exit_code);
+		if (exit_code == 99) {
+			pr_err("Error from valgrind detected");
+			pr_err("Please read the error message from valgrind to "
+				"diagnose this problem");
+			pr_err("Reading valgrind backtrace is not trivial, "
+				"please be serious!");
+		}
+		return exit_code;
+	}
+
+	pr_err("Unknown error, please contact Ammar F");
+	pr_err("Please also tell to him, how did you get into this error");
+	return -1;
+}
+
+
+extern char **environ;
+
+
+int spawn_valgrind(int argc, char *argv[])
+{
+	pid_t child, my_pid;
+	char *cmdline = argv[0];
+
+	memmove(&argv[0], &argv[1], sizeof(char *) * ((size_t)argc - 1));
+	argv[argc - 1] = cmdline;
+
+	my_pid = getpid();
+	child  = fork();
+
+	if (unlikely(child == -1)) {
+		pr_err("fork(): " PRERF, PREAR(errno));	
+		return -1;
+	}
+
+	if (child == 0) {
+		execve(argv[0], argv, environ);
+		pr_err("execve(): " PRERF, PREAR(errno));
+		return -1;
+	}
+
+	return handle_wait(child);
 }

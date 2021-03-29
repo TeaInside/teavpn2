@@ -34,26 +34,32 @@ static TEATEST(001_string, trim_not_copy)
 
 	ptr = trim(str);
 
-	TQ_ASSERT(ptr == &str[3]);
+	TQ_ASSERT(ptr == &str[2]);
 	TQ_ASSERT(memcmp(str, cmp, sizeof(cmp)) == 0);
 
 	return 0;
 }
 
 
-int main(void)
+static const test_entry_t entry[] = {
+	TEATEST_FN(001_string, trim_copy),
+	TEATEST_FN(001_string, trim_not_copy),
+	NULL
+};
+
+
+int main(int argc, char *argv[])
 {
 	int ret;
-	const test_entry_t entry[] = {
-		TEATEST_FN(001_string, trim_copy),
-		TEATEST_FN(001_string, trim_not_copy),
-		NULL
-	};
+
+	if (argc > 1)
+		return spawn_valgrind(argc, argv);
+
 
 	ret = init_test(entry);
 	if (ret != 0)
 		return ret;
 
 	ret = run_test(entry);
-	return ret; 
+	return ret;
 }

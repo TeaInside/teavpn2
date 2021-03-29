@@ -31,7 +31,7 @@ $(TEST_TVAR): $(TEST_TVAR_OBJ) $(FWTEST_SO)
 
 
 $(TEST_TVAR)__exec: $(TEST_TVAR)
-	$<
+	$< $(shell which $(VG)) $(VGFLAGS)
 
 
 

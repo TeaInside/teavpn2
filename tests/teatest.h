@@ -21,6 +21,7 @@ int run_test(const test_entry_t *tests);
 
 bool tq_assert_hook(void);
 bool print_test(bool is_success, const char *func, const char *file, int line);
+int spawn_valgrind(int argc, char *argv[]);
 
 
 /* TODO: Make core dump */

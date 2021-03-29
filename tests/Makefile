@@ -41,7 +41,6 @@ $(FWTEST_SO): $(FWTEST_OBJ) $(OBJ_CC) $(OBJ_PRE_CC)
 
 
 include $(BASE_DIR)/tests/001_string/Makefile
-include $(BASE_DIR)/tests/002_bc_arr/Makefile
 
 
 test: $(FWTEST_SO) $(TEST_EXEC)
