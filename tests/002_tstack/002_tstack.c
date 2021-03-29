@@ -9,6 +9,8 @@
 
 #include <teatest.h>
 #include <teavpn2/base.h>
+
+#define TSTACK_TEST (1)
 #include <teavpn2/lib/tstack.h>
 
 
