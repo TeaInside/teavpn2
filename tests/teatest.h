@@ -34,7 +34,9 @@ int FN_TEATEST(PACKAGE, NAME)(uint32_t *____total_credit,	\
 			      uint32_t *____credit)		\
 
 
-
+#define TQ_START int ____ret = (0)
+#define TQ_RETURN return ____ret
+#define TQ_IF_RUN if (tq_assert_hook())
 
 #define TQ_ASSERT(EXPR)							\
 do {									\
@@ -51,6 +53,8 @@ do {									\
 		if (print_test(__is_success, __func__, __file,		\
 	                       __LINE__))				\
 			(*____credit)++;				\
+		else							\
+			____ret = 1;					\
 	} else {							\
 		(*____total_credit)++;					\
 	}								\

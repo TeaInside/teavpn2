@@ -14,6 +14,7 @@
 
 static TEATEST(001_string, trim_copy)
 {
+	TQ_START;
 	char *ptr;
 	char str[] = "  Hello World  ";
 	char cmp[] = "Hello World\0d  ";
@@ -22,12 +23,13 @@ static TEATEST(001_string, trim_copy)
 	TQ_ASSERT(ptr == str);
 	TQ_ASSERT(memcmp(str, cmp, sizeof(cmp)) == 0);
 
-	return 0;
+	TQ_RETURN;
 }
 
 
 static TEATEST(001_string, trim_not_copy)
 {
+	TQ_START;
 	char *ptr;
 	char str[] = "  Hello World  ";
 	char cmp[] = "  Hello World\0 ";
@@ -37,7 +39,7 @@ static TEATEST(001_string, trim_not_copy)
 	TQ_ASSERT(ptr == &str[2]);
 	TQ_ASSERT(memcmp(str, cmp, sizeof(cmp)) == 0);
 
-	return 0;
+	TQ_RETURN;
 }
 
 
