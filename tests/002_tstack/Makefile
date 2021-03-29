@@ -7,10 +7,10 @@
 # TeaVPN2 - Fast and Free VPN Software
 #
 
-DEP_DIRS	+= $(BASE_DEP_DIR)/tests/001_string
-TEST_TVAR	:= $(BASE_DIR)/tests/001_string/001_string
+DEP_DIRS	+= $(BASE_DEP_DIR)/tests/002_tstack
+TEST_TVAR	:= $(BASE_DIR)/tests/002_tstack/002_tstack
 TEST_EXEC	+= $(TEST_TVAR)__exec
-TEST_TVAR_OBJ	:= $(BASE_DIR)/tests/001_string/001_string.o
+TEST_TVAR_OBJ	:= $(BASE_DIR)/tests/002_tstack/002_tstack.o
 TEST_OBJ	+= $(TEST_TVAR_OBJ)
 
 

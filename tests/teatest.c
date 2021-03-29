@@ -7,11 +7,13 @@
  *  Copyright (C) 2021  Ammar Faizi
  */
 
+#include <fcntl.h>
 #include <errno.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/wait.h>
 #include <teavpn2/base.h>
 
@@ -70,6 +72,7 @@ static void sig_handler(int sig)
 
 static void print_info(int ret, uint32_t total_credit, uint32_t credit)
 {
+	int fd;
 	double accuracy;
 
 	if (credit == 0 || total_credit == 0) {
@@ -78,6 +81,14 @@ static void print_info(int ret, uint32_t total_credit, uint32_t credit)
 		accuracy = ((double)credit / (double)total_credit) * 100.0;
 	}
 
+	fd = open("test_lock.tmp", O_RDWR | O_CREAT, S_IRWXU);
+	if (unlikely(fd < 0)) {
+		int err = errno;
+		pr_err("open(\"test_lock.tmp\"): " PRERF, PREAR(err));
+	}
+
+	if (fd > 0)
+		flock(fd, LOCK_EX);
 	printf("==================================================\n");
 	printf("\t\tSummary\n");
 	printf("--------------------------------------------------\n");
@@ -85,6 +96,9 @@ static void print_info(int ret, uint32_t total_credit, uint32_t credit)
 	printf("   Your accuracy\t: %.2f %c\n", accuracy, '%');
 	printf("   Earned credit\t: %u of %u\n", credit, total_credit);
 	printf("==================================================\n");
+	if (fd > 0)
+		flock(fd, LOCK_UN);
+	close(fd);
 }
 
 
@@ -142,6 +156,8 @@ int run_test(const test_entry_t *tests)
 	}
 
 	print_info(ret, __total_credit, __credit);
+	for (int i = 0; i < 1000; i++)
+		close(i);
 	return ret;
 }
 

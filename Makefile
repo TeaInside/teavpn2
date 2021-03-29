@@ -259,6 +259,7 @@ endif
 # Force these to be a simple variable
 TESTS		:=
 TEST_TVAR	:=
+TEST_EXEC	:=
 OBJ_CC		:=
 OBJ_PRE_CC	:=
 OBJ_TMP_CC	:=

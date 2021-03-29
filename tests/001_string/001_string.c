@@ -42,8 +42,8 @@ static TEATEST(001_string, trim_not_copy)
 
 
 static const test_entry_t entry[] = {
-	TEATEST_FN(001_string, trim_copy),
-	TEATEST_FN(001_string, trim_not_copy),
+	FN_TEATEST(001_string, trim_copy),
+	FN_TEATEST(001_string, trim_not_copy),
 	NULL
 };
 

@@ -27,10 +27,10 @@ int spawn_valgrind(int argc, char *argv[]);
 /* TODO: Make core dump */
 #define core_dump()
 
-#define TEATEST_FN(PACKAGE, NAME) test_##PACKAGE##_##NAME
+#define FN_TEATEST(PACKAGE, NAME) test_##PACKAGE##_##NAME
 
 #define TEATEST(PACKAGE, NAME)					\
-int TEATEST_FN(PACKAGE, NAME)(uint32_t *____total_credit,	\
+int FN_TEATEST(PACKAGE, NAME)(uint32_t *____total_credit,	\
 			      uint32_t *____credit)		\
 
 
@@ -57,8 +57,13 @@ do {									\
 } while (0)
 
 
-#define cr_assert_eq(A, B, C) TQ_ASSERT((A) == (B))
-#define cr_assert TQ_ASSERT
+#define TQ_VOID(EXPR)			\
+do {					\
+	if (tq_assert_hook()) {		\
+		(EXPR);			\
+	}				\
+} while (0)
+
 
 
 #endif /* #ifndef TESTS__TEATEST_H */
