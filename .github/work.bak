@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - master
+      - dev_001
 
 jobs:
   main:
