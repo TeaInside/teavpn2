@@ -14,8 +14,8 @@ EXTRAVERSION =
 NAME = Blue Tea
 PACKAGE_NAME = teavpn2-$(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)
 
-CC 	:= clang
-CXX	:= clang++
+CC 	:= cc
+CXX	:= c++
 LD	:= $(CXX)
 VG	:= valgrind
 
@@ -82,7 +82,8 @@ ifneq (,$(findstring __clang__,$(CC_BUILTIN_CONSTANTS)))
 		-Wno-unused-macros \
 		-Wno-covered-switch-default \
 		-Wno-disabled-macro-expansion \
-		-Wno-language-extension-token
+		-Wno-language-extension-token \
+		-Wno-used-but-marked-unused
 
 	CFLAGS		:=
 	CXXFLAGS	:=

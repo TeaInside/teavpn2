@@ -60,7 +60,8 @@ static inline_prod uint32_t tss_count(struct tstack *st)
 
 static inline_prod int64_t tss_push(struct tstack *st, uint32_t val)
 {
-	uint32_t cap = st->capacity, sp = st->sp;
+	uint32_t __maybe_unused cap = st->capacity;
+	uint32_t sp = st->sp;
 
 	/*
 	 * Stack pointer must never be greater than the capacity.

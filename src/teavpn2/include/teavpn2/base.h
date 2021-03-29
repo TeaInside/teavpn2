@@ -59,6 +59,10 @@
 #  define __inline inline
 #endif
 
+#ifndef __maybe_unused
+#  define __maybe_unused __attribute__((unused))
+#endif
+
 #ifndef __always_inline
 #  define __always_inline __inline __attribute__((always_inline))
 #endif
