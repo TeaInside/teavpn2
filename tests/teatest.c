@@ -183,13 +183,12 @@ extern char **environ;
 
 int spawn_valgrind(int argc, char *argv[])
 {
-	pid_t child, my_pid;
+	pid_t child;
 	char *cmdline = argv[0];
 
 	memmove(&argv[0], &argv[1], sizeof(char *) * ((size_t)argc - 1));
 	argv[argc - 1] = cmdline;
 
-	my_pid = getpid();
 	child  = fork();
 
 	if (unlikely(child == -1)) {
