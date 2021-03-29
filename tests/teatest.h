@@ -50,7 +50,7 @@ do {									\
 									\
 	if (tq_assert_hook()) {						\
 		__is_success = (EXPR);					\
-		if (print_test(__is_success, __func__, __file,		\
+		if (print_test(__is_success, __func__ + 5, __file,	\
 	                       __LINE__))				\
 			(*____credit)++;				\
 		else							\

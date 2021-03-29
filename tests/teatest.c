@@ -105,11 +105,11 @@ static void print_info(int ret, uint32_t total_credit, uint32_t credit)
 bool print_test(bool is_success, const char *func, const char *file, int line)
 {
 	if (is_success) {
-		pr_notice("\x1b[32mTest passed\x1b[0m: %s() in %s line %d",
-		  	  func, file, line);
+		pr_notice("\x1b[32mTest passed\x1b[0m: %s in %s line %d", func,
+			  file, line);
 	} else {
-		pr_notice("\x1b[31mTest failed\x1b[0m: %s() in %s line %d",
-		  	  func, file, line);
+		pr_notice("\x1b[31mTest failed\x1b[0m: %s in %s line %d", func,
+			  file, line);
 	}
 	return is_success;
 }
