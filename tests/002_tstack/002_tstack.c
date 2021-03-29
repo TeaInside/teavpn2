@@ -132,12 +132,37 @@ static TEATEST(002_tstack, pop_on_empty_stack_returns_neg_one)
 }
 
 
+static TEATEST(002_tstack, push_and_pop_maintain_the_lifo_properly)
+{
+	TQ_START;
+	struct tstack st;
+
+	TQ_ASSERT(tss_init(&st, 10) == &st);
+	TQ_ASSERT(tss_pop(&st) == -1);
+	TQ_ASSERT(tss_pop(&st) == -1);
+
+	TQ_ASSERT(tss_push(&st, 10) == 10);
+	TQ_ASSERT(tss_push(&st, 9) == 9);
+	TQ_ASSERT(tss_push(&st, 8) == 8);
+	TQ_ASSERT(tss_pop(&st) == 8);
+	TQ_ASSERT(tss_push(&st, 99) == 99);
+	TQ_ASSERT(tss_pop(&st) == 99);
+	TQ_ASSERT(tss_pop(&st) == 9);
+	TQ_ASSERT(tss_pop(&st) == 10);
+	TQ_ASSERT(tss_pop(&st) == -1);
+
+	TQ_VOID(tss_destroy(&st));
+	TQ_RETURN;
+}
+
+
 static const test_entry_t entry[] = {
 	FN_TEATEST(002_tstack, init_stack_must_be_empty),
 	FN_TEATEST(002_tstack, push_must_increment_the_count),
 	FN_TEATEST(002_tstack, pop_must_decrement_the_count_and_must_be_lifo),
 	FN_TEATEST(002_tstack, push_after_full_returns_neg_one),
 	FN_TEATEST(002_tstack, pop_on_empty_stack_returns_neg_one),
+	FN_TEATEST(002_tstack, push_and_pop_maintain_the_lifo_properly),
 	NULL
 };
 
