@@ -36,7 +36,7 @@
 #define IPV4_SL (IPV4_L + 8) /* For safer size */
 #define IPV6_SL (IPV6_L + 8) /* For safer size */
 
-typedef enum {
+typedef enum _sock_type {
 	SOCK_TCP = 0,
 	SOCK_UDP = 1
 } sock_type;
