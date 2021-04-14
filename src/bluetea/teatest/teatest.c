@@ -65,6 +65,18 @@ bool print_test(bool is_success, const char *func, const char *file, int line)
 	return is_success;
 }
 
+
+bool print_test_s(bool is_success, const char *func, const char *file, int line)
+{
+	if (is_success) {
+		/* Pass */
+	} else {
+		pr_notice("\x1b[31mTest failed\x1b[0m: %s in %s line %d", func,
+			  file, line);
+	}
+	return is_success;
+}
+
 #define BT_BUF_SIZE (0x8000u)
 
 static void pr_backtrace()

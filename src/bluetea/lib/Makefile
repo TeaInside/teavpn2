@@ -11,4 +11,5 @@
 
 DEP_DIRS += $(BASE_DEP_DIR)/src/bluetea/lib
 FBT_CC_OBJ += \
+	$(BASE_DIR)/src/bluetea/lib/arena.o \
 	$(BASE_DIR)/src/bluetea/lib/string.o

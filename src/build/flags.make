@@ -52,9 +52,12 @@ C_CXX_FLAGS += $(WARN_FLAGS)
 # Release or debug?
 #
 ifeq ($(RELEASE_MODE),1)
-	C_CXX_FLAGS	+= $(C_CXX_FLAGS_RELEASE)
+	LDFLAGS		+= -O3
+	C_CXX_FLAGS	+= -O3 $(C_CXX_FLAGS_RELEASE)
 else
-	C_CXX_FLAGS	+= $(C_CXX_FLAGS_DEBUG) -grecord-gcc-switches
+	LDFLAGS		+= $(DEFAULT_OPTIMIZATION)
+	C_CXX_FLAGS	+= $(DEFAULT_OPTIMIZATION) $(C_CXX_FLAGS_DEBUG) \
+			-grecord-gcc-switches
 
 	#
 	# Always sanitize debug build, unless otherwise specified.
