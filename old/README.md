@@ -6,9 +6,9 @@ TeaVPN2 is a fast and free VPN Software. Current supported platform is only
 Linux. We plan to expand to other platforms too, but that's not our priority.
 
 
-# Requirements
+# Build Requirements
 - GNU Make 4.3
-- OpenSSL 1.1.1
+- libgnutls30
 - gcc 9.3.0 or gcc 10.2.1 (other versions are not tested yet).
 
 
@@ -33,9 +33,13 @@ We are usually online on Telegram, see: https://t.me/TeaInside
 
 
 # Third Party Libraries
-- inih 53 (under New BSD license) (https://github.com/benhoyt/inih)
-- OpenSSL 1.1.1 (under Apache-2.0 license) (https://github.com/openssl/openssl)
-- liburing-2.0 (under LGPG + MIT) (https://github.com/axboe/liburing)
+
+| No.   | Link                                    | Name                  | License                   |
+|:-----:|:----------------------------------------|:----------------------|:--------------------------|
+| 1.    | https://github.com/benhoyt/inih         | inih 53               | New BSD license           |
+| 2.    | https://github.com/axboe/liburing       | liburing-2.0          | LGPL + MIT                |
+| 3.    | https://www.gnutls.org/download.html    | libgnutls30           | LGPLv2.1+)                |
+
 
 
 # Contributing

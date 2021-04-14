@@ -92,7 +92,7 @@ int fd_set_nonblock(int fd)
 		pr_err("fcntl(%d, F_GETFL, 0): " PRERF, fd, PREAR(err));
 		return -err;
 	}
-	
+
 	flags = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 	if (unlikely(flags < 0)) {
 		err = errno;
