@@ -9,6 +9,7 @@
 *.gcno
 *.gcda
 *.gcov
+*.test
 /.deps/
 /teavpn2*
 /dump.txt

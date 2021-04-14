@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <teavpn2/base.h>
+#include <bluetea/lib/arena.h>
 #include <teavpn2/server/common.h>
 
 
@@ -29,8 +30,11 @@ static void show_general_help(const char *app)
 int main(int argc, char *argv[])
 {
 	int ret = 0;
+	alignas(16) char arena_buf[0x4000];
 	if (argc == 1)
 		goto out_show_help;
+
+	ar_init(arena_buf, sizeof(arena_buf));
 
 	if (!strncmp(argv[1], "server", 6)) {
 		return teavpn2_run_server(argc - 1, argv + 1);
