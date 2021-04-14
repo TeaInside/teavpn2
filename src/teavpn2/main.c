@@ -34,7 +34,12 @@ int main(int argc, char *argv[])
 	if (argc == 1)
 		goto out_show_help;
 
-	ar_init(arena_buf, sizeof(arena_buf));
+	ret = ar_init(arena_buf, sizeof(arena_buf));
+	if (unlikely(ret)) {
+		pr_err("ar_init(): " PRERF, PREAR(-ret));
+		ret = -ret;
+		goto out;
+	}
 
 	if (!strncmp(argv[1], "server", 6)) {
 		return teavpn2_run_server(argc - 1, argv + 1);
@@ -45,7 +50,7 @@ int main(int argc, char *argv[])
 	if (!strncmp(argv[1], "--version", 9)) {
 		printf("TeaVPN2 " TEAVPN2_VERSION "\n");
 	} else {
-		printf("Invalid argument: \"%s\"\n", argv[1]);
+		printf("\nError: Invalid argument: \"%s\"\n\n", argv[1]);
 		ret = EINVAL;
 		goto out_show_help;
 	}
