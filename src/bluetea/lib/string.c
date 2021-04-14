@@ -230,7 +230,7 @@ size_t htmlspecialchars(char * restrict _output, size_t outlen,
 		const uint8_t	len;
 	};
 
-	static const struct html_char_map html_map[0xffu] = {
+	static const struct html_char_map html_map[0x100u] = {
 		['<'] = {"&lt;",	4},
 		['>'] = {"&gt;",	4},
 		['"'] = {"&quot;",	6},
