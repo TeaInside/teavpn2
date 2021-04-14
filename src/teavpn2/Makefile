@@ -22,4 +22,4 @@ OBJ_PRE_CC += $(OBJ_TMP_CC)
 
 $(OBJ_TMP_CC):
 	$(CC_PRINT)
-	$(Q)$(CC) $(PIE_FLAGS) $(DEPFLAGS) $(CFLAGS) -c $(O_TO_C) -o $(@)
+	$(Q)$(CC) $(PIC_FLAGS) $(DEPFLAGS) $(CFLAGS) -c $(O_TO_C) -o $(@)

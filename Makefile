@@ -38,8 +38,13 @@ LIB_LDFLAGS	:= -lpthread
 LDFLAGS		:= -ggdb3
 CFLAGS		:= -std=c11
 CXXFLAGS	:= -std=c++2a
-PIC_FLAGS	:= -fPIC -fpic
-PIE_FLAGS	:= -fPIE -fpie 
+ifeq ($(FORCE_PIE),1)
+	PIC_FLAGS := -fPIE -fpie
+else
+	PIC_FLAGS := -fPIC -fpic
+endif
+PIE_FLAGS := -fPIE -fpie
+
 
 # `C_CXX_FLAGS` will be appended to `CFLAGS` and `CXXFLAGS`.
 C_CXX_FLAGS := \
