@@ -11,7 +11,7 @@
 #include <bluetea/lib/getopt.h>
 
 
-static TEATEST(005_arena, simple_long_opt)
+static TEATEST(005_getopt, simple_long_opt)
 {
 	TQ_START;
 	static const char *short_opt = NULL;
@@ -58,7 +58,7 @@ static TEATEST(005_arena, simple_long_opt)
 }
 
 
-static TEATEST(005_arena, simple_short_opt)
+static TEATEST(005_getopt, simple_short_opt)
 {
 	TQ_START;
 	static const char *short_opt = "H:P:D?";
@@ -100,7 +100,7 @@ static TEATEST(005_arena, simple_short_opt)
 }
 
 
-static TEATEST(005_arena, mix_short_and_long)
+static TEATEST(005_getopt, mix_short_and_long)
 {
 	TQ_START;
 	static const char *short_opt = "H:P:D?";
@@ -167,7 +167,7 @@ static TEATEST(005_arena, mix_short_and_long)
 }
 
 
-static TEATEST(005_arena, missing1)
+static TEATEST(005_getopt, missing1)
 {
 	TQ_START;
 	static const char *short_opt = "H:P:D?";
@@ -202,7 +202,7 @@ static TEATEST(005_arena, missing1)
 }
 
 
-static TEATEST(005_arena, missing2)
+static TEATEST(005_getopt, missing2)
 {
 	TQ_START;
 	static const char *short_opt = "H:P:D?";
@@ -239,10 +239,10 @@ static TEATEST(005_arena, missing2)
 
 extern const test_entry_t test_entry_arr[];
 const test_entry_t test_entry_arr[] = {
-	FN_TEATEST(005_arena, simple_long_opt),
-	FN_TEATEST(005_arena, simple_short_opt),
-	FN_TEATEST(005_arena, mix_short_and_long),
-	FN_TEATEST(005_arena, missing1),
-	FN_TEATEST(005_arena, missing2),
+	FN_TEATEST(005_getopt, simple_long_opt),
+	FN_TEATEST(005_getopt, simple_short_opt),
+	FN_TEATEST(005_getopt, mix_short_and_long),
+	FN_TEATEST(005_getopt, missing1),
+	FN_TEATEST(005_getopt, missing2),
 	NULL
 };
