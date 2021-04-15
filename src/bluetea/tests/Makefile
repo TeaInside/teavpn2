@@ -23,6 +23,7 @@ include $(BASE_DIR)/src/bluetea/tests/001_string/Makefile
 include $(BASE_DIR)/src/bluetea/tests/002_tstack/Makefile
 include $(BASE_DIR)/src/bluetea/tests/003_que/Makefile
 include $(BASE_DIR)/src/bluetea/tests/004_arena/Makefile
+include $(BASE_DIR)/src/bluetea/tests/005_getopt/Makefile
 
 
 bluetea_test: $(FBT_TEST_EXEC)

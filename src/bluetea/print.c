@@ -30,27 +30,30 @@ uint8_t __notice_level = 3;
 #endif
 
 
-static __always_inline void pthread_mutex_busy_lock(pthread_mutex_t *mutex,
-						    int32_t try_num)
+static __always_inline int pthread_mutex_busy_lock(pthread_mutex_t *mutex,
+						   uint32_t try_num)
 {
 	int ret;
 
+#if defined(__x86_64__)
 again:
 	ret = pthread_mutex_trylock(mutex);
 	if (likely(ret == 0))
-		return;
+		return 0;
 
 	if (likely(try_num-- > 0)) {
 		cpu_relax();
 		goto again;
 	}
-
+#endif
 	/*
+	 *
 	 * I have tried to acquire the lock `n` times,
 	 * but I couldn't get the lock, so I sleep and
 	 * wait for the kernel wakes me up.
+	 *
 	 */
-	pthread_mutex_lock(mutex);
+	return pthread_mutex_lock(mutex);
 }
 
 
