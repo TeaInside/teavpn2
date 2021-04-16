@@ -38,7 +38,7 @@ We are usually online on Telegram, see: https://t.me/TeaInside
 |:-----:|:----------------------------------------|:----------------------|:--------------------------|
 | 1.    | https://github.com/benhoyt/inih         | inih 53               | New BSD license           |
 | 2.    | https://github.com/axboe/liburing       | liburing-2.0          | LGPL + MIT                |
-| 3.    | https://www.gnutls.org/download.html    | libgnutls30           | LGPLv2.1+)                |
+| 3.    | https://www.gnutls.org/download.html    | libgnutls30           | LGPLv2.1+                 |
 
 
 
