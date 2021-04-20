@@ -10,6 +10,7 @@
 DEP_DIRS += $(BASE_DEP_DIR)/src/teavpn2/server
 
 OBJ_TMP_CC := \
+	$(BASE_DIR)/src/teavpn2/server/argv.o \
 	$(BASE_DIR)/src/teavpn2/server/entry.o
 
 OBJ_PRE_CC += $(OBJ_TMP_CC)

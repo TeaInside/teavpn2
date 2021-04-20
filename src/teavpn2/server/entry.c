@@ -12,6 +12,13 @@
 
 int teavpn2_run_server(int argc, char *argv[])
 {
-		
+	int ret;
+	struct srv_cfg cfg;
+
+	memset(&cfg, 0, sizeof(cfg));
+	ret = teavpn2_argv_parse(argc, argv, &cfg);
+
+
+	return ret;
 }
 

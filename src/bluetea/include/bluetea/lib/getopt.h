@@ -17,9 +17,9 @@
 
 typedef enum _bt_getopt_req_arg {
 	EMPTY_STRUCT	= 0,
-	REQUIRED_ARG	= 1,
-	OPTIONAL_ARG	= 2,
-	NO_ARG		= 3
+	REQUIRED_VAL	= 1,
+	OPTIONAL_VAL	= 2,
+	NO_VAL		= 3
 } bt_getopt_req_arg;
 
 
@@ -48,7 +48,7 @@ struct bt_getopt_wr {
 #define BT_GETOPT_NON_OPT	(-3)
 #define BT_GETOPT_EINVAL	(-4)
 #define BT_GETOPT_MISSING_ARG	(-5)
-#define BT_GETOPT_WANT_NO_ARG	(-6)
+#define BT_GETOPT_WANT_NO_VAL	(-6)
 
 int bt_getopt(struct bt_getopt_wr *wr);
 

@@ -72,8 +72,8 @@ static int track_getopt_long(char *cur_arg, size_t cur_len, int cur_idx,
 		val = long_opt->val;
 
 		switch (long_opt->arg_req) {
-		case REQUIRED_ARG:
-		case OPTIONAL_ARG:
+		case REQUIRED_VAL:
+		case OPTIONAL_VAL:
 			/*
 			 * Is it an argument with `=` value separator?
 			 */
@@ -88,11 +88,11 @@ static int track_getopt_long(char *cur_arg, size_t cur_len, int cur_idx,
 			}
 
 			wr->retval = take_arg;
-			if (long_opt->arg_req == REQUIRED_ARG && !take_arg)
+			if (long_opt->arg_req == REQUIRED_VAL && !take_arg)
 				return BT_GETOPT_MISSING_ARG;
 
 			return val;
-		case NO_ARG:
+		case NO_VAL:
 			wr->retval = NULL;
 			return val;
 		case EMPTY_STRUCT:

@@ -17,11 +17,11 @@ static TEATEST(005_getopt, simple_long_opt)
 	TQ_START;
 	static const char *short_opt = NULL;
 	static const struct bt_getopt_long long_opt[] = {
-		{"bind-addr",		REQUIRED_ARG,	'H'},
-		{"bind-port",		REQUIRED_ARG,	'P'},
-		{"daemon",		NO_ARG,		'D'},
-		{"optional-arg",	OPTIONAL_ARG,	'O'},
-		{"unused-arg",		REQUIRED_ARG,	'u'},
+		{"bind-addr",		REQUIRED_VAL,	'H'},
+		{"bind-port",		REQUIRED_VAL,	'P'},
+		{"daemon",		NO_VAL,		'D'},
+		{"optional-arg",	OPTIONAL_VAL,	'O'},
+		{"unused-arg",		REQUIRED_VAL,	'u'},
 		GETOPT_LONG_STRUCT_END,
 	};
 	char *argv[] = {
@@ -100,11 +100,11 @@ static TEATEST(005_getopt, long_opt_with_eq_sign)
 	TQ_START;
 	static const char *short_opt = NULL;
 	static const struct bt_getopt_long long_opt[] = {
-		{"bind-addr",		REQUIRED_ARG,	'H'},
-		{"bind-port",		REQUIRED_ARG,	'P'},
-		{"daemon",		NO_ARG,		'D'},
-		{"optional-arg",	OPTIONAL_ARG,	'O'},
-		{"unused-arg",		REQUIRED_ARG,	'u'},
+		{"bind-addr",		REQUIRED_VAL,	'H'},
+		{"bind-port",		REQUIRED_VAL,	'P'},
+		{"daemon",		NO_VAL,		'D'},
+		{"optional-arg",	OPTIONAL_VAL,	'O'},
+		{"unused-arg",		REQUIRED_VAL,	'u'},
 		GETOPT_LONG_STRUCT_END,
 	};
 	char *argv[] = {
