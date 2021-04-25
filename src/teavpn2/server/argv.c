@@ -13,7 +13,7 @@
 
 int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 {
-	int ret;
+	int ret = 0;
 	static const struct bt_getopt_long long_opt[] = {
 		{"help",		NO_VAL,		'h'},
 		{"version",		NO_VAL,		'V'},
@@ -90,4 +90,5 @@ int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 			break;
 		}
 	}
+	return ret;
 }
