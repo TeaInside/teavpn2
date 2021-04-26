@@ -42,7 +42,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (!strncmp(argv[1], "server", 6)) {
-		return teavpn2_run_server(argc - 1, argv + 1);
+		return teavpn2_run_server(argc, argv);
 	} else
 	if (!strncmp(argv[1], "client", 6)) {
 

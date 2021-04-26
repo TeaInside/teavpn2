@@ -21,4 +21,3 @@ int teavpn2_run_server(int argc, char *argv[])
 
 	return ret;
 }
-

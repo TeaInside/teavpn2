@@ -7,13 +7,34 @@
  *  Copyright (C) 2021  Ammar Faizi
  */
 
+#include <stdlib.h>
+#include <bluetea/lib/string.h>
 #include <bluetea/lib/getopt.h>
 #include <teavpn2/server/common.h>
+
+#if defined(__clang__)
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Wreserved-id-macro"
+#endif
+
+#define __no_return __attribute__((noreturn))
+
+#if defined(__clang__)
+#  pragma clang diagnostic pop
+#endif
+
+static __no_return void teavpn2_help_server(const char *app)
+{
+	printf("Usage: %s server [options]\n\n", app);
+
+
+	exit(0);
+}
 
 
 int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 {
-	int ret = 0;
+	int ret = 0, i = 0;
 	static const struct bt_getopt_long long_opt[] = {
 		{"help",		NO_VAL,		'h'},
 		{"version",		NO_VAL,		'V'},
@@ -53,19 +74,49 @@ int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 		if (c == BT_GETOPT_END)
 			break;
 
+		/*
+		 * Program arguments:
+		 * ./teavpn2 server [options]
+		 *
+		 * We skip `./teavpn2` and `server`
+		 */
+		if (i == 0 || i == 1) 
+			goto end_while;
+
 		switch (c) {
 		case 'h':
-			break;
+			teavpn2_help_server(argv[0]);
 		case 'V':
-			break;
+			printf("TeaVPN2 " TEAVPN2_VERSION "\n");
+			exit(0);
 		case 'd':
+			cfg->sys.data_dir = trunc_str(wr.retval, 255);
 			break;
 		case 'v':
 			break;
 		case 't':
+			cfg->sys.thread = (uint16_t)atoi(wr.retval);
 			break;
-		case 's':
+		case 's': {
+			char buf[4];
+			uint32_t tmp = 0;
+
+			memcpy(&tmp, wr.retval, sizeof(tmp));
+			tmp |= 0x20202020u;
+			memcpy(buf, &tmp, sizeof(buf));
+			buf[3] = '\0';
+
+			if (!strncmp(buf, "tcp", 3)) {
+				cfg->sock.type = SOCK_TCP;
+			} else
+			if (!strncmp(buf, "udp", 3)) {
+				cfg->sock.type = SOCK_UDP;
+			} else {
+
+			}
+
 			break;
+		}
 		case 'H':
 			break;
 		case 'P':
@@ -89,6 +140,9 @@ int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 		default:
 			break;
 		}
+
+	end_while:
+		i++;
 	}
 	return ret;
 }
