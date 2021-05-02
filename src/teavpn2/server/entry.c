@@ -17,7 +17,10 @@ int teavpn2_run_server(int argc, char *argv[])
 
 	memset(&cfg, 0, sizeof(cfg));
 	ret = teavpn2_argv_parse(argc, argv, &cfg);
+	if (!ret)
+		goto out;
 
 
+out:
 	return ret;
 }

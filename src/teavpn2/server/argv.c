@@ -70,6 +70,7 @@ int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 
 	while (true) {
 		int c = bt_getopt(&wr);
+		char *retval = NULL;
 
 		if (c == BT_GETOPT_END)
 			break;
@@ -83,6 +84,9 @@ int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 		if (i == 0 || i == 1) 
 			goto end_while;
 
+
+		retval = wr.retval;
+
 		switch (c) {
 		case 'h':
 			teavpn2_help_server(argv[0]);
@@ -90,18 +94,19 @@ int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 			printf("TeaVPN2 " TEAVPN2_VERSION "\n");
 			exit(0);
 		case 'd':
-			cfg->sys.data_dir = trunc_str(wr.retval, 255);
+			cfg->sys.data_dir = trunc_str(retval, 255);
 			break;
 		case 'v':
+			/* TODO: Handle verbose level */
 			break;
 		case 't':
-			cfg->sys.thread = (uint16_t)atoi(wr.retval);
+			cfg->sys.thread = (uint16_t)atoi(retval);
 			break;
 		case 's': {
 			char buf[4];
 			uint32_t tmp = 0;
 
-			memcpy(&tmp, wr.retval, sizeof(tmp));
+			memcpy(&tmp, retval, sizeof(tmp));
 			tmp |= 0x20202020u;
 			memcpy(buf, &tmp, sizeof(buf));
 			buf[3] = '\0';
@@ -112,37 +117,53 @@ int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 			if (!strncmp(buf, "udp", 3)) {
 				cfg->sock.type = SOCK_UDP;
 			} else {
-
+				printf("Invalid socket type: \"%s\"\n", retval);
+				ret = EINVAL;
+				goto out;
 			}
 
 			break;
 		}
 		case 'H':
+			cfg->sock.bind_addr = trunc_str(retval, 255);
 			break;
 		case 'P':
+			cfg->sock.bind_port = (uint16_t)atoi(retval);
 			break;
 		case 'C':
+			cfg->sock.max_conn = (uint16_t)atoi(retval);
 			break;
 		case 'B':
+			cfg->sock.backlog = atoi(retval);
 			break;
 		case 'S':
+			cfg->sock.ssl_cert = trunc_str(retval, 512);
 			break;
 		case 'p':
+			cfg->sock.ssl_priv_key = trunc_str(retval, 512);
 			break;
 		case 'D':
+			cfg->iface.dev = trunc_str(retval, 32);
 			break;
 		case 'm':
+			cfg->iface.mtu = (uint16_t)atoi(retval);
 			break;
 		case '4':
+			cfg->iface.ipv4 = trunc_str(retval, IPV4_L + 1);
 			break;
 		case 'n':
+			cfg->iface.ipv4_netmask = trunc_str(retval, IPV4_L + 1);
 			break;
 		default:
-			break;
+			printf("Invalid option: '%c'\n", c);
+			ret = EINVAL;
+			goto out;
 		}
 
 	end_while:
 		i++;
 	}
+
+out:
 	return ret;
 }
