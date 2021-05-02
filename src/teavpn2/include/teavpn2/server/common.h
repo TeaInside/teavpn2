@@ -48,5 +48,6 @@ struct srv_cfg {
 
 int teavpn2_run_server(int argc, char *argv[]);
 int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg);
+int teavpn2_server_tcp(struct srv_cfg *cfg);
 
 #endif /* #ifndef TEAVPN2__SERVER__COMMON_H */
