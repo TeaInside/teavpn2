@@ -14,7 +14,7 @@
 #if defined(__x86_64__)
 static __always_inline void __cpu_relax()
 {
-	asm volatile("rep; nop;");
+	__asm__ volatile("rep nop");
 }
 #  define cpu_relax __cpu_relax
 #else

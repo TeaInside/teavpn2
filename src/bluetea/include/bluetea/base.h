@@ -24,8 +24,8 @@
 
 #define TASSERT(EXPR) assert(EXPR)
 
-#define likely(EXPR)   __builtin_expect(!!(EXPR), 1)
-#define unlikely(EXPR) __builtin_expect(!!(EXPR), 0)
+#define likely(EXPR)   __builtin_expect((bool)(EXPR), 1)
+#define unlikely(EXPR) __builtin_expect((bool)(EXPR), 0)
 
 #ifndef static_assert
 #  define static_assert(EXPR, ASSERT) _Static_assert((EXPR), ASSERT)
@@ -37,6 +37,10 @@
 
 #ifndef member_size
 #  define member_size(type, member) sizeof(((type *)0)->member)
+#endif
+
+#ifndef ARRAY_SIZE
+#  define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 #endif
 
 #if defined(__clang__)
@@ -59,6 +63,11 @@
 #ifndef __no_inline
 #  define __no_inline __attribute__((noinline))
 #endif
+
+#ifndef __no_return
+#  define __no_return __attribute__((noreturn))
+#endif
+
 
 #if defined(__clang__)
 #  pragma clang diagnostic pop

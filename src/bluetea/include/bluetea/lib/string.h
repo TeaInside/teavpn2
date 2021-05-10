@@ -50,6 +50,8 @@ char *urlencode(char *alloc, const char *s, size_t len, bool raw);
 size_t htmlspecialchars(char * restrict _output, size_t outlen,
 			const char * restrict _input, size_t inlen);
 
+
+
 inline static char *sane_strncpy(char * __restrict__ dest,
 				 const char * __restrict__ src,
 				 size_t n)
@@ -57,6 +59,13 @@ inline static char *sane_strncpy(char * __restrict__ dest,
 	dest = strncpy(dest, src, n - 1);
 	dest[n - 1] = '\0';
 	return dest;
+}
+
+
+static inline bool is_ws(char c)
+{
+	return (c == ' ') || (c == '\n') || (c == '\t') || (c == '\r') ||
+		(c == '\v');
 }
 
 
