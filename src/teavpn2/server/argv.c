@@ -26,8 +26,6 @@
 static __no_return void teavpn2_help_server(const char *app)
 {
 	printf("Usage: %s server [options]\n\n", app);
-
-
 	exit(0);
 }
 
@@ -84,6 +82,20 @@ int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 		if (i == 0 || i == 1) 
 			goto end_while;
 
+		if (c == BT_GETOPT_UNKNOWN_OPT) {
+			printf("Unknown option: %s\n", wr.argv[wr.cur_idx - 1]);
+			ret = -EINVAL;
+			break;
+		}
+
+		if (c == BT_GETOPT_MISSING_VAL) {
+			printf("Option \"%s\" requires a value\n",
+			       wr.argv[wr.cur_idx - 1]);
+			ret = -EINVAL;
+			break;
+		}
+
+		// printf("c = %d\n", c);
 
 		retval = wr.retval;
 
