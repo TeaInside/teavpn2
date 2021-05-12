@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0
 /*
- *  src/teavpn2/include/base.h
+ *  src/teavpn2/include/teavpn2/base.h
  *
  *  Base header for TeaVPN2
  *
@@ -18,22 +18,9 @@
 #include <stdbool.h>
 #include <stdalign.h>
 #include <inttypes.h>
-#include <teavpn2/print.h>
-#include <teavpn2/vt_hexdump.h>
+#include <netinet/in.h>
+#include <bluetea/base.h>
 
-
-#define TASSERT(EXPR) assert(EXPR)
-
-#define likely(EXPR)   __builtin_expect(!!(EXPR), 1)
-#define unlikely(EXPR) __builtin_expect(!!(EXPR), 0)
-
-#ifndef static_assert
-#  define static_assert(EXPR, ASSERT) _Static_assert((EXPR), ASSERT)
-#endif
-
-#ifndef offsetof
-#  define offsetof(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT))
-#endif
 
 #ifndef INET_ADDRSTRLEN
 #  define IPV4_L (sizeof("xxx.xxx.xxx.xxx"))
@@ -47,86 +34,31 @@
 #  define IPV6_L (INET6_ADDRSTRLEN)
 #endif
 
-#define IPV4_SL (IPV4_L + 8) /* For safer size */
-#define IPV6_SL (IPV6_L + 8) /* For safer size */
-
-#if defined(__clang__)
-#  pragma clang diagnostic push
-#  pragma clang diagnostic ignored "-Wreserved-id-macro"
-#endif
-
-#ifndef __inline
-#  define __inline inline
-#endif
-
-#ifndef __maybe_unused
-#  define __maybe_unused __attribute__((unused))
-#endif
-
-#ifndef __always_inline
-#  define __always_inline __inline __attribute__((always_inline))
-#endif
-
-#ifndef __no_inline
-#  define __no_inline __attribute__((noinline))
-#endif
-
-#if defined(__clang__)
-#  pragma clang diagnostic pop
-#endif
-
-#if __has_attribute(__fallthrough__)
-#  define fallthrough __attribute__((__fallthrough__))
-#else
-#  define fallthrough do {} while (0)  /* fallthrough */
-#endif
-
-#define struct_pad(N, SIZE) uint8_t __pad__##N[SIZE]
-
-typedef enum {
-	SOCK_TCP = 0,
-	SOCK_UDP = 1
-} sock_type;
-
-int print_license(void);
-void teavpn_print_version(void);
-int set_cpu_init(void);
-
 #define STR(a) #a
 #define XSTR(a) STR(a)
 
 #define TEAVPN2_VERSION \
-	XSTR(VERSION) \
-	"." \
-	XSTR(PATCHLEVEL) \
-	"." \
-	XSTR(SUBLEVEL) \
-	EXTRAVERSION
+	XSTR(VERSION) "." XSTR(PATCHLEVEL) "." XSTR(SUBLEVEL) EXTRAVERSION
 
 
-static_assert(sizeof(char) == 1, "Bad sizeof(char)");
-static_assert(sizeof(short) == 2, "Bad sizeof(short)");
-static_assert(sizeof(int) == 4, "Bad sizeof(int)");
-static_assert(sizeof(unsigned char) == 1, "Bad sizeof(unsigned char)");
-static_assert(sizeof(unsigned short) == 2, "Bad sizeof(unsigned short)");
-static_assert(sizeof(unsigned int) == 4, "Bad sizeof(unsigned int)");
+typedef enum _sock_type {
+	SOCK_TCP = 0,
+	SOCK_UDP = 1
+} sock_type;
 
-static_assert(sizeof(bool) == 1, "Bad sizeof(bool)");
 
-static_assert(sizeof(int8_t) == 1, "Bad sizeof(int8_t)");
-static_assert(sizeof(uint8_t) == 1, "Bad sizeof(uint8_t)");
-
-static_assert(sizeof(int16_t) == 2, "Bad sizeof(int16_t)");
-static_assert(sizeof(uint16_t) == 2, "Bad sizeof(uint16_t)");
-
-static_assert(sizeof(int32_t) == 4, "Bad sizeof(int32_t)");
-static_assert(sizeof(uint32_t) == 4, "Bad sizeof(uint32_t)");
-
-static_assert(sizeof(int64_t) == 8, "Bad sizeof(int64_t)");
-static_assert(sizeof(uint64_t) == 8, "Bad sizeof(uint64_t)");
-
-/* We only support 32-bit and 64-bit pointer size. */
-static_assert((sizeof(void *) == 8) || (sizeof(void *) == 4),
-	      "Bad sizeof(void *)");
+struct if_info {
+	char		dev[16];
+	char		ipv4_pub[IPV4_L];
+	char		ipv4[IPV4_L];
+	char		ipv4_netmask[IPV4_L];
+	char		ipv4_dgateway[IPV4_L];
+#ifdef TEAVPN_IPV6_SUPPORT
+	char		ipv6[IPV6_L];
+	char		ipv6_netmask[IPV6_L];
+	char		ipv6_dgateway[IPV6_L];
+#endif
+	uint16_t	mtu;
+};
 
 #endif /* #ifndef TEAVPN2__BASE_H */

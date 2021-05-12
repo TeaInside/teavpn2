@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0
 /*
- *  src/teavpn2/server/argv.c
+ *  src/teavpn2/server/entry.c
  *
  *  Argument parser for TeaVPN2 server
  *
@@ -8,215 +8,204 @@
  */
 
 #include <stdlib.h>
-#include <getopt.h>
-#include <string.h>
-#include <teavpn2/lib/arena.h>
-#include <teavpn2/lib/string.h>
+#include <bluetea/lib/string.h>
+#include <bluetea/lib/getopt.h>
 #include <teavpn2/server/common.h>
 
 
-struct parse_struct {
-	char		*app;
-	struct srv_cfg  *cfg;
-};
-
-/* ---------------------- Default configuration values ---------------------- */
-#ifdef SERVER_DEFAULT_CFG_FILE
-char d_srv_cfg_file[] = SERVER_DEFAULT_CFG_FILE;
-#else
-char d_srv_cfg_file[] = "/etc/teavpn2/server.ini";
-#endif
-
-uint8_t d_num_of_threads = 2;
-
-/* Default config for virtual network interface */
-uint16_t d_srv_mtu = 1500u;
-char d_srv_dev[] = "teavpn2";
-char d_srv_ipv4[] = "10.7.7.1";
-char d_srv_ipv4_netmask[] = "255.255.255.0";
-
-/* Default config for socket */
-sock_type d_srv_sock_type = SOCK_TCP;
-char d_srv_bind_addr[] = "0.0.0.0";
-uint16_t d_srv_bind_port = 55555u;
-uint16_t d_srv_max_conn = 10;
-int d_srv_backlog = 5;
-/* -------------------------------------------------------------------------- */
-
-
-static __always_inline void init_default_cfg(struct srv_cfg *cfg)
+static __no_return void teavpn2_help_server(const char *app)
 {
-	struct srv_sock_cfg *sock = &cfg->sock;
-	struct srv_iface_cfg *iface = &cfg->iface;
-
-	cfg->cfg_file = d_srv_cfg_file;
-	cfg->data_dir = NULL;
-	cfg->num_of_threads = d_num_of_threads;
-
-	/* Virtual network interface config */
-	iface->mtu = d_srv_mtu;
-	iface->dev = d_srv_dev;
-	iface->ipv4 = d_srv_ipv4;
-	iface->ipv4_netmask = d_srv_ipv4_netmask;
-
-	/* Socket config */
-	sock->type = d_srv_sock_type;
-	sock->bind_addr = d_srv_bind_addr;
-	sock->bind_port = d_srv_bind_port;
-	sock->max_conn = d_srv_max_conn;
-	sock->backlog = d_srv_backlog;
-	sock->ssl_cert = NULL;
-	sock->ssl_priv_key = NULL;
-}
-
-
-
-static const struct option long_opt[] = {
-	{"help",          no_argument,       0, 'h'},
-	{"version",       no_argument,       0, 'v'},
-	{"thread",        required_argument, 0, 't'},
-
-	/* Config file and data dir */
-	{"config",        required_argument, 0, 'c'},
-	{"data-dir",      required_argument, 0, 'D'},
-
-	/* Virtual network interface options */
-	{"mtu",           required_argument, 0, 'm'},
-	{"dev",           required_argument, 0, 'd'},
-	{"ipv4",          required_argument, 0, '4'},
-	{"ipv4-netmask",  required_argument, 0, 'N'},
-#ifdef TEAVPN_IPV6_SUPPORT
-	{"ipv6",          required_argument, 0, '6'},
-	{"ipv6-netmask",  required_argument, 0, 'M'},
-#endif
-
-	/* Socket options */
-	{"sock-type",     required_argument, 0, 's'},
-	{"bind-addr",     required_argument, 0, 'H'},
-	{"bind-port",     required_argument, 0, 'P'},
-	{"max-conn",      required_argument, 0, 'k'},
-	{"backlog",       required_argument, 0, 'B'},
-	{"ssl-cert",      required_argument, 0, 'C'},
-	{"ssl-priv-key",  required_argument, 0, 'K'},
-
-	{0, 0, 0, 0}
-};
-
-static const char short_opt[] =
-	"hvt:c:D:m:d:4:N:"
-#ifdef TEAVPN_IPV6_SUPPORT
-	"6:M:"
-#endif
-	"s:H:P:k:B:C:K:";
-
-static __always_inline int getopt_handler(int argc, char *argv[],
-					  struct parse_struct *ctx)
-{
-	int c;
-	struct srv_cfg *cfg = ctx->cfg;
-	struct srv_sock_cfg *sock = &cfg->sock;
-	struct srv_iface_cfg *iface = &cfg->iface;
-
-	while (true) {
-		int option_index = 0;
-		c = getopt_long(argc, argv, short_opt, long_opt, &option_index);
-		if (unlikely(c == -1))
-			break;
-
-		switch (c) {
-		case 'h':
-			teavpn_server_show_help(ctx->app);
-			goto out_exit;
-		case 'v':
-			teavpn_print_version();
-			goto out_exit;
-		case 't':
-			cfg->num_of_threads = (uint8_t)atoi(optarg);
-			break;
-		case 'c':
-			cfg->cfg_file = trunc_str(optarg, 255);
-			break;
-		case 'D':
-			cfg->data_dir = trunc_str(optarg, 255);
-			break;
-		case 'm':
-			iface->mtu = (uint16_t)atoi(trunc_str(optarg, 6));
-			break;
-		case 'd':
-			iface->dev = trunc_str(optarg, 32);
-			break;
-		case '4':
-			iface->ipv4 = trunc_str(optarg, 32);
-			break;
-		case 'N':
-			iface->ipv4_netmask = trunc_str(optarg, 32);
-			break;
-#ifdef TEAVPN_IPV6_SUPPORT
-		case '6':
-			iface->ipv6 = trunc_str(optarg, 64);
-			break;
-		case 'M':
-			iface->ipv6_netmask = trunc_str(optarg, 64);
-			break;
-#endif
-		case 's': {
-			union {
-				char		targ[4];
-				uint32_t	int_rep;
-			} t;
-			t.int_rep = 0;
-			sane_strncpy(t.targ, optarg, sizeof(t.targ));
-			t.int_rep |= 0x20202020u; /* tolower */
-			t.targ[3]  = '\0';
-			if (!memcmp(t.targ, "tcp", 4)) {
-				sock->type = SOCK_TCP;
-			} else
-			if (!memcmp(t.targ, "udp", 4)) {
-				sock->type = SOCK_UDP;
-			} else {
-				pr_error("Invalid socket type \"%s\"",
-					 optarg);
-				return -1;
-			}
-		}
-			break;
-		case 'H':
-			sock->bind_addr = trunc_str(optarg, 255);
-			break;
-		case 'P':
-			sock->bind_port = (uint16_t)atoi(trunc_str(optarg, 6));
-			break;
-		case 'k':
-			sock->max_conn = (uint16_t)atoi(trunc_str(optarg, 6));
-			break;
-		case 'B':
-			sock->backlog = (int)atoi(trunc_str(optarg, 6));
-			break;
-		case 'C':
-			sock->ssl_cert = trunc_str(optarg, 512);
-			break;
-		case 'K':
-			sock->ssl_priv_key = trunc_str(optarg, 512);
-			break;
-		default:
-			return -1;
-		}
-	}
-	return 0;
-out_exit:
+	printf("Usage: %s server [options]\n\n", app);
 	exit(0);
 }
 
 
-int teavpn_server_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
+static void init_default_cfg_values(struct srv_cfg *cfg)
 {
-	struct parse_struct ctx;
+	struct srv_sys_cfg  *sys   = &cfg->sys;
+	struct srv_sock_cfg *sock  = &cfg->sock;
+	struct if_info      *iface = &cfg->iface;
 
-	ctx.app = argv[0];
-	ctx.cfg = cfg;
-	init_default_cfg(cfg);
-	if (getopt_handler(argc - 1, argv + 1, &ctx) < 0)
-		return -1;
+	sys->data_dir       = NULL;
+	sys->verbose_level  = 5;
+	sys->thread         = 3;
 
-	return 0;
+	sock->bind_addr     = "0.0.0.0";
+	sock->bind_port     = 55555;
+	sock->max_conn      = 32;
+	sock->use_encrypt   = true;
+
+	iface->mtu = 1480;
+	sane_strncpy(iface->dev, "teavpn2-srv", sizeof(iface->dev));
+	sane_strncpy(iface->ipv4, "10.8.8.1", sizeof(iface->dev));
+	sane_strncpy(iface->ipv4_netmask, "255.255.255.0",
+		     sizeof(iface->ipv4_netmask));
+#ifdef TEAVPN_IPV6_SUPPORT
+	static_assert(0, "Fixme: TEAVPN_IPV6_SUPPORT");
+#endif
+}
+
+
+int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
+{
+	int ret = 0, i = 0;
+	static const struct bt_getopt_long long_opt[] = {
+		{"help",		NO_VAL,		'h'},
+		{"version",		NO_VAL,		'V'},
+		{"config",		REQUIRED_VAL,	'c'},
+		{"data-dir",		REQUIRED_VAL,	'd'},
+		{"verbose",		OPTIONAL_VAL,	'v'},
+		{"thread",		REQUIRED_VAL,	't'},
+
+		{"sock-type",		REQUIRED_VAL,	's'},
+		{"bind-addr",		REQUIRED_VAL,	'H'},
+		{"bind-port",		REQUIRED_VAL,	'P'},
+		{"max-conn",		REQUIRED_VAL,	'C'},
+		{"backlog",		REQUIRED_VAL,	'B'},
+		{"disable-encryption",	NO_VAL,		'N'},
+		{"ssl-cert",		REQUIRED_VAL,	'S'},
+		{"ssl-priv",		REQUIRED_VAL,	'p'},
+		{"ssl-priv-key",	REQUIRED_VAL,	'p'}, /* Alias */
+
+		{"dev",			REQUIRED_VAL,	'D'},
+		{"mtu",			REQUIRED_VAL,	'm'},
+		{"ipv4",		REQUIRED_VAL,	'4'},
+		{"ipv4-netmask",	REQUIRED_VAL,	'n'},
+
+		GETOPT_LONG_STRUCT_END
+	};
+	static const char short_opt[] = "hVd:v::t:s:H:P:C:B:S:p:D:m:4:n:";
+	struct bt_getopt_wr wr = {
+		.argc = argc,
+		.argv = argv,
+		.short_opt = short_opt,
+		.long_opt = long_opt,
+		.retval = NULL,
+		.cur_idx = 0
+	};
+
+	init_default_cfg_values(cfg);
+
+	while (true) {
+		int c = bt_getopt(&wr);
+		char *retval = NULL;
+
+		if (c == BT_GETOPT_END)
+			break;
+
+		/*
+		 * Program arguments:
+		 * ./teavpn2 server [options]
+		 *
+		 * We skip `./teavpn2` and `server`
+		 */
+		if (i == 0 || i == 1)
+			goto end_while;
+
+		if (c == BT_GETOPT_UNKNOWN_OPT) {
+			printf("Unknown option: %s\n", wr.argv[wr.cur_idx - 1]);
+			ret = -EINVAL;
+			break;
+		}
+
+		if (c == BT_GETOPT_MISSING_VAL) {
+			printf("Option \"%s\" requires a value\n",
+			       wr.argv[wr.cur_idx - 1]);
+			ret = -EINVAL;
+			break;
+		}
+
+		if (c < 0) {
+			printf("bt_getopt error: %d\n", c);
+			ret = -EINVAL;
+			break;
+		}
+
+		retval = wr.retval;
+
+		switch (c) {
+		case 'h':
+			teavpn2_help_server(argv[0]);
+		case 'V':
+			printf("TeaVPN2 " TEAVPN2_VERSION "\n");
+			exit(0);
+		case 'd':
+			cfg->sys.data_dir = trunc_str(retval, 255);
+			break;
+		case 'v':
+			/* TODO: Handle verbose level */
+			break;
+		case 't':
+			cfg->sys.thread = (uint16_t)atoi(retval);
+			break;
+		case 's': {
+			char buf[4];
+			uint32_t tmp = 0;
+
+			memcpy(&tmp, retval, sizeof(tmp));
+			tmp |= 0x20202020u;
+			memcpy(buf, &tmp, sizeof(buf));
+			buf[3] = '\0';
+
+			if (!strncmp(buf, "tcp", 3)) {
+				cfg->sock.type = SOCK_TCP;
+			} else
+			if (!strncmp(buf, "udp", 3)) {
+				cfg->sock.type = SOCK_UDP;
+			} else {
+				printf("Invalid socket type: \"%s\"\n", retval);
+				ret = EINVAL;
+				goto out;
+			}
+
+			break;
+		}
+		case 'H':
+			cfg->sock.bind_addr = trunc_str(retval, 255);
+			break;
+		case 'P':
+			cfg->sock.bind_port = (uint16_t)atoi(retval);
+			break;
+		case 'C':
+			cfg->sock.max_conn = (uint16_t)atoi(retval);
+			break;
+		case 'B':
+			cfg->sock.backlog = atoi(retval);
+			break;
+		case 'N':
+			cfg->sock.use_encrypt = false;
+			break;
+		case 'S':
+			cfg->sock.ssl_cert = trunc_str(retval, 512);
+			break;
+		case 'p':
+			cfg->sock.ssl_priv_key = trunc_str(retval, 512);
+			break;
+		case 'D':
+			sane_strncpy(cfg->iface.dev, retval,
+				     sizeof(cfg->iface.dev));
+			break;
+		case 'm':
+			cfg->iface.mtu = (uint16_t)atoi(retval);
+			break;
+		case '4':
+			sane_strncpy(cfg->iface.ipv4, retval,
+				     sizeof(cfg->iface.ipv4));
+			break;
+		case 'n':
+			sane_strncpy(cfg->iface.ipv4_netmask, retval,
+				     sizeof(cfg->iface.ipv4_netmask));
+			break;
+		default:
+			printf("Invalid option: '%c'\n", c);
+			ret = EINVAL;
+			goto out;
+		}
+
+	end_while:
+		i++;
+	}
+
+out:
+	return ret;
 }

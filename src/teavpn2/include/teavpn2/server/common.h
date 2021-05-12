@@ -1,8 +1,8 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0
 /*
- *  src/teavpn2/include/server/common.h
+ *  src/teavpn2/include/teavpn2/server/common.h
  *
- *  Common server header for TeaVPN2
+ *  Common header for TeaVPN2 server.
  *
  *  Copyright (C) 2021  Ammar Faizi
  */
@@ -13,63 +13,34 @@
 #include <teavpn2/base.h>
 
 
-struct srv_iface_cfg {
-	uint16_t	mtu;			/* Virtual interface MTU     */
-	struct_pad(0, sizeof(char *) - sizeof(uint16_t));
-	char		*dev;			/* Virtual interface name    */
-	char		*ipv4;			/* IPv4 to be used by server */
-	char		*ipv4_netmask;		/* IPv4 netmask              */
-#ifdef TEAVPN_IPV6_SUPPORT
-	char		*ipv6;			/* IPv6 to be used by server */
-	char		*ipv4_netmask;		/* IPv6 netmask              */
-#endif
+struct srv_sys_cfg {
+	char		*data_dir;
+	uint8_t		verbose_level;
+	uint16_t	thread;
 };
 
 
 struct srv_sock_cfg {
-	sock_type	type;		/* Socket type (TCP/UDP) */
-#if UINTPTR_MAX != 0xffffffffu
-	struct_pad(0, sizeof(char *) - sizeof(sock_type));
-#endif
+	bool		use_encrypt;
+	sock_type	type;
+	char		*bind_addr;
+	uint16_t	bind_port;
+	uint16_t	max_conn;
+	int		backlog;
 	char		*ssl_cert;
 	char		*ssl_priv_key;
-	char		*exposed_addr;	/* Exposed address       */
-	char		*bind_addr;	/* Bind address          */
-	uint16_t	bind_port;	/* Bind port             */
-	uint16_t	max_conn;	/* Max connections       */
-	int		backlog;	/* Socket backlog        */
 };
 
 
 struct srv_cfg {
-	char			*cfg_file;  /* Config file     */
-	char			*data_dir;  /* Data directory  */
-	struct srv_iface_cfg	iface;
+	struct srv_sys_cfg	sys;
 	struct srv_sock_cfg	sock;
-	uint8_t			num_of_threads;
-	struct_pad(0, 7);
+	struct if_info		iface;
 };
 
-int teavpn_server_entry(int argc, char *argv[]);
-int teavpn_server_cfg_parse(struct srv_cfg *cfg);
-int teavpn_server_argv_parse(int argc, char *argv[], struct srv_cfg *cfg);
-void teavpn_server_show_help(const char *app);
 
+int teavpn2_run_server(int argc, char *argv[]);
+int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg);
 
-/* Default config for virtual network interface */
-extern uint16_t d_srv_mtu;
-extern char d_srv_dev[];
-extern char d_srv_ipv4[];
-extern char d_srv_ipv4_netmask[];
-
-/* Default config for socket */
-extern sock_type d_srv_sock_type;
-extern char d_srv_bind_addr[];
-extern uint16_t d_srv_bind_port;
-extern uint16_t d_srv_max_conn;
-extern int d_srv_backlog;
-
-extern char d_srv_cfg_file[];
-extern uint8_t d_num_of_threads;
 
 #endif /* #ifndef TEAVPN2__SERVER__COMMON_H */

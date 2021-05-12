@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0
 /*
  *  src/teavpn2/main.c
  *
@@ -9,11 +9,12 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <teavpn2/common.h>
-#include <teavpn2/lib/arena.h>
+#include <teavpn2/base.h>
+#include <bluetea/lib/arena.h>
+#include <teavpn2/server/common.h>
 
 
-static __always_inline void usage(const char *app)
+static void show_general_help(const char *app)
 {
 	printf("Usage: %s [client|server] [options]\n\n", app);
 	printf("See:\n");
@@ -23,39 +24,41 @@ static __always_inline void usage(const char *app)
 	printf("\n");
 	printf(" [Version]\n");
 	printf("   %s --version\n", app);
-	printf("\n");
-	printf(" [License]\n");
-	printf("   %s --license\t\tShow TeaVPN2 license text\n", app);
 }
 
 
 int main(int argc, char *argv[])
 {
-	char arena_buffer[4096];
+	int ret = 0;
+	alignas(16) char arena_buf[0x4000];
+	if (argc == 1)
+		goto out_show_help;
 
-	if (argc <= 1) {
-		usage(argv[0]);
-		return 1;
+	ret = ar_init(arena_buf, sizeof(arena_buf));
+	if (unlikely(ret)) {
+		pr_err("ar_init(): " PRERF, PREAR(-ret));
+		ret = -ret;
+		goto out;
 	}
 
-	memset(arena_buffer, 0, sizeof(arena_buffer));
-	ar_init(arena_buffer, sizeof(arena_buffer));
+	if (!strncmp(argv[1], "server", 6)) {
+		return teavpn2_run_server(argc, argv);
+	} else
+	if (!strncmp(argv[1], "client", 6)) {
 
-	if (strncmp(argv[1], "client", 6) == 0) {
-		return teavpn_client_entry(argc, argv);
 	} else
-	if (strncmp(argv[1], "server", 6) == 0) {
-		return teavpn_server_entry(argc, argv);
-	} else
-	if (strncmp(argv[1], "--version", strnlen(argv[1], 9)) == 0) {
-		teavpn_print_version();
-		return 0;
-	} else
-	if (strncmp(argv[1], "--license", 9) == 0) {
-		return print_license();
+	if (!strncmp(argv[1], "--version", 9)) {
+		printf("TeaVPN2 " TEAVPN2_VERSION "\n");
+	} else {
+		printf("\nError: Invalid argument: \"%s\"\n\n", argv[1]);
+		ret = EINVAL;
+		goto out_show_help;
 	}
 
-	printf("Invalid argument: \"%s\"\n", argv[1]);
-	usage(argv[0]);
-	return 1;
+	goto out;
+
+out_show_help:
+	show_general_help(argv[0]);
+out:
+	return ret;
 }

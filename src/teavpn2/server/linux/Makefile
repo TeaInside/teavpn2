@@ -2,24 +2,19 @@
 # SPDX-License-Identifier: GPL-2.0
 #
 # @author Ammar Faizi <ammarfaizi2@gmail.com> https://www.facebook.com/ammarfaizi2
-# @license GNU GPL-v2
+# @license GNU GPL-2.0
 #
-# TeaVPN2 - Fast and Free VPN Software
+# Copyright (C) 2021  Ammar Faizi
 #
 
+DEP_DIRS += $(BASE_DEP_DIR)/src/teavpn2/server/linux
 
-DEP_DIRS	+= $(BASE_DEP_DIR)/src/teavpn2/server/linux
-
-
-OBJ_TMP_CC	:= \
+OBJ_TMP_CC := \
 	$(BASE_DIR)/src/teavpn2/server/linux/tcp.o
 
-
-
-OBJ_PRE_CC	+= $(OBJ_TMP_CC)
-
+OBJ_PRE_CC += $(OBJ_TMP_CC)
 
 
 $(OBJ_TMP_CC):
-	$(S)echo "   CC		" "$(@:$(BASE_DIR)/%=%)"
-	$(Q)$(CC) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)
+	$(CC_PRINT)
+	$(Q)$(CC) $(PIC_FLAGS) $(DEPFLAGS) $(CFLAGS) -c $(O_TO_C) -o $(@)
