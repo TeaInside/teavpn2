@@ -47,7 +47,7 @@ struct bt_getopt_wr {
 #define BT_GETOPT_UNKNOWN_OPT	(-2)
 #define BT_GETOPT_NON_OPT	(-3)
 #define BT_GETOPT_EINVAL	(-4)
-#define BT_GETOPT_MISSING_ARG	(-5)
+#define BT_GETOPT_MISSING_VAL	(-5)
 #define BT_GETOPT_WANT_NO_VAL	(-6)
 
 int bt_getopt(struct bt_getopt_wr *wr);
