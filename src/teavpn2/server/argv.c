@@ -12,16 +12,6 @@
 #include <bluetea/lib/getopt.h>
 #include <teavpn2/server/common.h>
 
-#if defined(__clang__)
-#  pragma clang diagnostic push
-#  pragma clang diagnostic ignored "-Wreserved-id-macro"
-#endif
-
-#define __no_return __attribute__((noreturn))
-
-#if defined(__clang__)
-#  pragma clang diagnostic pop
-#endif
 
 static __no_return void teavpn2_help_server(const char *app)
 {
@@ -36,6 +26,7 @@ int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 	static const struct bt_getopt_long long_opt[] = {
 		{"help",		NO_VAL,		'h'},
 		{"version",		NO_VAL,		'V'},
+		{"config",		REQUIRED_VAL,	'c'},
 		{"data-dir",		REQUIRED_VAL,	'd'},
 		{"verbose",		OPTIONAL_VAL,	'v'},
 		{"thread",		REQUIRED_VAL,	't'},
@@ -95,7 +86,11 @@ int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 			break;
 		}
 
-		// printf("c = %d\n", c);
+		if (c < 0) {
+			printf("bt_getopt error: %d\n", c);
+			ret = -EINVAL;
+			break;
+		}
 
 		retval = wr.retval;
 
