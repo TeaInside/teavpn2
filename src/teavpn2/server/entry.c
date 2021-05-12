@@ -9,6 +9,9 @@
 
 #include <teavpn2/server/common.h>
 
+#if defined(__linux__)
+#  include <teavpn2/server/linux/tcp.h>
+#endif
 
 int teavpn2_run_server(int argc, char *argv[])
 {
@@ -17,7 +20,7 @@ int teavpn2_run_server(int argc, char *argv[])
 
 	memset(&cfg, 0, sizeof(cfg));
 	ret = teavpn2_argv_parse(argc, argv, &cfg);
-	if (!ret)
+	if (unlikely(ret))
 		goto out;
 
 	switch (cfg.sock.type) {

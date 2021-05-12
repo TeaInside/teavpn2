@@ -7,17 +7,10 @@
 # Copyright (C) 2021  Ammar Faizi
 #
 
-DEP_DIRS += $(BASE_DEP_DIR)/src/teavpn2/server
-
-
-ifeq ($(UNAME_S),Linux)
-	include $(BASE_DIR)/src/teavpn2/server/linux/Makefile
-endif
-
+DEP_DIRS += $(BASE_DEP_DIR)/src/teavpn2/server/linux
 
 OBJ_TMP_CC := \
-	$(BASE_DIR)/src/teavpn2/server/argv.o \
-	$(BASE_DIR)/src/teavpn2/server/entry.o
+	$(BASE_DIR)/src/teavpn2/server/linux/tcp.o
 
 OBJ_PRE_CC += $(OBJ_TMP_CC)
 
