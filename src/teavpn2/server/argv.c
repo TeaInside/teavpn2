@@ -20,6 +20,32 @@ static __no_return void teavpn2_help_server(const char *app)
 }
 
 
+static void init_default_cfg_values(struct srv_cfg *cfg)
+{
+	struct srv_sys_cfg  *sys   = &cfg->sys;
+	struct srv_sock_cfg *sock  = &cfg->sock;
+	struct if_info      *iface = &cfg->iface;
+
+	sys->data_dir       = NULL;
+	sys->verbose_level  = 5;
+	sys->thread         = 3;
+
+	sock->bind_addr     = "0.0.0.0";
+	sock->bind_port     = 55555;
+	sock->max_conn      = 32;
+	sock->use_encrypt   = true;
+
+	iface->mtu = 1480;
+	sane_strncpy(iface->dev, "teavpn2-srv", sizeof(iface->dev));
+	sane_strncpy(iface->ipv4, "10.8.8.1", sizeof(iface->dev));
+	sane_strncpy(iface->ipv4_netmask, "255.255.255.0",
+		     sizeof(iface->ipv4_netmask));
+#ifdef TEAVPN_IPV6_SUPPORT
+	static_assert(0, "Fixme: TEAVPN_IPV6_SUPPORT");
+#endif
+}
+
+
 int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 {
 	int ret = 0, i = 0;
@@ -36,6 +62,7 @@ int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 		{"bind-port",		REQUIRED_VAL,	'P'},
 		{"max-conn",		REQUIRED_VAL,	'C'},
 		{"backlog",		REQUIRED_VAL,	'B'},
+		{"disable-encryption",	NO_VAL,		'N'},
 		{"ssl-cert",		REQUIRED_VAL,	'S'},
 		{"ssl-priv",		REQUIRED_VAL,	'p'},
 		{"ssl-priv-key",	REQUIRED_VAL,	'p'}, /* Alias */
@@ -57,6 +84,8 @@ int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 		.cur_idx = 0
 	};
 
+	init_default_cfg_values(cfg);
+
 	while (true) {
 		int c = bt_getopt(&wr);
 		char *retval = NULL;
@@ -70,7 +99,7 @@ int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 		 *
 		 * We skip `./teavpn2` and `server`
 		 */
-		if (i == 0 || i == 1) 
+		if (i == 0 || i == 1)
 			goto end_while;
 
 		if (c == BT_GETOPT_UNKNOWN_OPT) {
@@ -142,6 +171,9 @@ int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 			break;
 		case 'B':
 			cfg->sock.backlog = atoi(retval);
+			break;
+		case 'N':
+			cfg->sock.use_encrypt = false;
 			break;
 		case 'S':
 			cfg->sock.ssl_cert = trunc_str(retval, 512);

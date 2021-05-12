@@ -21,6 +21,7 @@ struct srv_sys_cfg {
 
 
 struct srv_sock_cfg {
+	bool		use_encrypt;
 	sock_type	type;
 	char		*bind_addr;
 	uint16_t	bind_port;
