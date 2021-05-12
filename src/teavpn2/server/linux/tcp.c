@@ -64,6 +64,9 @@ static int init_state(struct srv_state *state)
 	if (!*cfg->iface.dev)
 		strncpy(cfg->iface.dev, "teavpn2-srv", sizeof(cfg->iface.dev));
 
+	if (!cfg->iface.mtu)
+		cfg->iface.mtu = 1480;
+
 	if (!*cfg->iface.ipv4) {
 		pr_err("cfg->iface.ipv4 cannot be empty");
 		return -EINVAL;
@@ -99,14 +102,14 @@ static int init_state(struct srv_state *state)
 static int init_iface(struct srv_state *state)
 {
 	size_t i;
-	int ret = 0;
 	int *tun_fds = state->tun_fds;
 	struct if_info *iff = &state->cfg->iface;
 	const short tun_flags = IFF_TUN | IFF_NO_PI | IFF_MULTI_QUEUE;
 
-
 	prl_notice(3, "Allocating virtual network interface...");
 	for (i = 0; i < TUN_TAP_QUEUE_NUM; i++) {
+		int ret;
+
 		prl_notice(5, "Allocating TUN fd %zu...", i);
 		ret = tun_alloc(iff->dev, tun_flags);
 		if (ret < 0)
@@ -119,6 +122,10 @@ static int init_iface(struct srv_state *state)
 		tun_fds[i] = ret;
 	}
 
+	if (!teavpn_iface_up(iff)) {
+		pr_err("Cannot bring virtual network interface up");
+		return -ENETDOWN;
+	}
 
 	return 0;
 }
