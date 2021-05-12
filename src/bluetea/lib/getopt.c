@@ -81,7 +81,7 @@ static int track_getopt_long(char *cur_arg, size_t cur_len, int cur_idx,
 				take_arg = cur_arg + opt_len + 1;
 			} else {
 				take_arg = argv[cur_idx + 1];
-				if (*take_arg != '-')
+				if (take_arg && *take_arg != '-')
 					wr->cur_idx++;
 				else
 					take_arg = NULL;
@@ -89,7 +89,7 @@ static int track_getopt_long(char *cur_arg, size_t cur_len, int cur_idx,
 
 			wr->retval = take_arg;
 			if (long_opt->arg_req == REQUIRED_VAL && !take_arg)
-				return BT_GETOPT_MISSING_ARG;
+				return BT_GETOPT_MISSING_VAL;
 
 			return val;
 		case NO_VAL:
@@ -147,7 +147,7 @@ static int track_getopt_short(char *cur_arg, size_t cur_len, int cur_idx,
 			take_arg = cur_arg + 2;
 		} else {
 			take_arg = argv[cur_idx + 1];
-			if (*take_arg != '-')
+			if (take_arg && *take_arg != '-')
 				wr->cur_idx++;
 			else
 				take_arg = NULL;
@@ -167,7 +167,7 @@ static int track_getopt_short(char *cur_arg, size_t cur_len, int cur_idx,
 		 * Option takes required value
 		 */
 		if (take_arg == NULL)
-			return BT_GETOPT_MISSING_ARG;
+			return BT_GETOPT_MISSING_VAL;
 
 		return c;
 	}
