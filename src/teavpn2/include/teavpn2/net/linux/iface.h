@@ -11,6 +11,7 @@
 #define TEAVPN2__NET__LINUX__IFACE_H
 
 #include <teavpn2/base.h>
+#include <linux/if_tun.h>
 
 int tun_alloc(const char *dev, short flags);
 int fd_set_nonblock(int fd);

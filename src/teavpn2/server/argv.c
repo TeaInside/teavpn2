@@ -155,16 +155,19 @@ int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 			cfg->sock.ssl_priv_key = trunc_str(retval, 512);
 			break;
 		case 'D':
-			cfg->iface.dev = trunc_str(retval, 32);
+			sane_strncpy(cfg->iface.dev, retval,
+				     sizeof(cfg->iface.dev));
 			break;
 		case 'm':
 			cfg->iface.mtu = (uint16_t)atoi(retval);
 			break;
 		case '4':
-			cfg->iface.ipv4 = trunc_str(retval, IPV4_L + 1);
+			sane_strncpy(cfg->iface.ipv4, retval,
+				     sizeof(cfg->iface.ipv4));
 			break;
 		case 'n':
-			cfg->iface.ipv4_netmask = trunc_str(retval, IPV4_L + 1);
+			sane_strncpy(cfg->iface.ipv4_netmask, retval,
+				     sizeof(cfg->iface.ipv4_netmask));
 			break;
 		default:
 			printf("Invalid option: '%c'\n", c);

@@ -10,13 +10,14 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <sys/epoll.h>
+#include <linux/if_tun.h>
 
 #include <teavpn2/net/linux/iface.h>
 #include <teavpn2/server/linux/tcp.h>
 
 
 #define CALCULATE_STATS		1
-#define TUN_TAP_QUEUE_NUM	32u
+#define TUN_TAP_QUEUE_NUM	8u
 
 
 struct srv_state {
@@ -60,6 +61,19 @@ static int init_state(struct srv_state *state)
 		return -EINVAL;
 	}
 
+	if (!*cfg->iface.dev)
+		strncpy(cfg->iface.dev, "teavpn2-srv", sizeof(cfg->iface.dev));
+
+	if (!*cfg->iface.ipv4) {
+		pr_err("cfg->iface.ipv4 cannot be empty");
+		return -EINVAL;
+	}
+
+	if (!*cfg->iface.ipv4_netmask) {
+		pr_err("cfg->iface.ipv4_netmask cannot be empty");
+		return -EINVAL;
+	}
+
 	state->intr_sig     = -1;
 	state->tcp_fd       = -1;
 	state->epoll_fd     = -1;
@@ -84,16 +98,29 @@ static int init_state(struct srv_state *state)
 
 static int init_iface(struct srv_state *state)
 {
+	size_t i;
 	int ret = 0;
-	int tun_fd;
 	int *tun_fds = state->tun_fds;
+	struct if_info *iff = &state->cfg->iface;
+	const short tun_flags = IFF_TUN | IFF_NO_PI | IFF_MULTI_QUEUE;
 
 
 	prl_notice(3, "Allocating virtual network interface...");
+	for (i = 0; i < TUN_TAP_QUEUE_NUM; i++) {
+		prl_notice(5, "Allocating TUN fd %zu...", i);
+		ret = tun_alloc(iff->dev, tun_flags);
+		if (ret < 0)
+			return ret;
+
+		ret = fd_set_nonblock(ret);
+		if (ret < 0)
+			return ret;
+
+		tun_fds[i] = ret;
+	}
 
 
-
-	return ret;
+	return 0;
 }
 
 

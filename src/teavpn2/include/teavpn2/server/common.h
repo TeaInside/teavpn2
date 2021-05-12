@@ -31,18 +31,10 @@ struct srv_sock_cfg {
 };
 
 
-struct srv_iface_cfg {
-	char		*dev;
-	uint16_t	mtu;
-	char		*ipv4;
-	char		*ipv4_netmask;
-};
-
-
 struct srv_cfg {
 	struct srv_sys_cfg	sys;
 	struct srv_sock_cfg	sock;
-	struct srv_iface_cfg	iface;
+	struct if_info		iface;
 };
 
 
