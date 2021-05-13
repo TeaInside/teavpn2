@@ -19,7 +19,11 @@ int teavpn2_run_server(int argc, char *argv[])
 	struct srv_cfg cfg;
 
 	memset(&cfg, 0, sizeof(cfg));
-	ret = teavpn2_argv_parse(argc, argv, &cfg);
+	ret = teavpn2_server_parse_argv(argc, argv, &cfg);
+	if (unlikely(ret))
+		goto out;
+
+	ret = teavpn2_server_load_config(&cfg);
 	if (unlikely(ret))
 		goto out;
 

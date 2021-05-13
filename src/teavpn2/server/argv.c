@@ -46,7 +46,7 @@ static void init_default_cfg_values(struct srv_cfg *cfg)
 }
 
 
-int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
+int teavpn2_server_parse_argv(int argc, char *argv[], struct srv_cfg *cfg)
 {
 	int ret = 0, i = 0;
 	static const struct bt_getopt_long long_opt[] = {
@@ -129,6 +129,9 @@ int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg)
 		case 'V':
 			printf("TeaVPN2 " TEAVPN2_VERSION "\n");
 			exit(0);
+		case 'c':
+			cfg->sys.cfg_file = trunc_str(retval, 255);
+			break;
 		case 'd':
 			cfg->sys.data_dir = trunc_str(retval, 255);
 			break;

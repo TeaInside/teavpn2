@@ -14,6 +14,7 @@
 
 
 struct srv_sys_cfg {
+	char		*cfg_file;
 	char		*data_dir;
 	uint8_t		verbose_level;
 	uint16_t	thread;
@@ -40,7 +41,7 @@ struct srv_cfg {
 
 
 int teavpn2_run_server(int argc, char *argv[]);
-int teavpn2_argv_parse(int argc, char *argv[], struct srv_cfg *cfg);
-
+int teavpn2_server_parse_argv(int argc, char *argv[], struct srv_cfg *cfg);
+int teavpn2_server_load_config(struct srv_cfg *cfg);
 
 #endif /* #ifndef TEAVPN2__SERVER__COMMON_H */
