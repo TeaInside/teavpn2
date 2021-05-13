@@ -33,7 +33,7 @@
 #define EPL_MAP_SHIFT	0x00003u
 
 #define EPL_IN_EVT	(EPOLLIN | EPOLLPRI)
-
+#define EPL_WAIT_NUM	16
 
 struct srv_thread {
 	pthread_t		thread;
@@ -210,7 +210,7 @@ static int epoll_add(int epl_fd, int fd, uint32_t events)
 }
 
 
-static int epoll_delete(int epl_fd, int fd)
+/*static int epoll_delete(int epl_fd, int fd)
 {
 	int err;
 
@@ -220,7 +220,7 @@ static int epoll_delete(int epl_fd, int fd)
 		return -err;
 	}
 	return 0;
-}
+}*/
 
 
 static int init_epoll(struct srv_state *state)
@@ -229,7 +229,7 @@ static int init_epoll(struct srv_state *state)
 	int epoll_fd;
 
 	prl_notice(3, "Initializing epoll...");
-	epoll_fd = epoll_create(0xffff);
+	epoll_fd = epoll_create(255);
 	if (unlikely(epoll_fd < 0)) {
 		ret = errno;
 		pr_err("epoll_create(): " PRERF, PREAR(ret));
@@ -407,10 +407,13 @@ static int init_tcp_socket(struct srv_state *state)
 		goto out_err;
 	}
 
+
 	ret = epoll_add(state->epoll_fd, tcp_fd, EPL_IN_EVT);
 	if (unlikely(ret))
 		goto out_err;
 
+
+	state->epoll_map[tcp_fd] = EPL_MAP_TO_TCP;
 	state->tcp_fd = tcp_fd;
 	prl_notice(0, "Listening on %s:%d...", sock->bind_addr,
 		   sock->bind_port);
@@ -422,19 +425,158 @@ out_err:
 }
 
 
+static int handle_tcp_event(uint32_t revents, struct srv_state *state)
+{
+	const uint32_t err_mask = EPOLLERR | EPOLLHUP;
+	(void)revents;
+	(void)state;
+	(void)err_mask;
+	return 0;
+}
+
+
+static int handle_tun_event(uint32_t revents, struct srv_state *state)
+{
+	const uint32_t err_mask = EPOLLERR | EPOLLHUP;
+	(void)revents;
+	(void)state;
+	(void)err_mask;
+	return 0;
+}
+
+
+static int handle_client_event(uint16_t map_to, uint32_t revents,
+			       struct srv_state *state)
+{
+	const uint32_t err_mask = EPOLLERR | EPOLLHUP;
+	(void)map_to;
+	(void)revents;
+	(void)state;
+	(void)err_mask;
+	return 0;
+}
+
+
+static int handle_event(struct epoll_event *event, struct srv_state *state)
+{
+	int fd = event->data.fd;
+	uint16_t map_to;
+	uint32_t revents = event->events;
+
+	map_to = state->epoll_map[(size_t)fd];
+	switch (map_to) {
+	case EPL_MAP_TO_NOP:
+		panic("Bug: unmapped file descriptor %d in handle_event()", fd);
+		abort();
+	case EPL_MAP_TO_TCP:
+		return handle_tcp_event(revents, state);
+	case EPL_MAP_TO_TUN:
+		return handle_tun_event(revents, state);
+	default:
+		return handle_client_event(map_to, revents, state);
+	}
+	__builtin_unreachable();
+}
+
+
+static int handle_events(struct epoll_event events[EPL_WAIT_NUM], int eret,
+			 struct srv_state *state)
+{
+	int ret = 0;
+
+	for (int i = 0; i < eret; i++) {
+		ret = handle_event(&events[i], state);
+		if (unlikely(ret)) {
+			pr_err("handle_event(): " PRERF, PREAR(-ret));
+			break;
+		}
+	}
+
+	return ret;
+}
+
+
+static int run_master_event_loop(struct srv_state *state)
+{
+	int ret = 0;
+	int epoll_fd = state->epoll_fd;
+	struct epoll_event events[EPL_WAIT_NUM];
+
+	while (likely(!state->stop_el)) {
+		int eret, err;
+
+		eret = epoll_wait(epoll_fd, events, EPL_WAIT_NUM, 5000);
+		if (unlikely(!eret)) {
+			prl_notice(8, "epoll_wait() reached its timeout");
+			continue;
+		}
+
+		if (unlikely(eret < 0)) {
+			err = errno;
+			if (err == EINTR) {
+				prl_notice(0, "Interrupted!");
+				continue;
+			}
+
+			pr_err("epoll_wait(): " PRERF, PREAR(err));
+			ret = -err;
+			break;
+		}
+
+		eret = handle_events(events, eret, state);
+		if (unlikely(eret)) {
+			pr_err("handle_events(): " PRERF, PREAR(-eret));
+			ret = eret;
+			break;
+		}
+	}
+
+	return ret;
+}
+
+
 static int run_workers(struct srv_state *state)
 {
-	int ret;
-	struct srv_cfg *cfg = state->cfg;
-	struct srv_thread *threads = state->threads;
+	// struct srv_cfg *cfg = state->cfg;
+	// struct srv_thread *threads = state->threads;
+
+	/*
+	 * TODO: Spawn threads
+	 */
+
+	return run_master_event_loop(state);
+}
 
 
-	return 0;
+static void close_fds(struct srv_state *state)
+{
+	int tcp_fd = state->tcp_fd;
+	int *tun_fds = state->tun_fds;
+	int epoll_fd = state->epoll_fd;
+
+	if (epoll_fd != -1) {
+		prl_notice(3, "Closing state->epoll_fd (%d)...", epoll_fd);
+		close(epoll_fd);
+	}
+
+	for (size_t i = 0; i < IFF_QUEUE_NUM; i++) {
+		if (tun_fds[i] != -1) {
+			prl_notice(3, "Closing state->tun_fds[%zu] (%d)...", i,
+				   tun_fds[i]);
+			close(tun_fds[i]);
+		}
+	}
+
+	if (tcp_fd != -1) {
+		prl_notice(3, "Closing state->tcp_fd (%d)...", tcp_fd);
+		close(tcp_fd);
+	}
 }
 
 
 static void destroy_state(struct srv_state *state)
 {
+	close_fds(state);
 	free(state->threads);
 	free(state->epoll_map);
 }
