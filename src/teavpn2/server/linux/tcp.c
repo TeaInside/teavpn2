@@ -35,6 +35,7 @@
 
 
 struct srv_thread {
+	_Atomic(bool)		is_on;
 	pthread_t		thread;
 	struct srv_state	*state;
 	int			epoll_fd;
@@ -57,6 +58,7 @@ struct srv_state {
 	struct srv_cfg 		*cfg;
 	uint16_t		*epoll_map;
 	bool			stop_el;
+	_Atomic(uint16_t)	on_thread_c;
 };
 
 
@@ -66,6 +68,11 @@ static struct srv_state *g_state = NULL;
 static void handle_interrupt(int sig)
 {
 	struct srv_state *state = g_state;
+
+	if (state->intr_sig != -1) {
+		state->stop_el = true;
+		return;
+	}
 
 	printf("\nInterrupt caught: %d\n", sig);
 	if (state) {
@@ -188,6 +195,7 @@ static int init_state(struct srv_state *state)
 	state->threads      = NULL;
 	state->epoll_map    = NULL;
 	state->stop_el      = false;
+	atomic_store(&state->on_thread_c, 0);
 
 	ret = validate_cfg(cfg);
 	if (unlikely(ret))
@@ -269,7 +277,7 @@ static int init_iface(struct srv_state *state)
 
 		prl_notice(5, "Allocating TUN fd %zu...", i);
 		tmp_fd = tun_alloc(iff->dev, tun_flags);
-		if (tmp_fd < 0) {
+		if (unlikely(tmp_fd < 0)) {
 			ret = tmp_fd;
 			goto out_err;
 		}
@@ -559,11 +567,16 @@ static void *run_sub_thread(void *_thread_p)
 	struct epoll_event events[EPL_WAIT_NUM];
 
 	TASSERT(thread->thread_num != 0);
+
+	atomic_store(&thread->is_on, true);
+	atomic_fetch_add_explicit(&state->on_thread_c, 1, memory_order_acquire);
 	while (likely(!state->stop_el)) {
 		ret = do_event_loop_routine(epoll_fd, events, thread, state);
 		if (unlikely(ret))
 			break;
 	}
+	atomic_store(&thread->is_on, false);
+	atomic_fetch_sub_explicit(&state->on_thread_c, 1, memory_order_acquire);
 
 	return NULL;
 }
@@ -577,11 +590,16 @@ static int run_main_thread(struct srv_thread *thread)
 	struct epoll_event events[EPL_WAIT_NUM];
 
 	TASSERT(thread->thread_num == 0);
+
+	atomic_store(&thread->is_on, true);
+	atomic_fetch_add_explicit(&state->on_thread_c, 1, memory_order_acquire);
 	while (likely(!state->stop_el)) {
 		ret = do_event_loop_routine(epoll_fd, events, thread, state);
 		if (unlikely(ret))
 			break;
 	}
+	atomic_store(&thread->is_on, false);
+	atomic_fetch_sub_explicit(&state->on_thread_c, 1, memory_order_acquire);
 
 	return ret;
 }
@@ -614,7 +632,7 @@ static int run_workers(struct srv_state *state)
 		 * because we are going to run it
 		 * on the main thread.
 		 */
-		if (i == 0)
+		if (unlikely(i == 0))
 			continue;
 
 		pthread_create(&thread->thread, NULL, run_sub_thread, thread);
@@ -637,13 +655,53 @@ static int run_workers(struct srv_state *state)
 
 out_err:
 	state->stop_el = true;
-	kill(getpid(), SIGTERM);
 	while (i--) {
 		thread = &threads[i];
 		close(thread->epoll_fd);
 		thread->epoll_fd = -1;
+		pthread_kill(thread->thread, SIGTERM);
 	}
 	return ret;
+}
+
+
+static void terminate_threads(struct srv_state *state)
+{
+	size_t nn = state->cfg->sys.thread;
+	struct srv_thread *thread, *threads = state->threads;
+
+	/*
+	 * Don't kill main thread (i = 0)
+	 */
+	for (size_t i = 1; i < nn; i++) {
+		thread = &threads[i];
+		if (atomic_load_explicit(&thread->is_on, memory_order_acquire)) {
+			pthread_kill(thread->thread, SIGTERM);
+		}
+	}
+}
+
+
+static void wait_for_threads(struct srv_state *state)
+{
+	uint16_t ret;
+	bool pr = false;
+
+	do {
+		ret = atomic_load_explicit(&state->on_thread_c,
+					   memory_order_acquire);
+
+		if (ret == 0)
+			break;
+
+		if (!pr) {
+			pr = true;
+			prl_notice(1, "Waiting for threads to exit...");
+			terminate_threads(state);
+		}
+
+		usleep(100000);
+	} while (true);
 }
 
 
@@ -720,6 +778,7 @@ int teavpn2_server_tcp(struct srv_cfg *cfg)
 
 	ret = run_workers(state);
 out:
+	wait_for_threads(state);
 	destroy_state(state);
 	free(state);
 	return ret;
