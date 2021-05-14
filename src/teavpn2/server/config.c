@@ -14,135 +14,145 @@
 #include <bluetea/lib/arena.h>
 #include <bluetea/lib/string.h>
 
+enum perr_jmp {
+	NO_JMP		= 0,
+	OUT_ERR		= 1,
+	INVALID_NAME	= 2,
+};
 
 struct parse_struct {
-	bool  		exec;
-	struct srv_cfg	*cfg;
+	int			ret;
+	struct srv_cfg		*cfg;
 };
+
+
+static enum perr_jmp parse_section_sys(struct srv_sys_cfg *sys,
+				       const char *name, const char *value,
+				       int __maybe_unused lineno)
+{
+	if (!strcmp(name, "data_dir")) {
+		sys->data_dir = ar_strndup(value, 255);
+	} else if (!strcmp(name, "verbose_level")) {
+
+	} else if (!strcmp(name, "thread")) {
+		sys->thread = (uint16_t)strtoul(value, NULL, 10);
+	} else {
+		return INVALID_NAME;
+	}
+
+	return NO_JMP;
+}
+
+
+static bool parse_section_socket(struct srv_sock_cfg *sock, const char *name,
+				 const char *value, int __maybe_unused lineno)
+{
+	if (!strcmp(name, "sock_type")) {
+		union {
+			char		buf[4];
+			uint32_t	do_or;
+		} b;
+
+		b.do_or = 0ul;
+		strncpy(b.buf, value, sizeof(b.buf));
+		b.do_or |= 0x20202020ul;
+		b.buf[sizeof(b.buf) - 1] = '\0';
+
+		if (!strncmp(b.buf, "tcp", 3)) {
+			sock->type = SOCK_TCP;
+		} else if (!strncmp(b.buf, "udp", 3)) {
+			sock->type = SOCK_UDP;
+		} else {
+			printf("Invalid socket type: \"%s\"\n", value);
+			return false;
+		}
+	} else if (!strcmp(name, "bind_addr")) {
+		sock->bind_addr = ar_strndup(value, 32);
+	} else if (!strcmp(name, "bind_port")) {
+		sock->bind_port = (uint16_t)atoi(ar_strndup(value, 6));
+	} else if (!strcmp(name, "max_conn")) {
+		sock->max_conn = (uint16_t)atoi(ar_strndup(value, 6));
+	} else if (!strcmp(name, "backlog")) {
+		sock->backlog = (int)atoi(ar_strndup(value, 6));
+	} else if (!strcmp(name, "exposed_addr")) {
+
+	} else if (!strcmp(name, "ssl_cert")) {
+		sock->ssl_cert = ar_strndup(value, 512);
+	} else if (!strcmp(name, "ssl_priv_key")) {
+		sock->ssl_priv_key = ar_strndup(value, 512);
+	} else {
+		return INVALID_NAME;
+	}
+
+	return NO_JMP;
+}
+
+static enum perr_jmp parse_section_iface(struct if_info *iface, const char *name,
+					 const char *value,
+					 int __maybe_unused lineno)
+{
+	if (!strcmp(name, "dev")) {
+		sane_strncpy(iface->dev, value, sizeof(iface->dev));
+	} else if (!strcmp(name, "mtu")) {
+		iface->mtu = (uint16_t)atoi(ar_strndup(value, 6));
+	} else if (!strcmp(name, "ipv4")) {
+		sane_strncpy(iface->ipv4, value, sizeof(iface->ipv4));
+	} else if (!strcmp(name, "ipv4_netmask")) {
+		sane_strncpy(iface->ipv4_netmask, value,
+			     sizeof(iface->ipv4_netmask));
+#ifdef TEAVPN_IPV6_SUPPORT
+	} else if (!strcmp(name, "ipv6")) {
+		sane_strncpy(iface->ipv6, value, sizeof(iface->ipv6));
+	} else if (!strcmp(name, "ipv6_netmask")) {
+		sane_strncpy(iface->ipv6_netmask, value,
+			     sizeof(iface->ipv6_netmask));
+#endif
+	} else {
+		return INVALID_NAME;
+	}
+
+	return NO_JMP;
+}
 
 
 static int parser_handler(void *user, const char *section, const char *name,
 			  const char *value, int lineno)
 {
-	struct parse_struct *ctx = (struct parse_struct *)user;
-	struct srv_cfg *cfg = ctx->cfg;
-	struct srv_sock_cfg *sock = &cfg->sock;
-	struct if_info *iface = &cfg->iface;
+	enum perr_jmp jmp = NO_JMP;
+	struct parse_struct *ctx   = (struct parse_struct *)user;
+	struct srv_cfg      *cfg   = ctx->cfg;
+	struct srv_sys_cfg  *sys   = &cfg->sys;
+	struct srv_sock_cfg *sock  = &cfg->sock;
+	struct if_info      *iface = &cfg->iface;
 
-	/* Section match */
-	#define rmatch_s(STR) if (!strcmp(section, (STR)))
-
-	/* Name match */
-	#define rmatch_n(STR) if (!strcmp(name, (STR)))
-
-	rmatch_s("sys") {
-		rmatch_n("data_dir") {
-			cfg->sys.data_dir = ar_strndup(value, 255);
-		} else
-		rmatch_n("verbose_level") {
-			/* TODO: Handle verbose_level */
-		} else
-		rmatch_n("thread") {
-			char cc = *value;
-			if (cc < '0' || cc > '9') {
-				printf("Thread argument must be a number, "
-				       "non numeric was value given: \"%s\"\n",
-				       value);
-				goto out_err;
-			}
-
-			cfg->sys.thread = (uint8_t)atoi(value);
-		} else {
-			goto out_invalid_name;
-		}
-	} else
-	rmatch_s("socket") {
-		rmatch_n("sock_type") {
-			union {
-				char		buf[4];
-				uint32_t	do_or;
-			} b;
-
-			b.do_or = 0ul;
-			strncpy(b.buf, value, sizeof(b.buf));
-			b.do_or |= 0x20202020ul;
-			b.buf[sizeof(b.buf) - 1] = '\0';
-
-			if (!strncmp(b.buf, "tcp", 3)) {
-				cfg->sock.type = SOCK_TCP;
-			} else
-			if (!strncmp(b.buf, "udp", 3)) {
-				cfg->sock.type = SOCK_UDP;
-			} else {
-				printf("Invalid socket type: \"%s\"\n", value);
-				goto out_err;
-			}
-		} else
-		rmatch_n("bind_addr") {
-			sock->bind_addr = ar_strndup(value, 32);
-		} else
-		rmatch_n("bind_port") {
-			sock->bind_port = (uint16_t)atoi(ar_strndup(value, 6));
-		} else
-		rmatch_n("max_conn") {
-			sock->max_conn = (uint16_t)atoi(ar_strndup(value, 6));
-		} else
-		rmatch_n("backlog") {
-			sock->backlog = (int)atoi(ar_strndup(value, 6));
-		} else
-		rmatch_n("exposed_addr") {
-			
-		} else
-		rmatch_n("ssl_cert") {
-			sock->ssl_cert = ar_strndup(value, 512);
-		} else
-		rmatch_n("ssl_priv_key") {
-			sock->ssl_priv_key = ar_strndup(value, 512);
-		} else {
-			goto out_invalid_name;
-		}
-	} else
-	rmatch_s("iface") {
-		rmatch_n("dev") {
-			sane_strncpy(iface->dev, value, sizeof(iface->dev));
-		} else
-		rmatch_n("mtu") {
-			iface->mtu = (uint16_t)atoi(ar_strndup(value, 6));
-		} else
-		rmatch_n("ipv4") {
-			sane_strncpy(iface->ipv4, value, sizeof(iface->ipv4));
-		} else
-		rmatch_n("ipv4_netmask") {
-			sane_strncpy(iface->ipv4_netmask, value,
-				     sizeof(iface->ipv4_netmask));
-#ifdef TEAVPN_IPV6_SUPPORT
-		} else
-		rmatch_n("ipv6") {
-			sane_strncpy(iface->ipv6, value, sizeof(iface->ipv6));
-		} else
-		rmatch_n("ipv6_netmask") {
-			sane_strncpy(iface->ipv6_netmask, value,
-				     sizeof(iface->ipv6_netmask));
-#endif
-		} else {
-			goto out_invalid_name;
-		}
+	if (!strcmp(section, "sys")) {
+		jmp = parse_section_sys(sys, name, value, lineno);
+	} else if (!strcmp(section, "socket")) {
+		jmp = parse_section_socket(sock, name, value, lineno);
+	} else if (!strcmp(section, "iface")) {
+		jmp = parse_section_iface(iface, name, value, lineno);
 	} else {
 		pr_error("Invalid config section \"%s\" on line %d", section,
 			 lineno);
-		goto out_err;
+		jmp = OUT_ERR;
 	}
 
-
-	#undef rmatch_n
-	#undef rmatch_s
-
+	switch (jmp) {
+	case NO_JMP:
+		break;
+	case OUT_ERR:
+		goto out_err;
+	case INVALID_NAME:
+		goto out_invalid_name;
+	}
+	ctx->ret = 0;
 	return true;
+
 out_invalid_name:
 	pr_error("Invalid config name \"%s\" in section \"%s\" on line %d",
 		 name, section, lineno);
 out_err:
-	ctx->exec = false;
+	ctx->ret = -EINVAL;
 	return false;
 }
 
@@ -164,17 +174,18 @@ int teavpn2_server_load_config(struct srv_cfg *cfg)
 		return -ret;
 	}
 
-	ctx.exec = true;
-	ctx.cfg  = cfg;
+	ctx.ret = 0;
+	ctx.cfg = cfg;
 	if (ini_parse_file(handle, parser_handler, &ctx) < 0) {
 		ret = -EINVAL;
 		goto out_close;
 	}
 
 
-	if (!ctx.exec) {
-		ret = -EINVAL;
-		pr_err("Error loading config file \"%s\"!", cfg_file);
+	if (ctx.ret) {
+		ret = ctx.ret;
+		pr_err("Error loading config file \"%s\"! " PRERF, cfg_file,
+		       PREAR(-ret));
 		goto out_close;
 	}
 
