@@ -184,7 +184,7 @@ int teavpn2_server_load_config(struct srv_cfg *cfg)
 
 	if (ctx.ret) {
 		ret = ctx.ret;
-		pr_err("Error loading config file \"%s\"! " PRERF, cfg_file,
+		pr_err("Error loading config file \"%s\" " PRERF, cfg_file,
 		       PREAR(-ret));
 		goto out_close;
 	}
