@@ -23,42 +23,40 @@
 
 
 #define CALCULATE_STATS	1
-#define IFF_QUEUE_NUM	8u
 
 #define EPL_MAP_SIZE	0x10000u
-
 #define EPL_MAP_TO_NOP	0x00000u
 #define EPL_MAP_TO_TCP	0x00001u
 #define EPL_MAP_TO_TUN	0x00002u
-#define EPL_MAP_SHIFT	0x00003u
 
+#define EPL_MAP_SHIFT	0x00003u
 #define EPL_IN_EVT	(EPOLLIN | EPOLLPRI)
 #define EPL_WAIT_NUM	16
 
+
 struct srv_thread {
 	pthread_t		thread;
+	struct srv_state	*state;
+	int			epoll_fd;
+	uint16_t		thread_num;
 };
 
 
 struct srv_client {
 	int			cli_fd;
 	bool			is_auth;
-	union {
-		char		raw_buf[0x1000];
-	};
 };
 
 
 struct srv_state {
 	int			intr_sig;
 	int			tcp_fd;
-	int			epoll_fd;
-	int			tun_fds[IFF_QUEUE_NUM];
-	bool			stop_el;
-	struct srv_cfg 		*cfg;
+	int			*tun_fds;
 	struct srv_thread	*threads;
 	struct srv_client	*clients;
+	struct srv_cfg 		*cfg;
 	uint16_t		*epoll_map;
+	bool			stop_el;
 };
 
 
@@ -67,13 +65,14 @@ static struct srv_state *g_state = NULL;
 
 static void handle_interrupt(int sig)
 {
-	printf("\nInterrupt caught: %d\n", sig);
+	struct srv_state *state = g_state;
 
-	if (g_state) {
-		g_state->stop_el  = true;
-		g_state->intr_sig = sig;
+	printf("\nInterrupt caught: %d\n", sig);
+	if (state) {
+		state->stop_el  = true;
+		state->intr_sig = sig;
 	} else {
-		printf("Bug: handle_interrupt found that g_state is NULL\n");
+		panic("Bug: handle_interrupt found that g_state is NULL\n");
 		abort();
 	}
 }
@@ -112,8 +111,7 @@ static int validate_cfg(struct srv_cfg *cfg)
 
 static void *calloc_wrp(size_t nmemb, size_t size)
 {
-	void *ret;
-	ret = calloc(nmemb, size);
+	void *ret = calloc(nmemb, size);
 	if (unlikely(ret == NULL)) {
 		int err = errno;
 		pr_err("calloc(): " PRERF, PREAR(err));
@@ -124,14 +122,39 @@ static void *calloc_wrp(size_t nmemb, size_t size)
 }
 
 
+static int init_tun_fds_array(struct srv_state *state)
+{
+	int *tun_fds;
+	struct srv_cfg *cfg = state->cfg;
+	size_t nn = cfg->sys.thread;
+
+	tun_fds = calloc_wrp(nn, sizeof(*tun_fds));
+	if (unlikely(!tun_fds))
+		return -ENOMEM;
+
+	for (size_t i = 0; i < nn; i++)
+		tun_fds[i] = -1;
+
+	state->tun_fds = tun_fds;
+	return 0;
+}
+
+
 static int init_state_threads(struct srv_state *state)
 {
-	struct srv_cfg *cfg = state->cfg;
 	struct srv_thread *threads;
+	struct srv_cfg *cfg = state->cfg;
+	size_t nn = cfg->sys.thread;
 
-	threads = calloc_wrp(cfg->sys.thread + 1u, sizeof(*threads));
+	threads = calloc_wrp(nn, sizeof(*threads));
 	if (unlikely(!threads))
 		return -ENOMEM;
+
+	for (size_t i = 0; i < nn; i++) {
+		threads[i].epoll_fd = -1;
+		threads[i].state = state;
+		threads[i].thread_num = (uint16_t)i;
+	}
 
 	state->threads = threads;
 	return 0;
@@ -159,20 +182,20 @@ static int init_state(struct srv_state *state)
 	int ret = 0;
 	struct srv_cfg *cfg = state->cfg;
 
-	ret = validate_cfg(cfg);
-	if (ret)
-		return ret;
-
 	state->intr_sig     = -1;
 	state->tcp_fd       = -1;
-	state->epoll_fd     = -1;
-
-	for (size_t i = 0; i < IFF_QUEUE_NUM; i++)
-		state->tun_fds[i] = -1;
-
-	state->stop_el      = false;
+	state->tun_fds      = NULL;
 	state->threads      = NULL;
 	state->epoll_map    = NULL;
+	state->stop_el      = false;
+
+	ret = validate_cfg(cfg);
+	if (unlikely(ret))
+		return ret;
+
+	ret = init_tun_fds_array(state);
+	if (unlikely(ret))
+		return ret;
 
 	ret = init_state_threads(state);
 	if (unlikely(ret))
@@ -210,20 +233,7 @@ static int epoll_add(int epl_fd, int fd, uint32_t events)
 }
 
 
-/*static int epoll_delete(int epl_fd, int fd)
-{
-	int err;
-
-	if (unlikely(epoll_ctl(epl_fd, EPOLL_CTL_DEL, fd, NULL) < 0)) {
-		err = errno;
-		pr_error("epoll_ctl(EPOLL_CTL_DEL): " PRERF, PREAR(err));
-		return -err;
-	}
-	return 0;
-}*/
-
-
-static int init_epoll(struct srv_state *state)
+static int init_epoll(int *epoll_fd_p)
 {
 	int ret;
 	int epoll_fd;
@@ -236,7 +246,7 @@ static int init_epoll(struct srv_state *state)
 		return -ret;
 	}
 
-	state->epoll_fd = epoll_fd;
+	*epoll_fd_p = epoll_fd;
 	return 0;
 }
 
@@ -246,37 +256,56 @@ static int init_iface(struct srv_state *state)
 	int ret;
 	size_t i;
 	int *tun_fds = state->tun_fds;
+	size_t nn = state->cfg->sys.thread;
 	uint16_t *epoll_map = state->epoll_map;
 	struct if_info *iff = &state->cfg->iface;
-	const short tun_flags = IFF_TUN | IFF_NO_PI | IFF_MULTI_QUEUE;
+
 
 	prl_notice(3, "Allocating virtual network interface...");
-	for (i = 0; i < IFF_QUEUE_NUM; i++) {
+	for (i = 0; i < nn; i++) {
+		int tmp_fd;
+		const short tun_flags = IFF_TUN | IFF_NO_PI | IFF_MULTI_QUEUE;
+
 
 		prl_notice(5, "Allocating TUN fd %zu...", i);
-		ret = tun_alloc(iff->dev, tun_flags);
-		if (ret < 0)
-			goto out_err;
-
-		if (fd_set_nonblock(ret) < 0) {
-			close(ret);
+		tmp_fd = tun_alloc(iff->dev, tun_flags);
+		if (tmp_fd < 0) {
+			ret = tmp_fd;
 			goto out_err;
 		}
 
-		tun_fds[i] = ret;
-		epoll_map[ret] = EPL_MAP_TO_TUN;
+
+		ret = fd_set_nonblock(tmp_fd);
+		if (unlikely(ret < 0)) {
+			close(tmp_fd);
+			goto out_err;
+		}
+
+
+		tun_fds[i] = tmp_fd;
+		epoll_map[tmp_fd] = EPL_MAP_TO_TUN;
 	}
 
-	if (!teavpn_iface_up(iff)) {
+
+	if (unlikely(!teavpn_iface_up(iff))) {
 		pr_err("Cannot bring virtual network interface up");
 		ret = -ENETDOWN;
 		goto out_err;
 	}
 
+
 	return 0;
+
 out_err:
 	while (i--) {
+		/*
+		 * Several file descriptors may have been opened.
+		 * Let's close it because we failed.
+		 *
+		 * It's our responsibility to close if we fail, not the caller!
+		 */
 		int fd = tun_fds[i];
+
 		prl_notice(5, "Closing tun_fds[%zu] (%d)...", i, fd);
 		epoll_map[fd] = EPL_MAP_TO_NOP;
 		close(fd);
@@ -408,11 +437,6 @@ static int init_tcp_socket(struct srv_state *state)
 	}
 
 
-	ret = epoll_add(state->epoll_fd, tcp_fd, EPL_IN_EVT);
-	if (unlikely(ret))
-		goto out_err;
-
-
 	state->epoll_map[tcp_fd] = EPL_MAP_TO_TCP;
 	state->tcp_fd = tcp_fd;
 	prl_notice(0, "Listening on %s:%d...", sock->bind_addr,
@@ -435,9 +459,13 @@ static int handle_tcp_event(uint32_t revents, struct srv_state *state)
 }
 
 
-static int handle_tun_event(uint32_t revents, struct srv_state *state)
+static int handle_tun_event(int fd, uint32_t revents, struct srv_state *state)
 {
 	const uint32_t err_mask = EPOLLERR | EPOLLHUP;
+	ssize_t read_ret;
+	char buffer[8192];
+
+	read_ret = read(fd, buffer, sizeof(buffer));
 	(void)revents;
 	(void)state;
 	(void)err_mask;
@@ -471,64 +499,88 @@ static int handle_event(struct epoll_event *event, struct srv_state *state)
 	case EPL_MAP_TO_TCP:
 		return handle_tcp_event(revents, state);
 	case EPL_MAP_TO_TUN:
-		return handle_tun_event(revents, state);
+		return handle_tun_event(fd, revents, state);
 	default:
 		return handle_client_event(map_to, revents, state);
 	}
-	__builtin_unreachable();
 }
 
 
-static int handle_events(struct epoll_event events[EPL_WAIT_NUM], int eret,
-			 struct srv_state *state)
+static int do_epoll_wait(int epoll_fd, struct epoll_event events[EPL_WAIT_NUM])
 {
-	int ret = 0;
+	int ret;
 
-	for (int i = 0; i < eret; i++) {
-		ret = handle_event(&events[i], state);
-		if (unlikely(ret)) {
-			pr_err("handle_event(): " PRERF, PREAR(-ret));
-			break;
+	ret = epoll_wait(epoll_fd, events, EPL_WAIT_NUM, 5000);
+	if (unlikely(!ret)) {
+		prl_notice(5, "epoll_wait() reached its timeout");
+		return ret;
+	}
+
+	if (unlikely(ret < 0)) {
+		ret = errno;
+		if (ret == EINTR) {
+			prl_notice(0, "Interrupted!");
+			return 0;
 		}
+
+		pr_err("epoll_wait(): " PRERF, PREAR(ret));
+		return -ret;
 	}
 
 	return ret;
 }
 
 
-static int run_master_event_loop(struct srv_state *state)
+static int do_event_loop_routine(int epoll_fd,
+				 struct epoll_event events[EPL_WAIT_NUM],
+				 struct srv_thread *thread,
+				 struct srv_state *state)
+{
+	int ret = do_epoll_wait(epoll_fd, events);
+	if (unlikely(ret < 0))
+		return ret;
+
+	for (int i = 0; i < ret; i++) {
+		int tmp = handle_event(&events[i], state);
+		if (unlikely(tmp))
+			return tmp;
+	}
+	return 0;
+}
+
+
+
+static void *run_sub_thread(void *_thread_p)
 {
 	int ret = 0;
-	int epoll_fd = state->epoll_fd;
+	struct srv_thread *thread = _thread_p;
+	int epoll_fd = thread->epoll_fd;
+	struct srv_state *state = thread->state;
 	struct epoll_event events[EPL_WAIT_NUM];
 
+	TASSERT(thread->thread_num != 0);
 	while (likely(!state->stop_el)) {
-		int eret, err;
-
-		eret = epoll_wait(epoll_fd, events, EPL_WAIT_NUM, 5000);
-		if (unlikely(!eret)) {
-			prl_notice(8, "epoll_wait() reached its timeout");
-			continue;
-		}
-
-		if (unlikely(eret < 0)) {
-			err = errno;
-			if (err == EINTR) {
-				prl_notice(0, "Interrupted!");
-				continue;
-			}
-
-			pr_err("epoll_wait(): " PRERF, PREAR(err));
-			ret = -err;
+		ret = do_event_loop_routine(epoll_fd, events, thread, state);
+		if (unlikely(ret))
 			break;
-		}
+	}
 
-		eret = handle_events(events, eret, state);
-		if (unlikely(eret)) {
-			pr_err("handle_events(): " PRERF, PREAR(-eret));
-			ret = eret;
+	return NULL;
+}
+
+
+static int run_main_thread(struct srv_thread *thread)
+{
+	int ret = 0;
+	int epoll_fd = thread->epoll_fd;
+	struct srv_state *state = thread->state;
+	struct epoll_event events[EPL_WAIT_NUM];
+
+	TASSERT(thread->thread_num == 0);
+	while (likely(!state->stop_el)) {
+		ret = do_event_loop_routine(epoll_fd, events, thread, state);
+		if (unlikely(ret))
 			break;
-		}
 	}
 
 	return ret;
@@ -537,14 +589,61 @@ static int run_master_event_loop(struct srv_state *state)
 
 static int run_workers(struct srv_state *state)
 {
-	// struct srv_cfg *cfg = state->cfg;
-	// struct srv_thread *threads = state->threads;
+	size_t i;
+	int ret = 0;
+	int *tun_fds = state->tun_fds;
+	size_t nn = state->cfg->sys.thread;
+	struct srv_thread *thread, *threads = state->threads;
+
+	for (i = 0; i < nn; i++) {
+		int tun_fd = tun_fds[i];
+
+		thread = &threads[i];
+		thread->epoll_fd = -1;
+
+		ret = init_epoll(&thread->epoll_fd);
+		if (unlikely(ret))
+			goto out_err;
+
+		ret = epoll_add(thread->epoll_fd, tun_fd, EPL_IN_EVT);
+		if (unlikely(ret))
+			goto out_err;
+
+		/*
+		 * Don't spawn thread for `i == 0`,
+		 * because we are going to run it
+		 * on the main thread.
+		 */
+		if (i == 0)
+			continue;
+
+		pthread_create(&thread->thread, NULL, run_sub_thread, thread);
+		pthread_detach(thread->thread);
+	}
+
+
+	thread = &threads[0];
 
 	/*
-	 * TODO: Spawn threads
+	 * Main thread is responsible to accept
+	 * new connections, so we add tcp_fd to
+	 * its epoll monitoring resource.
 	 */
+	ret = epoll_add(thread->epoll_fd, state->tcp_fd, EPL_IN_EVT);
+	if (unlikely(ret))
+		goto out_err;
 
-	return run_master_event_loop(state);
+	return run_main_thread(thread);
+
+out_err:
+	state->stop_el = true;
+	kill(getpid(), SIGTERM);
+	while (i--) {
+		thread = &threads[i];
+		close(thread->epoll_fd);
+		thread->epoll_fd = -1;
+	}
+	return ret;
 }
 
 
@@ -552,24 +651,33 @@ static void close_fds(struct srv_state *state)
 {
 	int tcp_fd = state->tcp_fd;
 	int *tun_fds = state->tun_fds;
-	int epoll_fd = state->epoll_fd;
+	size_t nn = state->cfg->sys.thread;
+	struct srv_thread *threads = state->threads;
 
-	if (epoll_fd != -1) {
-		prl_notice(3, "Closing state->epoll_fd (%d)...", epoll_fd);
-		close(epoll_fd);
-	}
+	for (size_t i = 0; i < nn; i++) {
+		if (tun_fds[i] == -1)
+			continue;
 
-	for (size_t i = 0; i < IFF_QUEUE_NUM; i++) {
-		if (tun_fds[i] != -1) {
-			prl_notice(3, "Closing state->tun_fds[%zu] (%d)...", i,
-				   tun_fds[i]);
-			close(tun_fds[i]);
-		}
+		prl_notice(3, "Closing state->tun_fds[%zu] (%d)...", i,
+			   tun_fds[i]);
+		close(tun_fds[i]);
 	}
 
 	if (tcp_fd != -1) {
 		prl_notice(3, "Closing state->tcp_fd (%d)...", tcp_fd);
 		close(tcp_fd);
+	}
+
+	for (size_t i = 0; i < nn; i++) {
+		struct srv_thread *thread = &threads[i];
+		int epoll_fd = thread->epoll_fd;
+
+		if (epoll_fd == -1)
+			continue;
+
+		prl_notice(3, "Closing state->threads[%zu].epoll_fd (%d)...",
+			   i, epoll_fd);
+		close(epoll_fd);
 	}
 }
 
@@ -577,6 +685,7 @@ static void close_fds(struct srv_state *state)
 static void destroy_state(struct srv_state *state)
 {
 	close_fds(state);
+	free(state->tun_fds);
 	free(state->threads);
 	free(state->epoll_map);
 }
@@ -598,10 +707,6 @@ int teavpn2_server_tcp(struct srv_cfg *cfg)
 	g_state    = state;
 
 	ret = init_state(state);
-	if (unlikely(ret))
-		goto out;
-
-	ret = init_epoll(state);
 	if (unlikely(ret))
 		goto out;
 

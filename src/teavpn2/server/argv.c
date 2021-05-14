@@ -121,6 +121,7 @@ int teavpn2_server_parse_argv(int argc, char *argv[], struct srv_cfg *cfg)
 			break;
 		}
 
+
 		retval = wr.retval;
 
 		switch (c) {
@@ -138,26 +139,38 @@ int teavpn2_server_parse_argv(int argc, char *argv[], struct srv_cfg *cfg)
 		case 'v':
 			/* TODO: Handle verbose level */
 			break;
-		case 't':
+		case 't': {
+			char cc = *retval;
+			if (cc < '0' || cc > '9') {
+				printf("Thread argument must be a number, "
+				       "non numeric was value given: \"%s\"\n",
+				       retval);
+				ret = -EINVAL;
+				goto out;
+			}
+
 			cfg->sys.thread = (uint16_t)atoi(retval);
 			break;
+		}
 		case 's': {
-			char buf[4];
-			uint32_t tmp = 0;
+			union {
+				char		buf[4];
+				uint32_t	do_or;
+			} b;
 
-			memcpy(&tmp, retval, sizeof(tmp));
-			tmp |= 0x20202020u;
-			memcpy(buf, &tmp, sizeof(buf));
-			buf[3] = '\0';
+			b.do_or = 0ul;
+			strncpy(b.buf, retval, sizeof(b.buf));
+			b.do_or |= 0x20202020ul;
+			b.buf[sizeof(b.buf) - 1] = '\0';
 
-			if (!strncmp(buf, "tcp", 3)) {
+			if (!strncmp(b.buf, "tcp", 3)) {
 				cfg->sock.type = SOCK_TCP;
 			} else
-			if (!strncmp(buf, "udp", 3)) {
+			if (!strncmp(b.buf, "udp", 3)) {
 				cfg->sock.type = SOCK_UDP;
 			} else {
 				printf("Invalid socket type: \"%s\"\n", retval);
-				ret = EINVAL;
+				ret = -EINVAL;
 				goto out;
 			}
 
@@ -201,7 +214,7 @@ int teavpn2_server_parse_argv(int argc, char *argv[], struct srv_cfg *cfg)
 			break;
 		default:
 			printf("Invalid option: '%c'\n", c);
-			ret = EINVAL;
+			ret = -EINVAL;
 			goto out;
 		}
 

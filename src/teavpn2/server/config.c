@@ -43,6 +43,14 @@ static int parser_handler(void *user, const char *section, const char *name,
 			/* TODO: Handle verbose_level */
 		} else
 		rmatch_n("thread") {
+			char cc = *value;
+			if (cc < '0' || cc > '9') {
+				printf("Thread argument must be a number, "
+				       "non numeric was value given: \"%s\"\n",
+				       value);
+				goto out_err;
+			}
+
 			cfg->sys.thread = (uint8_t)atoi(value);
 		} else {
 			goto out_invalid_name;
@@ -51,20 +59,22 @@ static int parser_handler(void *user, const char *section, const char *name,
 	rmatch_s("socket") {
 		rmatch_n("sock_type") {
 			union {
-				char		targ[4];
-				uint32_t	int_rep;
-			} tmp;
-			tmp.int_rep = 0;
-			strncpy(tmp.targ, value, sizeof(tmp.targ) - 1);
-			tmp.int_rep |= 0x20202020u; /* tolower */
-			tmp.targ[3]  = '\0';
-			if (!memcmp(tmp.targ, "tcp", 4)) {
-				sock->type = SOCK_TCP;
+				char		buf[4];
+				uint32_t	do_or;
+			} b;
+
+			b.do_or = 0ul;
+			strncpy(b.buf, value, sizeof(b.buf));
+			b.do_or |= 0x20202020ul;
+			b.buf[sizeof(b.buf) - 1] = '\0';
+
+			if (!strncmp(b.buf, "tcp", 3)) {
+				cfg->sock.type = SOCK_TCP;
 			} else
-			if (!memcmp(tmp.targ, "udp", 4)) {
-				sock->type = SOCK_UDP;
+			if (!strncmp(b.buf, "udp", 3)) {
+				cfg->sock.type = SOCK_UDP;
 			} else {
-				pr_error("Invalid socket type \"%s\"", value);
+				printf("Invalid socket type: \"%s\"\n", value);
 				goto out_err;
 			}
 		} else
