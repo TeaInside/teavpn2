@@ -54,6 +54,7 @@ struct if_info {
 	char		ipv4_netmask[IPV4_L];
 	char		ipv4_dgateway[IPV4_L];
 #ifdef TEAVPN_IPV6_SUPPORT
+	char		ipv6_pub[IPV6_L];
 	char		ipv6[IPV6_L];
 	char		ipv6_netmask[IPV6_L];
 	char		ipv6_dgateway[IPV6_L];

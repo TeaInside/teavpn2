@@ -27,6 +27,8 @@ int teavpn2_run_server(int argc, char *argv[])
 	if (unlikely(ret))
 		goto out;
 
+	teavpn2_server_config_dump(&cfg);
+
 	switch (cfg.sock.type) {
 	case SOCK_TCP:
 		return teavpn2_server_tcp(&cfg);

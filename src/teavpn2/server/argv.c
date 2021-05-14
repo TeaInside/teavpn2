@@ -74,7 +74,7 @@ int teavpn2_server_parse_argv(int argc, char *argv[], struct srv_cfg *cfg)
 
 		GETOPT_LONG_STRUCT_END
 	};
-	static const char short_opt[] = "hVd:v::t:s:H:P:C:B:S:p:D:m:4:n:";
+	static const char short_opt[] = "hVc:d:v::t:s:H:P:C:B:S:p:D:m:4:n:";
 	struct bt_getopt_wr wr = {
 		.argc = argc,
 		.argv = argv,

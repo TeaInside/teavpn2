@@ -30,10 +30,10 @@ static int parser_handler(void *user, const char *section, const char *name,
 	struct if_info *iface = &cfg->iface;
 
 	/* Section match */
-	#define rmatch_s(STR) if (unlikely(!strcmp(section, (STR))))
+	#define rmatch_s(STR) if (!strcmp(section, (STR)))
 
 	/* Name match */
-	#define rmatch_n(STR) if (unlikely(!strcmp(name, (STR))))
+	#define rmatch_n(STR) if (!strcmp(name, (STR)))
 
 	rmatch_s("sys") {
 		rmatch_n("data_dir") {
@@ -101,7 +101,7 @@ static int parser_handler(void *user, const char *section, const char *name,
 		} else {
 			goto out_invalid_name;
 		}
-	}
+	} else
 	rmatch_s("iface") {
 		rmatch_n("dev") {
 			sane_strncpy(iface->dev, value, sizeof(iface->dev));
@@ -128,7 +128,8 @@ static int parser_handler(void *user, const char *section, const char *name,
 			goto out_invalid_name;
 		}
 	} else {
-		pr_error("Invalid section \"%s\" on line %d", section, lineno);
+		pr_error("Invalid config section \"%s\" on line %d", section,
+			 lineno);
 		goto out_err;
 	}
 
@@ -136,9 +137,10 @@ static int parser_handler(void *user, const char *section, const char *name,
 	#undef rmatch_n
 	#undef rmatch_s
 
+	return true;
 out_invalid_name:
-	pr_error("Invalid name \"%s\" in section \"%s\" on line %d", name,
-		 section, lineno);
+	pr_error("Invalid config name \"%s\" in section \"%s\" on line %d",
+		 name, section, lineno);
 out_err:
 	ctx->exec = false;
 	return false;
@@ -180,4 +182,40 @@ int teavpn2_server_load_config(struct srv_cfg *cfg)
 out_close:
 	fclose(handle);
 	return ret;
+}
+
+
+#define PRCFG_DUMP(FMT, EXPR) \
+	printf("      " #EXPR " = " FMT "\n", EXPR)
+
+void teavpn2_server_config_dump(struct srv_cfg *cfg)
+{
+	printf("============= Config Dump =============\n");
+	PRCFG_DUMP("\"%s\"", cfg->sys.cfg_file);
+	PRCFG_DUMP("\"%s\"", cfg->sys.data_dir);
+	PRCFG_DUMP("%u", cfg->sys.verbose_level);
+	PRCFG_DUMP("%u", cfg->sys.thread);
+	printf("\n");
+	PRCFG_DUMP("%hhu", cfg->sock.use_encrypt);
+	PRCFG_DUMP("%u", cfg->sock.type);
+	PRCFG_DUMP("\"%s\"", cfg->sock.bind_addr);
+	PRCFG_DUMP("%u", cfg->sock.bind_port);
+	PRCFG_DUMP("%u", cfg->sock.max_conn);
+	PRCFG_DUMP("%d", cfg->sock.backlog);
+	PRCFG_DUMP("\"%s\"", cfg->sock.ssl_cert);
+	PRCFG_DUMP("\"%s\"", cfg->sock.ssl_priv_key);
+	printf("\n");
+	PRCFG_DUMP("\"%s\"", cfg->iface.dev);
+	PRCFG_DUMP("\"%s\"", cfg->iface.ipv4_pub);
+	PRCFG_DUMP("\"%s\"", cfg->iface.ipv4);
+	PRCFG_DUMP("\"%s\"", cfg->iface.ipv4_netmask);
+	PRCFG_DUMP("\"%s\"", cfg->iface.ipv4_dgateway);
+#ifdef TEAVPN_IPV6_SUPPORT
+	PRCFG_DUMP("\"%s\"", cfg->iface.dev);
+	PRCFG_DUMP("\"%s\"", cfg->iface.ipv6_pub);
+	PRCFG_DUMP("\"%s\"", cfg->iface.ipv6);
+	PRCFG_DUMP("\"%s\"", cfg->iface.ipv6_netmask);
+	PRCFG_DUMP("\"%s\"", cfg->iface.ipv6_dgateway);
+#endif
+	printf("=======================================\n");
 }
