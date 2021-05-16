@@ -943,11 +943,18 @@ static int run_main_thread(struct srv_thread *thread)
 	int epoll_fd = thread->epoll_fd;
 	struct srv_state *state = thread->state;
 	struct epoll_event events[EPL_WAIT_NUM];
+	uint16_t thread_num = state->cfg->sys.thread;
 
 	TASSERT(thread->thread_num == 0);
 
 	atomic_store(&thread->is_on, true);
 	atomic_fetch_add_explicit(&state->on_thread_c, 1, memory_order_acquire);
+
+	while (atomic_load_explicit(&state->on_thread_c,
+				    memory_order_acquire) < thread_num)
+		usleep(50000);
+
+	prl_notice(0, "Initialization Sequence Completed");
 	while (likely(!state->stop_el)) {
 		ret = do_event_loop_routine(epoll_fd, events, thread, state);
 		if (unlikely(ret))
