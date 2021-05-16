@@ -24,6 +24,11 @@
 
 #include <bluetea/lib/string.h>
 
+#define close(fd) 					\
+do {							\
+	printf("close(%d) in %s\n", fd, __FUNCTION__);	\
+	close(fd);					\
+} while (0)
 
 #define CALCULATE_STATS	1
 
@@ -33,7 +38,7 @@
 #define EPL_MAP_TO_TUN	0x00002u
 
 #define EPL_MAP_SHIFT	0x00003u
-#define EPL_IN_EVT	(EPOLLIN | EPOLLPRI)
+#define EPL_IN_EVT	(EPOLLIN | EPOLLPRI | EPOLLHUP)
 #define EPL_WAIT_NUM	16
 
 /* Macros for printing  */
@@ -649,15 +654,6 @@ static int assign_client(int cli_fd, int32_t ret_idx, char *src_ip,
 	struct srv_thread *thread;
 	uint16_t th_idx;
 
-	/*
-	 * This file descriptor is too big to be mapped.
-	 */
-	if ((uint32_t)cli_fd >= (EPL_MAP_SIZE - EPL_MAP_SHIFT - 1u)) {
-		pr_err("Cannot accept connection from %s:%u because the "
-		       "accepted fd is too big (%d)", src_ip, src_port, cli_fd);
-		return -EAGAIN;
-	}
-
 	th_idx = state->thread_assignee++ % state->cfg->sys.thread;
 	thread = &state->threads[th_idx];
 
@@ -680,18 +676,31 @@ static int register_client(int cli_fd, struct sockaddr_in *saddr,
 {
 	int ret = 0;
 	int32_t idx;
-	char src_ip[IPV4_L];
-	uint16_t src_port;
+	char src_ip[IPV4_L] = {0};
+	uint16_t src_port = 0;
 	struct client_stack *cl_stk = &state->cl_stk;
+
 
 	if (unlikely(!inet_ntop(AF_INET, &saddr->sin_addr, src_ip,
 				sizeof(src_ip)))) {
 		ret = errno;
 		pr_err("inet_ntop(): " PRERF, PREAR(ret));
-		return -ret;
+		ret = -ret;
+		goto out_close;
 	}
 	src_ip[sizeof(src_ip) - 1] = '\0';
 	src_port = ntohs(saddr->sin_port);
+
+
+	/*
+	 * This file descriptor is too big to be mapped.
+	 */
+	if ((uint32_t)cli_fd >= (EPL_MAP_SIZE - EPL_MAP_SHIFT - 1u)) {
+		pr_err("Cannot accept connection from %s:%u because the "
+		       "accepted fd is too big (%d)", src_ip, src_port, cli_fd);
+		ret = -EAGAIN;
+		goto out_close;
+	}
 
 
 	mutex_lock(&cl_stk->lock);
@@ -701,23 +710,24 @@ static int register_client(int cli_fd, struct sockaddr_in *saddr,
 		pr_err("Client slot is full, cannot accept connection from "
 		       "%s:%u", src_ip, src_port);
 		ret = -EAGAIN;
-		goto out_push_and_close;
+		goto out_close;
 	}
 
 	ret = assign_client(cli_fd, idx, src_ip, src_port, state);
 	if (unlikely(ret))
-		goto out_push_and_close;
+		goto out_push;
 
 	prl_notice(0, "New connection from " PRWIU, W_IU(&state->clients[idx]));
 	return ret;
 
-out_push_and_close:
-	prl_notice(0, "Closing connection from %s:%u (fd=%d)...", src_ip,
-		   src_port, cli_fd);
-	close(cli_fd);
+out_push:
 	mutex_lock(&cl_stk->lock);
 	clstk_push(cl_stk, (uint16_t)idx);
 	mutex_unlock(&cl_stk->lock);
+out_close:
+	prl_notice(0, "Closing connection from %s:%u (fd=%d)...", src_ip,
+		   src_port, cli_fd);
+	close(cli_fd);
 	return ret;
 }
 
@@ -771,10 +781,11 @@ static void close_client_event_conn(struct srv_client *client,
 }
 
 
-static int handle_client_event(uint16_t map_to, uint32_t revents,
+static int handle_client_event(int fd, uint16_t map_to, uint32_t revents,
 			       struct srv_state *state)
 {
 	ssize_t recv_ret;
+	char buff[2048];
 	const uint32_t err_mask = EPOLLERR | EPOLLHUP;
 	struct srv_client *client = &state->clients[map_to - EPL_MAP_SHIFT];
 
@@ -782,6 +793,11 @@ static int handle_client_event(uint16_t map_to, uint32_t revents,
 		goto out_close;
 
 
+	recv_ret = recv(fd, buff, sizeof(buff), 0);
+	if (unlikely(recv_ret == 0))
+		goto out_close;
+
+	prl_notice(0, "recv_ret = %zd", recv_ret);
 
 	return 0;
 
@@ -793,6 +809,7 @@ out_close:
 
 static int handle_event(struct epoll_event *event, struct srv_state *state)
 {
+	int ret = 0;
 	int fd = event->data.fd;
 	uint16_t map_to;
 	uint32_t revents = event->events;
@@ -803,12 +820,20 @@ static int handle_event(struct epoll_event *event, struct srv_state *state)
 		panic("Bug: unmapped file descriptor %d in handle_event()", fd);
 		abort();
 	case EPL_MAP_TO_TCP:
-		return handle_tcp_event(revents, state);
+		ret = handle_tcp_event(revents, state);
+		break;
 	case EPL_MAP_TO_TUN:
-		return handle_tun_event(fd, revents, state);
+		ret = handle_tun_event(fd, revents, state);
+		break;
 	default:
-		return handle_client_event(map_to, revents, state);
+		ret = handle_client_event(fd, map_to, revents, state);
+		break;
 	}
+
+	if (unlikely(ret == -EAGAIN))
+		ret = 0;
+
+	return ret;
 }
 
 
@@ -818,7 +843,7 @@ static int do_epoll_wait(int epoll_fd, struct epoll_event events[EPL_WAIT_NUM])
 
 	ret = epoll_wait(epoll_fd, events, EPL_WAIT_NUM, 1000);
 	if (unlikely(!ret)) {
-		prl_notice(5, "epoll_wait() reached its timeout");
+		// prl_notice(5, "epoll_wait() reached its timeout");
 		return ret;
 	}
 
@@ -1079,6 +1104,7 @@ static void destroy_state(struct srv_state *state)
 	free(state->cl_stk.arr);
 	free(state->tun_fds);
 	free(state->threads);
+	free(state->clients);
 	free(state->epoll_map);
 }
 
