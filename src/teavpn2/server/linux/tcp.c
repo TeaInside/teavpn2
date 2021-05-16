@@ -89,6 +89,8 @@ struct srv_state {
 	uint16_t			thread_assignee;
 	bool				stop_el;
 	_Atomic(uint16_t)		on_thread_c;
+	size_t				pkt_len;
+	struct tsrv_pkt			pkt;
 };
 
 
@@ -744,16 +746,33 @@ static int handle_tcp_event(uint32_t revents, struct srv_state *state)
 }
 
 
-static int handle_tun_event(int fd, uint32_t revents, struct srv_state *state)
+static int handle_tun_event(int tun_fd, uint32_t revents,
+			    struct srv_state *state)
 {
 	const uint32_t err_mask = EPOLLERR | EPOLLHUP;
 	ssize_t read_ret;
-	char buffer[8192];
+	struct tsrv_pkt_iface_data *buff = &state->pkt.iface_data;
 
-	read_ret = read(fd, buffer, sizeof(buffer));
-	(void)revents;
-	(void)state;
-	(void)err_mask;
+	if (unlikely(revents & err_mask))
+		return -ENETDOWN;
+
+	read_ret = read(tun_fd, buff, sizeof(*buff));
+	if (unlikely(read_ret < 0)) {
+		int err = errno;
+		if (err == EAGAIN)
+			return 0;
+
+		pr_err("read(tun_fd=%d): " PRERF, tun_fd, PREAR(err));
+		state->stop_el = true;
+		return -err;
+	}
+
+
+	if (unlikely(read_ret == 0))
+		return 0;
+
+	prl_notice(5, "Read %zd bytes from tun_fd (%d)", read_ret, tun_fd);
+
 	return 0;
 }
 
@@ -868,7 +887,7 @@ static int do_event_loop_routine(int epoll_fd,
 
 	for (int i = 0; i < ret; i++) {
 		int tmp = handle_event(&events[i], state);
-		if (unlikely(tmp && (tmp != -EAGAIN)))
+		if (unlikely(tmp))
 			return tmp;
 	}
 	return 0;
