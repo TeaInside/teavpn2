@@ -412,6 +412,19 @@ static int epoll_add(int epl_fd, int fd, uint32_t events)
 }
 
 
+static int epoll_delete(int epl_fd, int fd)
+{
+	int err;
+
+	if (unlikely(epoll_ctl(epl_fd, EPOLL_CTL_DEL, fd, NULL) < 0)) {
+		err = errno;
+		pr_error("epoll_ctl(EPOLL_CTL_DEL): " PRERF, PREAR(err));
+		return -1;
+	}
+	return 0;
+}
+
+
 static int init_epoll(int *epoll_fd_p)
 {
 	int ret;
@@ -778,6 +791,7 @@ static int handle_tun_event(int tun_fd, uint32_t revents,
 
 
 static void close_client_event_conn(struct srv_client *client,
+				    struct srv_thread *thread,
 				    struct srv_state *state)
 {
 	uint16_t idx = client->idx;
@@ -786,6 +800,8 @@ static void close_client_event_conn(struct srv_client *client,
 
 	prl_notice(0, "Closing connection from " PRWIU " (fd=%d)...",
 		   W_IU(client), cli_fd);
+
+	epoll_delete(thread->epoll_fd, cli_fd);
 	close(cli_fd);
 
 	reset_client_state(client, idx);
@@ -796,6 +812,7 @@ static void close_client_event_conn(struct srv_client *client,
 
 
 static int handle_client_event(int fd, uint16_t map_to, uint32_t revents,
+			       struct srv_thread *thread,
 			       struct srv_state *state)
 {
 	ssize_t recv_ret;
@@ -816,12 +833,13 @@ static int handle_client_event(int fd, uint16_t map_to, uint32_t revents,
 	return 0;
 
 out_close:
-	close_client_event_conn(client, state);
+	close_client_event_conn(client, thread, state);
 	return 0;
 }
 
 
-static int handle_event(struct epoll_event *event, struct srv_state *state)
+static int handle_event(struct epoll_event *event, struct srv_thread *thread,
+			struct srv_state *state)
 {
 	int ret = 0;
 	int fd = event->data.fd;
@@ -840,7 +858,7 @@ static int handle_event(struct epoll_event *event, struct srv_state *state)
 		ret = handle_tun_event(fd, revents, state);
 		break;
 	default:
-		ret = handle_client_event(fd, map_to, revents, state);
+		ret = handle_client_event(fd, map_to, revents, thread, state);
 		break;
 	}
 
@@ -878,7 +896,7 @@ static int do_epoll_wait(int epoll_fd, struct epoll_event events[EPL_WAIT_NUM])
 
 static int do_event_loop_routine(int epoll_fd,
 				 struct epoll_event events[EPL_WAIT_NUM],
-				 struct srv_thread __maybe_unused *thread,
+				 struct srv_thread *thread,
 				 struct srv_state *state)
 {
 	int ret = do_epoll_wait(epoll_fd, events);
@@ -886,7 +904,7 @@ static int do_event_loop_routine(int epoll_fd,
 		return ret;
 
 	for (int i = 0; i < ret; i++) {
-		int tmp = handle_event(&events[i], state);
+		int tmp = handle_event(&events[i], thread, state);
 		if (unlikely(tmp))
 			return tmp;
 	}
