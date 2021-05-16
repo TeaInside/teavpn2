@@ -24,12 +24,6 @@
 
 #include <bluetea/lib/string.h>
 
-#define close(fd) 					\
-do {							\
-	printf("close(%d) in %s\n", fd, __FUNCTION__);	\
-	close(fd);					\
-} while (0)
-
 #define CALCULATE_STATS	1
 
 #define EPL_MAP_SIZE	0x10000u
