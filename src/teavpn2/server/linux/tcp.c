@@ -18,8 +18,11 @@
 #include <netinet/tcp.h>
 #include <linux/if_tun.h>
 
+#include <teavpn2/lock.h>
 #include <teavpn2/net/linux/iface.h>
 #include <teavpn2/server/linux/tcp.h>
+
+#include <bluetea/lib/string.h>
 
 
 #define CALCULATE_STATS	1
@@ -33,32 +36,59 @@
 #define EPL_IN_EVT	(EPOLLIN | EPOLLPRI)
 #define EPL_WAIT_NUM	16
 
+/* Macros for printing  */
+#define W_IP(CLIENT) ((CLIENT)->src_ip), ((CLIENT)->src_port)
+#define W_UN(CLIENT) ((CLIENT)->username)
+#define W_IU(CLIENT) W_IP(CLIENT), W_UN(CLIENT)
+#define PRWIU "%s:%d (%s)"
+
 
 struct srv_thread {
-	_Atomic(bool)		is_on;
-	pthread_t		thread;
-	struct srv_state	*state;
-	int			epoll_fd;
-	uint16_t		thread_num;
+	_Atomic(bool)			is_on;
+	pthread_t			thread;
+	struct srv_state		*state;
+	int				epoll_fd;
+	uint16_t			thread_num;
 };
 
 
 struct srv_client {
-	int			cli_fd;
-	bool			is_auth;
+	bool				is_auth;
+	int				cli_fd;
+	char				username[255u];
+	char				src_ip[IPV4_L];
+	uint16_t			src_port;
+	uint16_t			idx;
+};
+
+
+/*
+ * We use stack to retrieve free index in
+ * client slot array.
+ */
+struct client_stack {
+	struct tea_mutex		lock;
+	uint16_t			*arr;
+	uint16_t			sp;
+	uint16_t			max_sp;
 };
 
 
 struct srv_state {
-	int			intr_sig;
-	int			tcp_fd;
-	int			*tun_fds;
-	struct srv_thread	*threads;
-	struct srv_client	*clients;
-	struct srv_cfg 		*cfg;
-	uint16_t		*epoll_map;
-	bool			stop_el;
-	_Atomic(uint16_t)	on_thread_c;
+	int				intr_sig;
+	int				tcp_fd;
+	int				*tun_fds;
+	struct srv_thread		*threads;
+
+	/* Client slot array */
+	struct srv_client		*clients;
+	struct client_stack		cl_stk;
+
+	struct srv_cfg 			*cfg;
+	uint16_t			*epoll_map;
+	uint16_t			thread_assignee;
+	bool				stop_el;
+	_Atomic(uint16_t)		on_thread_c;
 };
 
 
@@ -184,17 +214,152 @@ static int init_state_epoll_map(struct srv_state *state)
 }
 
 
+static int32_t clstk_push(struct client_stack *cl_stk, uint16_t idx)
+{
+	uint16_t sp = cl_stk->sp;
+
+	if (unlikely(sp == 0))
+		/*
+		 * Stack is full.
+		 */
+		return -1;
+
+	cl_stk->arr[--sp] = idx;
+	cl_stk->sp = sp;
+	return (int32_t)idx;
+}
+
+
+static int32_t clstk_pop(struct client_stack *cl_stk)
+{
+	int32_t ret;
+	uint16_t sp = cl_stk->sp;
+	uint16_t max_sp = cl_stk->max_sp;
+
+	assert(sp <= max_sp);
+	if (unlikely(sp == max_sp))
+		/*
+		 * Stack is empty.
+		 */
+		return -1;
+
+	ret = (int32_t)cl_stk->arr[sp++];
+	cl_stk->sp = sp;
+	return ret;
+}
+
+
+static void reset_client_state(struct srv_client *client, size_t idx)
+{
+	client->is_auth       = false;
+	client->cli_fd        = -1;
+	client->username[0]   = '_';
+	client->username[1]   = '\0';
+	client->idx           = (uint16_t)idx;
+}
+
+
+static int init_state_clients(struct srv_state *state)
+{
+	int ret;
+	uint16_t *arr;
+	struct srv_client *clients;
+	size_t nn = state->cfg->sock.max_conn;
+	struct client_stack *cl_stk = &state->cl_stk;
+
+	clients = calloc_wrp(nn, sizeof(*clients));
+	if (unlikely(!clients))
+		return -ENOMEM;
+
+	state->clients = clients;
+
+	for (size_t i = 0; i < nn; i++)
+		reset_client_state(&clients[i], i);
+
+	arr = calloc_wrp(nn, sizeof(*arr));
+	if (unlikely(!arr))
+		return -ENOMEM;
+
+	ret = mutex_init(&cl_stk->lock, NULL);
+	if (unlikely(ret)) {
+		pr_err("mutex_init(&cl_stk->lock, NULL): " PRERF, PREAR(ret));
+		return -ret;
+	}
+
+
+	cl_stk->sp = (uint16_t)nn;
+	cl_stk->max_sp = (uint16_t)nn;
+	cl_stk->arr = arr;
+
+#ifdef NDEBUG
+	/*
+	 * Test only.
+	 */
+	{
+		int32_t ret;
+
+		/*
+		 * Push stack.
+		 */
+		for (size_t i = 0; i < nn; i++) {
+			ret = clstk_push(cl_stk, (uint16_t)i);
+			__asm__ volatile("":"+r"(cl_stk)::"memory");
+			TASSERT((uint16_t)ret == (uint16_t)i);
+		}
+
+		/*
+		 * Push full stack.
+		 */
+		for (size_t i = 0; i < 100; i++) {
+			ret = clstk_push(cl_stk, (uint16_t)i);
+			__asm__ volatile("":"+r"(cl_stk)::"memory");
+			TASSERT(ret == -1);
+		}
+
+		/*
+		 * Pop stack.
+		 */
+		for (size_t i = nn; i--;) {
+			ret = clstk_pop(cl_stk);
+			__asm__ volatile("":"+r"(cl_stk)::"memory");
+			TASSERT((uint16_t)ret == (uint16_t)i);
+		}
+
+
+		/*
+		 * Pop empty stack.
+		 */
+		for (size_t i = 0; i < 100; i++) {
+			ret = clstk_pop(cl_stk);
+			__asm__ volatile("":"+r"(cl_stk)::"memory");
+			TASSERT(ret == -1);
+		}
+	}
+#endif
+
+
+	for (size_t i = 0; i < nn; i++)
+		clstk_push(cl_stk, (uint16_t)i);
+
+	TASSERT(cl_stk->sp == 0);
+	return 0;
+}
+
+
 static int init_state(struct srv_state *state)
 {
 	int ret = 0;
 	struct srv_cfg *cfg = state->cfg;
 
-	state->intr_sig     = -1;
-	state->tcp_fd       = -1;
-	state->tun_fds      = NULL;
-	state->threads      = NULL;
-	state->epoll_map    = NULL;
-	state->stop_el      = false;
+	state->intr_sig         = -1;
+	state->tcp_fd           = -1;
+	state->tun_fds          = NULL;
+	state->threads          = NULL;
+	state->epoll_map        = NULL;
+	state->clients          = NULL;
+	state->stop_el          = false;
+	state->cl_stk.arr       = NULL;
+	state->thread_assignee  = 0u;
 	atomic_store(&state->on_thread_c, 0);
 
 	ret = validate_cfg(cfg);
@@ -210,6 +375,10 @@ static int init_state(struct srv_state *state)
 		return ret;
 
 	ret = init_state_epoll_map(state);
+	if (unlikely(ret))
+		return ret;
+
+	ret = init_state_clients(state);
 	if (unlikely(ret))
 		return ret;
 
@@ -268,12 +437,10 @@ static int init_iface(struct srv_state *state)
 	uint16_t *epoll_map = state->epoll_map;
 	struct if_info *iff = &state->cfg->iface;
 
-
 	prl_notice(3, "Allocating virtual network interface...");
 	for (i = 0; i < nn; i++) {
 		int tmp_fd;
 		const short tun_flags = IFF_TUN | IFF_NO_PI | IFF_MULTI_QUEUE;
-
 
 		prl_notice(5, "Allocating TUN fd %zu...", i);
 		tmp_fd = tun_alloc(iff->dev, tun_flags);
@@ -282,13 +449,11 @@ static int init_iface(struct srv_state *state)
 			goto out_err;
 		}
 
-
 		ret = fd_set_nonblock(tmp_fd);
 		if (unlikely(ret < 0)) {
 			close(tmp_fd);
 			goto out_err;
 		}
-
 
 		tun_fds[i] = tmp_fd;
 		epoll_map[tmp_fd] = EPL_MAP_TO_TUN;
@@ -457,13 +622,120 @@ out_err:
 }
 
 
+static int do_accept(int tcp_fd, struct sockaddr_in *saddr)
+{
+	int cli_fd;
+	socklen_t addrlen = sizeof(*saddr);
+
+	memset(saddr, 0, sizeof(*saddr));
+	cli_fd = accept(tcp_fd, saddr, &addrlen);
+	if (unlikely(cli_fd < 0)) {
+		int err = errno;
+		if (err != EAGAIN)
+			pr_err("accept(): " PRERF, PREAR(err));
+		return -err;
+	}
+
+	return cli_fd;
+}
+
+
+static int assign_client(int cli_fd, int32_t ret_idx, char *src_ip,
+			 uint16_t src_port, struct srv_state *state)
+{
+	int ret = 0;
+	uint16_t idx = (uint16_t)ret_idx;
+	struct srv_client *client = &state->clients[idx];
+	struct srv_thread *thread;
+	uint16_t th_idx;
+
+	/*
+	 * This file descriptor is too big to be mapped.
+	 */
+	if ((uint32_t)cli_fd >= (EPL_MAP_SIZE - EPL_MAP_SHIFT - 1u)) {
+		pr_err("Cannot accept connection from %s:%u because the "
+		       "accepted fd is too big (%d)", src_ip, src_port, cli_fd);
+		return -EAGAIN;
+	}
+
+	th_idx = state->thread_assignee++ % state->cfg->sys.thread;
+	thread = &state->threads[th_idx];
+
+	ret = epoll_add(thread->epoll_fd, cli_fd, EPL_IN_EVT);
+	if (unlikely(ret))
+		goto out;
+
+	state->epoll_map[cli_fd] = idx + EPL_MAP_SHIFT;
+
+	client->cli_fd      = cli_fd;
+	client->src_port    = src_port;
+	sane_strncpy(client->src_ip, src_ip, sizeof(client->src_ip));
+out:
+	return ret;
+}
+
+
+static int register_client(int cli_fd, struct sockaddr_in *saddr,
+			   struct srv_state *state)
+{
+	int ret = 0;
+	int32_t idx;
+	char src_ip[IPV4_L];
+	uint16_t src_port;
+	struct client_stack *cl_stk = &state->cl_stk;
+
+	if (unlikely(!inet_ntop(AF_INET, &saddr->sin_addr, src_ip,
+				sizeof(src_ip)))) {
+		ret = errno;
+		pr_err("inet_ntop(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+	src_ip[sizeof(src_ip) - 1] = '\0';
+	src_port = ntohs(saddr->sin_port);
+
+
+	mutex_lock(&cl_stk->lock);
+	idx = clstk_pop(cl_stk);
+	mutex_unlock(&cl_stk->lock);
+	if (unlikely(idx == -1)) {
+		pr_err("Client slot is full, cannot accept connection from "
+		       "%s:%u", src_ip, src_port);
+		ret = -EAGAIN;
+		goto out_push_and_close;
+	}
+
+	ret = assign_client(cli_fd, idx, src_ip, src_port, state);
+	if (unlikely(ret))
+		goto out_push_and_close;
+
+	prl_notice(0, "New connection from " PRWIU, W_IU(&state->clients[idx]));
+	return ret;
+
+out_push_and_close:
+	prl_notice(0, "Closing connection from %s:%u (fd=%d)...", src_ip,
+		   src_port, cli_fd);
+	close(cli_fd);
+	mutex_lock(&cl_stk->lock);
+	clstk_push(cl_stk, (uint16_t)idx);
+	mutex_unlock(&cl_stk->lock);
+	return ret;
+}
+
+
 static int handle_tcp_event(uint32_t revents, struct srv_state *state)
 {
+	int cli_fd;
+	struct sockaddr_in saddr;
 	const uint32_t err_mask = EPOLLERR | EPOLLHUP;
-	(void)revents;
-	(void)state;
-	(void)err_mask;
-	return 0;
+
+	if (unlikely(revents & err_mask))
+		return -ENETDOWN;
+
+	cli_fd = do_accept(state->tcp_fd, &saddr);
+	if (unlikely(cli_fd < 0))
+		return cli_fd;
+
+	return register_client(cli_fd, &saddr, state);
 }
 
 
@@ -481,14 +753,40 @@ static int handle_tun_event(int fd, uint32_t revents, struct srv_state *state)
 }
 
 
+static void close_client_event_conn(struct srv_client *client,
+				    struct srv_state *state)
+{
+	uint16_t idx = client->idx;
+	int cli_fd = client->cli_fd;
+	struct client_stack *cl_stk = &state->cl_stk;
+
+	prl_notice(0, "Closing connection from " PRWIU " (fd=%d)...",
+		   W_IU(client), cli_fd);
+	close(cli_fd);
+
+	reset_client_state(client, idx);
+	mutex_lock(&cl_stk->lock);
+	clstk_push(cl_stk, idx);
+	mutex_unlock(&cl_stk->lock);
+}
+
+
 static int handle_client_event(uint16_t map_to, uint32_t revents,
 			       struct srv_state *state)
 {
+	ssize_t recv_ret;
 	const uint32_t err_mask = EPOLLERR | EPOLLHUP;
-	(void)map_to;
-	(void)revents;
-	(void)state;
-	(void)err_mask;
+	struct srv_client *client = &state->clients[map_to - EPL_MAP_SHIFT];
+
+	if (unlikely(revents & err_mask))
+		goto out_close;
+
+
+
+	return 0;
+
+out_close:
+	close_client_event_conn(client, state);
 	return 0;
 }
 
@@ -518,7 +816,7 @@ static int do_epoll_wait(int epoll_fd, struct epoll_event events[EPL_WAIT_NUM])
 {
 	int ret;
 
-	ret = epoll_wait(epoll_fd, events, EPL_WAIT_NUM, 5000);
+	ret = epoll_wait(epoll_fd, events, EPL_WAIT_NUM, 1000);
 	if (unlikely(!ret)) {
 		prl_notice(5, "epoll_wait() reached its timeout");
 		return ret;
@@ -541,7 +839,7 @@ static int do_epoll_wait(int epoll_fd, struct epoll_event events[EPL_WAIT_NUM])
 
 static int do_event_loop_routine(int epoll_fd,
 				 struct epoll_event events[EPL_WAIT_NUM],
-				 struct srv_thread *thread,
+				 struct srv_thread __maybe_unused *thread,
 				 struct srv_state *state)
 {
 	int ret = do_epoll_wait(epoll_fd, events);
@@ -550,7 +848,7 @@ static int do_event_loop_routine(int epoll_fd,
 
 	for (int i = 0; i < ret; i++) {
 		int tmp = handle_event(&events[i], state);
-		if (unlikely(tmp))
+		if (unlikely(tmp && (tmp != -EAGAIN)))
 			return tmp;
 	}
 	return 0;
@@ -675,7 +973,8 @@ static void terminate_threads(struct srv_state *state)
 	 */
 	for (size_t i = 1; i < nn; i++) {
 		thread = &threads[i];
-		if (atomic_load_explicit(&thread->is_on, memory_order_acquire)) {
+		if (atomic_load_explicit(&thread->is_on,
+					 memory_order_acquire)) {
 			pthread_kill(thread->thread, SIGTERM);
 		}
 	}
@@ -705,12 +1004,10 @@ static void wait_for_threads(struct srv_state *state)
 }
 
 
-static void close_fds(struct srv_state *state)
+static void close_tun_fds(int *tun_fds, size_t nn)
 {
-	int tcp_fd = state->tcp_fd;
-	int *tun_fds = state->tun_fds;
-	size_t nn = state->cfg->sys.thread;
-	struct srv_thread *threads = state->threads;
+	if (!tun_fds)
+		return;
 
 	for (size_t i = 0; i < nn; i++) {
 		if (tun_fds[i] == -1)
@@ -720,11 +1017,13 @@ static void close_fds(struct srv_state *state)
 			   tun_fds[i]);
 		close(tun_fds[i]);
 	}
+}
 
-	if (tcp_fd != -1) {
-		prl_notice(3, "Closing state->tcp_fd (%d)...", tcp_fd);
-		close(tcp_fd);
-	}
+
+static void close_epoll_threads(struct srv_thread *threads, size_t nn)
+{
+	if (!threads)
+		return;
 
 	for (size_t i = 0; i < nn; i++) {
 		struct srv_thread *thread = &threads[i];
@@ -740,9 +1039,44 @@ static void close_fds(struct srv_state *state)
 }
 
 
+static void close_clients(struct srv_client *clients, size_t nn)
+{
+	if (!clients)
+		return;
+
+	for (size_t i = 0; i < nn; i++) {
+		struct srv_client *client = &clients[i];
+		int cli_fd = client->cli_fd;
+
+		if (cli_fd == -1)
+			continue;
+
+		prl_notice(3, "Closing state->clients[%zu].cli_fd (%d)...",
+			   i, cli_fd);
+		close(cli_fd);
+	}
+}
+
+
+static void close_fds(struct srv_state *state)
+{
+	int tcp_fd = state->tcp_fd;
+
+	close_tun_fds(state->tun_fds, state->cfg->sys.thread);
+	if (tcp_fd != -1) {
+		prl_notice(3, "Closing state->tcp_fd (%d)...", tcp_fd);
+		close(tcp_fd);
+	}
+	close_epoll_threads(state->threads, state->cfg->sys.thread);
+	close_clients(state->clients, state->cfg->sock.max_conn);
+}
+
+
 static void destroy_state(struct srv_state *state)
 {
 	close_fds(state);
+	mutex_destroy(&state->cl_stk.lock);
+	free(state->cl_stk.arr);
 	free(state->tun_fds);
 	free(state->threads);
 	free(state->epoll_map);
