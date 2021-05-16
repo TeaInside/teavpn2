@@ -47,6 +47,30 @@ typedef enum _sock_type {
 } sock_type;
 
 
+struct teavpn2_version {
+	uint8_t		ver;
+	uint8_t		patch_lvl;
+	uint8_t		sub_lvl;
+	char		extra[5];
+};
+
+
+static_assert(offsetof(struct teavpn2_version, ver) == 0,
+	      "Bad offsetof(struct teavpn2_version, ver)");
+
+static_assert(offsetof(struct teavpn2_version, patch_lvl) == 1,
+	      "Bad offsetof(struct teavpn2_version, patch_lvl)");
+
+static_assert(offsetof(struct teavpn2_version, sub_lvl) == 2,
+	      "Bad offsetof(struct teavpn2_version, sub_lvl)");
+
+static_assert(offsetof(struct teavpn2_version, extra) == 3,
+	      "Bad offsetof(struct teavpn2_version, extra)");
+
+static_assert(sizeof(struct teavpn2_version) == 8,
+	      "Bad sizeof(struct teavpn2_version)");
+
+
 struct if_info {
 	char		dev[16];
 	char		ipv4_pub[IPV4_L];
@@ -61,5 +85,40 @@ struct if_info {
 #endif
 	uint16_t	mtu;
 };
+
+
+static_assert(offsetof(struct if_info, dev) == 0,
+	      "Bad offsetof(struct if_info, dev)");
+
+static_assert(offsetof(struct if_info, ipv4_pub) == 16,
+	      "Bad offsetof(struct if_info, ipv4_pub)");
+
+static_assert(offsetof(struct if_info, ipv4) == 16 + (IPV4_L * 1),
+	      "Bad offsetof(struct if_info, ipv4)");
+
+static_assert(offsetof(struct if_info, ipv4_netmask) == 16 + (IPV4_L * 2),
+	      "Bad offsetof(struct if_info, ipv4_netmask)");
+
+static_assert(offsetof(struct if_info, ipv4_dgateway) == 16 + (IPV4_L * 3),
+	      "Bad offsetof(struct if_info, ipv4_dgateway)");
+
+
+#ifdef TEAVPN_IPV6_SUPPORT
+
+/*
+ * TODO: Add IPv6 static assert.
+ */
+static_assert(0, "Fixme: Add IPv6 static assert");
+
+#else /* #ifdef TEAVPN_IPV6_SUPPORT */
+
+static_assert(offsetof(struct if_info, mtu) == 16 + (IPV4_L * 4),
+	      "Bad offsetof(struct if_info, mtu)");
+
+static_assert(sizeof(struct if_info) == 16 + (IPV4_L * 4) + sizeof(uint16_t),
+	      "Bad sizeof(struct if_info)");
+
+#endif  /* #ifdef TEAVPN_IPV6_SUPPORT */
+
 
 #endif /* #ifndef TEAVPN2__BASE_H */

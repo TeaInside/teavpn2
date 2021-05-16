@@ -18,6 +18,7 @@
 #include <netinet/tcp.h>
 #include <linux/if_tun.h>
 
+#include <teavpn2/tcp.h>
 #include <teavpn2/lock.h>
 #include <teavpn2/net/linux/iface.h>
 #include <teavpn2/server/linux/tcp.h>
