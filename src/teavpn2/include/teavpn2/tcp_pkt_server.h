@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- *  src/teavpn2/include/teavpn2/tcp_server.h
+ *  src/teavpn2/include/teavpn2/tcp_pkt_server.h
  *
  *  TCP server packet header file for TeaVPN2
  *
@@ -11,15 +11,15 @@
 #error This header must only be included from <teavpn2/tcp.h>
 #endif
 
-#ifndef TEAVPN2__TCP_SERVER_H
-#define TEAVPN2__TCP_SERVER_H
+#ifndef TEAVPN2__TCP_PKT_SERVER_H
+#define TEAVPN2__TCP_PKT_SERVER_H
 
 #include <linux/ip.h>
 
 #include <teavpn2/base.h>
 
 
-typedef enum _tcp_ptype_t {
+typedef enum _tsrv_pkt_type_t {
 	TSRV_PKT_NOP		= 0u,
 	TSRV_PKT_HANDSHAKE	= (1u << 0u),
 	TSRV_PKT_AUTH_OK	= (1u << 1u),
@@ -27,10 +27,10 @@ typedef enum _tcp_ptype_t {
 	TSRV_PKT_IFACE_DATA	= (1u << 3u),
 	TSRV_PKT_REQSYNC	= (1u << 4u),
 	TSRV_PKT_CLOSE		= (1u << 5u)
-} __attribute__((packed)) tcp_ptype_t;
+} __attribute__((packed)) tsrv_pkt_type_t;
 
 
-static_assert(sizeof(tcp_ptype_t) == 1, "Bad sizeof(tcp_ptype_t)");
+static_assert(sizeof(tsrv_pkt_type_t) == 1, "Bad sizeof(tsrv_pkt_type_t)");
 
 
 struct tsrv_pkt_handshake {
@@ -98,7 +98,7 @@ static_assert(sizeof(struct tsrv_pkt_iface_data) ==
 	      "Bad sizeof(struct tsrv_pkt_iface_data)");
 
 struct tsrv_pkt {
-	tcp_ptype_t					type;
+	tsrv_pkt_type_t					type;
 	uint8_t						pad_len;
 	uint16_t					length;
 	union {
@@ -137,4 +137,4 @@ static_assert(sizeof(struct tsrv_pkt) == 4u + 0x2000u,
 	      "Bad sizeof(struct tsrv_pkt)");
 
 
-#endif /* #ifndef TEAVPN2__TCP_SERVER_H */
+#endif /* #ifndef TEAVPN2__TCP_PKT_SERVER_H */

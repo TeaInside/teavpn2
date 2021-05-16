@@ -18,8 +18,8 @@
 #include <netinet/tcp.h>
 #include <linux/if_tun.h>
 
-#include <teavpn2/tcp.h>
 #include <teavpn2/lock.h>
+#include <teavpn2/tcp_pkt.h>
 #include <teavpn2/net/linux/iface.h>
 #include <teavpn2/server/linux/tcp.h>
 
@@ -48,7 +48,7 @@ struct srv_thread {
 	pthread_t			thread;
 	struct srv_state		*state;
 	int				epoll_fd;
-	uint16_t			thread_num;
+	uint16_t			thread_idx;
 };
 
 
@@ -192,7 +192,7 @@ static int init_state_threads(struct srv_state *state)
 	for (size_t i = 0; i < nn; i++) {
 		threads[i].epoll_fd = -1;
 		threads[i].state = state;
-		threads[i].thread_num = (uint16_t)i;
+		threads[i].thread_idx = (uint16_t)i;
 	}
 
 	state->threads = threads;
@@ -921,7 +921,7 @@ static void *run_sub_thread(void *_thread_p)
 	struct srv_state *state = thread->state;
 	struct epoll_event events[EPL_WAIT_NUM];
 
-	TASSERT(thread->thread_num != 0);
+	TASSERT(thread->thread_idx != 0);
 
 	atomic_store(&thread->is_on, true);
 	atomic_fetch_add_explicit(&state->on_thread_c, 1, memory_order_acquire);
@@ -945,7 +945,7 @@ static int run_main_thread(struct srv_thread *thread)
 	struct epoll_event events[EPL_WAIT_NUM];
 	uint16_t thread_num = state->cfg->sys.thread;
 
-	TASSERT(thread->thread_num == 0);
+	TASSERT(thread->thread_idx == 0);
 
 	atomic_store(&thread->is_on, true);
 	atomic_fetch_add_explicit(&state->on_thread_c, 1, memory_order_acquire);

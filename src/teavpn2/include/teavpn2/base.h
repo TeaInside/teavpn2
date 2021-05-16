@@ -21,6 +21,7 @@
 #include <netinet/in.h>
 #include <bluetea/base.h>
 
+#define IFACENAMESIZ (16u)
 
 #ifndef INET_ADDRSTRLEN
 #  define IPV4_L (sizeof("xxx.xxx.xxx.xxx"))
@@ -72,7 +73,7 @@ static_assert(sizeof(struct teavpn2_version) == 8,
 
 
 struct if_info {
-	char		dev[16];
+	char		dev[IFACENAMESIZ];
 	char		ipv4_pub[IPV4_L];
 	char		ipv4[IPV4_L];
 	char		ipv4_netmask[IPV4_L];
@@ -86,6 +87,8 @@ struct if_info {
 	uint16_t	mtu;
 };
 
+
+static_assert(IFACENAMESIZ == 16u, "Bad IFACENAMESIZ value");
 
 static_assert(offsetof(struct if_info, dev) == 0,
 	      "Bad offsetof(struct if_info, dev)");

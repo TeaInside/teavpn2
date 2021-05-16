@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- *  src/teavpn2/server/config.c
+ *  src/teavpn2/client/config.c
  *
- *  Load config for TeaVPN2 server
+ *  Load config for TeaVPN2 client
  *
  *  Copyright (C) 2021  Ammar Faizi
  */
@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <inih/inih.h>
-#include <teavpn2/server/common.h>
+#include <teavpn2/client/common.h>
 #include <bluetea/lib/arena.h>
 #include <bluetea/lib/string.h>
 
@@ -22,11 +22,11 @@ enum perr_jmp {
 
 struct parse_struct {
 	int			ret;
-	struct srv_cfg		*cfg;
+	struct cli_cfg		*cfg;
 };
 
 
-static enum perr_jmp parse_section_sys(struct srv_sys_cfg *sys,
+static enum perr_jmp parse_section_sys(struct cli_sys_cfg *sys,
 				       const char *name, const char *value,
 				       int __maybe_unused lineno)
 {
@@ -44,7 +44,7 @@ static enum perr_jmp parse_section_sys(struct srv_sys_cfg *sys,
 }
 
 
-static bool parse_section_socket(struct srv_sock_cfg *sock, const char *name,
+static bool parse_section_socket(struct cli_sock_cfg *sock, const char *name,
 				 const char *value, int __maybe_unused lineno)
 {
 	if (!strcmp(name, "sock_type")) {
@@ -66,20 +66,10 @@ static bool parse_section_socket(struct srv_sock_cfg *sock, const char *name,
 			printf("Invalid socket type: \"%s\"\n", value);
 			return false;
 		}
-	} else if (!strcmp(name, "bind_addr")) {
-		sock->bind_addr = ar_strndup(value, 32);
-	} else if (!strcmp(name, "bind_port")) {
-		sock->bind_port = (uint16_t)atoi(ar_strndup(value, 6));
-	} else if (!strcmp(name, "max_conn")) {
-		sock->max_conn = (uint16_t)atoi(ar_strndup(value, 6));
-	} else if (!strcmp(name, "backlog")) {
-		sock->backlog = (int)atoi(ar_strndup(value, 6));
-	} else if (!strcmp(name, "exposed_addr")) {
-
-	} else if (!strcmp(name, "ssl_cert")) {
-		sock->ssl_cert = ar_strndup(value, 512);
-	} else if (!strcmp(name, "ssl_priv_key")) {
-		sock->ssl_priv_key = ar_strndup(value, 512);
+	} else if (!strcmp(name, "server_addr")) {
+		sock->server_addr = ar_strndup(value, 32);
+	} else if (!strcmp(name, "server_port")) {
+		sock->server_port = (uint16_t)atoi(ar_strndup(value, 6));
 	} else {
 		return INVALID_NAME;
 	}
@@ -87,30 +77,16 @@ static bool parse_section_socket(struct srv_sock_cfg *sock, const char *name,
 	return NO_JMP;
 }
 
-static enum perr_jmp parse_section_iface(struct if_info *iface, const char *name,
-					 const char *value,
+
+static enum perr_jmp parse_section_iface(struct cli_iface_cfg *iface,
+					 const char *name, const char *value,
 					 int __maybe_unused lineno)
 {
 	if (!strcmp(name, "dev")) {
 		sane_strncpy(iface->dev, value, sizeof(iface->dev));
-	} else if (!strcmp(name, "mtu")) {
-		iface->mtu = (uint16_t)atoi(ar_strndup(value, 6));
-	} else if (!strcmp(name, "ipv4")) {
-		sane_strncpy(iface->ipv4, value, sizeof(iface->ipv4));
-	} else if (!strcmp(name, "ipv4_netmask")) {
-		sane_strncpy(iface->ipv4_netmask, value,
-			     sizeof(iface->ipv4_netmask));
-#ifdef TEAVPN_IPV6_SUPPORT
-	} else if (!strcmp(name, "ipv6")) {
-		sane_strncpy(iface->ipv6, value, sizeof(iface->ipv6));
-	} else if (!strcmp(name, "ipv6_netmask")) {
-		sane_strncpy(iface->ipv6_netmask, value,
-			     sizeof(iface->ipv6_netmask));
-#endif
 	} else {
 		return INVALID_NAME;
 	}
-
 	return NO_JMP;
 }
 
@@ -119,11 +95,11 @@ static int parser_handler(void *user, const char *section, const char *name,
 			  const char *value, int lineno)
 {
 	enum perr_jmp jmp = NO_JMP;
-	struct parse_struct *ctx   = (struct parse_struct *)user;
-	struct srv_cfg      *cfg   = ctx->cfg;
-	struct srv_sys_cfg  *sys   = &cfg->sys;
-	struct srv_sock_cfg *sock  = &cfg->sock;
-	struct if_info      *iface = &cfg->iface;
+	struct parse_struct  *ctx    = (struct parse_struct *)user;
+	struct cli_cfg       *cfg    = ctx->cfg;
+	struct cli_sys_cfg   *sys    = &cfg->sys;
+	struct cli_sock_cfg  *sock   = &cfg->sock;
+	struct cli_iface_cfg *iface  = &cfg->iface;
 
 	if (!strcmp(section, "sys")) {
 		jmp = parse_section_sys(sys, name, value, lineno);
@@ -157,7 +133,7 @@ out_err:
 }
 
 
-int teavpn2_server_load_config(struct srv_cfg *cfg)
+int teavpn2_client_load_config(struct cli_cfg *cfg)
 {
 	int ret = 0;
 	FILE *handle;
@@ -199,7 +175,7 @@ out_close:
 #define PRCFG_DUMP(FMT, EXPR) \
 	printf("      " #EXPR " = " FMT "\n", EXPR)
 
-void teavpn2_server_config_dump(struct srv_cfg *cfg)
+void teavpn2_client_config_dump(struct cli_cfg *cfg)
 {
 	printf("============= Config Dump =============\n");
 	PRCFG_DUMP("\"%s\"", cfg->sys.cfg_file);
@@ -209,18 +185,10 @@ void teavpn2_server_config_dump(struct srv_cfg *cfg)
 	printf("\n");
 	PRCFG_DUMP("%hhu", cfg->sock.use_encrypt);
 	PRCFG_DUMP("%u", cfg->sock.type);
-	PRCFG_DUMP("\"%s\"", cfg->sock.bind_addr);
-	PRCFG_DUMP("%u", cfg->sock.bind_port);
-	PRCFG_DUMP("%u", cfg->sock.max_conn);
-	PRCFG_DUMP("%d", cfg->sock.backlog);
-	PRCFG_DUMP("\"%s\"", cfg->sock.ssl_cert);
-	PRCFG_DUMP("\"%s\"", cfg->sock.ssl_priv_key);
+	PRCFG_DUMP("\"%s\"", cfg->sock.server_addr);
+	PRCFG_DUMP("%u", cfg->sock.server_port);
 	printf("\n");
 	PRCFG_DUMP("\"%s\"", cfg->iface.dev);
-	PRCFG_DUMP("\"%s\"", cfg->iface.ipv4_pub);
-	PRCFG_DUMP("\"%s\"", cfg->iface.ipv4);
-	PRCFG_DUMP("\"%s\"", cfg->iface.ipv4_netmask);
-	PRCFG_DUMP("\"%s\"", cfg->iface.ipv4_dgateway);
 #ifdef TEAVPN_IPV6_SUPPORT
 	PRCFG_DUMP("\"%s\"", cfg->iface.dev);
 	PRCFG_DUMP("\"%s\"", cfg->iface.ipv6_pub);

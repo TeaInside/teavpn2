@@ -16,7 +16,8 @@
 #define TUN_READ_SIZE	(0x1000u)
 
 #define INTERNAL____TEAVPN2__TCP_H
-#include <teavpn2/tcp_server.h>
+#include <teavpn2/tcp_pkt_server.h>
+#include <teavpn2/tcp_pkt_client.h>
 #undef INTERNAL____TEAVPN2__TCP_H
 
 #endif /* #ifndef TEAVPN2__TCP_H */

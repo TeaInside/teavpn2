@@ -7,17 +7,10 @@
 # Copyright (C) 2021  Ammar Faizi
 #
 
-INCLUDE_DIR += -I$(BASE_DIR)/src/teavpn2/include
-DEP_DIRS += $(BASE_DEP_DIR)/src/teavpn2
-
-
-include $(BASE_DIR)/src/teavpn2/net/Makefile
-include $(BASE_DIR)/src/teavpn2/client/Makefile
-include $(BASE_DIR)/src/teavpn2/server/Makefile
-
+DEP_DIRS += $(BASE_DEP_DIR)/src/teavpn2/client/linux
 
 OBJ_TMP_CC := \
-	$(BASE_DIR)/src/teavpn2/main.o
+	$(BASE_DIR)/src/teavpn2/client/linux/tcp.o
 
 OBJ_PRE_CC += $(OBJ_TMP_CC)
 

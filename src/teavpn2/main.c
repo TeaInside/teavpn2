@@ -12,6 +12,7 @@
 #include <teavpn2/base.h>
 #include <bluetea/lib/arena.h>
 #include <teavpn2/server/common.h>
+#include <teavpn2/client/common.h>
 
 
 static void show_general_help(const char *app)
@@ -45,7 +46,7 @@ int main(int argc, char *argv[])
 		return teavpn2_run_server(argc, argv);
 	} else
 	if (!strncmp(argv[1], "client", 6)) {
-
+		return teavpn2_run_client(argc, argv);
 	} else
 	if (!strncmp(argv[1], "--version", 9)) {
 		printf("TeaVPN2 " TEAVPN2_VERSION "\n");

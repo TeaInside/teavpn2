@@ -14,22 +14,22 @@
 
 
 struct srv_sys_cfg {
-	char		*cfg_file;
-	char		*data_dir;
-	uint8_t		verbose_level;
-	uint16_t	thread;
+	char			*cfg_file;
+	char			*data_dir;
+	uint8_t			verbose_level;
+	uint16_t		thread;
 };
 
 
 struct srv_sock_cfg {
-	bool		use_encrypt;
-	sock_type	type;
-	char		*bind_addr;
-	uint16_t	bind_port;
-	uint16_t	max_conn;
-	int		backlog;
-	char		*ssl_cert;
-	char		*ssl_priv_key;
+	bool			use_encrypt;
+	sock_type		type;
+	char			*bind_addr;
+	uint16_t		bind_port;
+	uint16_t		max_conn;
+	int			backlog;
+	char			*ssl_cert;
+	char			*ssl_priv_key;
 };
 
 
