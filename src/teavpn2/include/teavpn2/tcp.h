@@ -28,17 +28,25 @@ static_assert(sizeof(tcp_ptype_t) == 1, "Bad sizeof(tcp_ptype_t)");
 
 
 struct tsrv_pkt_handshake {
-	uint8_t						need_encryption: 1;
-	uint8_t						has_min: 1;
-	uint8_t						has_max: 1;
-	uint8_t						__dummy_pad[7];
+	uint8_t						need_encryption;
+	uint8_t						has_min;
+	uint8_t						has_max;
+	uint8_t						__dummy_pad[5];
 	struct teavpn2_version				cur;
 	struct teavpn2_version				min;
 	struct teavpn2_version				max;
 };
 
+static_assert(offsetof(struct tsrv_pkt_handshake, need_encryption) == 0,
+	      "Bad offsetof(struct tsrv_pkt_handshake, need_encryption)");
 
-static_assert(offsetof(struct tsrv_pkt_handshake, __dummy_pad) == 1,
+static_assert(offsetof(struct tsrv_pkt_handshake, has_min) == 1,
+	      "Bad offsetof(struct tsrv_pkt_handshake, has_min)");
+
+static_assert(offsetof(struct tsrv_pkt_handshake, has_max) == 2,
+	      "Bad offsetof(struct tsrv_pkt_handshake, has_max)");
+
+static_assert(offsetof(struct tsrv_pkt_handshake, __dummy_pad) == 3,
 	      "Bad offsetof(struct tsrv_pkt_handshake, __dummy_pad)");
 
 static_assert(offsetof(struct tsrv_pkt_handshake, cur) == 8,
