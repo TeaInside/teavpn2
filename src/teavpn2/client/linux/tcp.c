@@ -500,6 +500,13 @@ static int handle_tun_event(int tun_fd, uint32_t revents,
 }
 
 
+static int handle_tcp_event(uint32_t revents, struct cli_thread *thread,
+			    struct cli_state *state)
+{
+
+}
+
+
 static int handle_event(struct epoll_event *event, struct cli_thread *thread,
 			struct cli_state *state)
 {
@@ -514,7 +521,7 @@ static int handle_event(struct epoll_event *event, struct cli_thread *thread,
 		panic("Bug: unmapped file descriptor %d in handle_event()", fd);
 		abort();
 	case EPL_MAP_TO_TCP:
-		//ret = handle_tcp_event(revents, state);
+		ret = handle_tcp_event(revents, thread, state);
 		break;
 	case EPL_MAP_TO_TUN:
 		ret = handle_tun_event(fd, revents, state);

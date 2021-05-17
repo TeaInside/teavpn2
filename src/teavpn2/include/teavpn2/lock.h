@@ -53,7 +53,9 @@ static __always_inline int mutex_unlock(struct tea_mutex *lock)
 
 static __always_inline int mutex_destroy(struct tea_mutex *lock)
 {
-	assert(lock->is_init);
+	if (!lock->is_init)
+		return 0;
+
 #if TEST_LEAK
 	free(lock->__test_leak);
 #endif
