@@ -18,17 +18,26 @@
 
 #include <teavpn2/base.h>
 
+#define TSRV_PKT_NOP		(1u << 0u)
+#define TSRV_PKT_HANDSHAKE	(1u << 1u)
+#define TSRV_PKT_AUTH_OK	(1u << 2u)
+#define TSRV_PKT_AUTH_REJECT	(1u << 3u)
+#define TSRV_PKT_IFACE_DATA	(1u << 4u)
+#define TSRV_PKT_REQSYNC	(1u << 5u)
+#define TSRV_PKT_CLOSE		(1u << 6u)
 
-typedef enum _tsrv_pkt_type_t {
-	TSRV_PKT_NOP		= 0u,
-	TSRV_PKT_HANDSHAKE	= (1u << 0u),
-	TSRV_PKT_AUTH_OK	= (1u << 1u),
-	TSRV_PKT_AUTH_REJECT	= (1u << 2u),
-	TSRV_PKT_IFACE_DATA	= (1u << 3u),
-	TSRV_PKT_REQSYNC	= (1u << 4u),
-	TSRV_PKT_CLOSE		= (1u << 5u)
-} __attribute__((packed)) tsrv_pkt_type_t;
+#define TSRV_PKT_ALL_BITS 		\
+(					\
+	TSRV_PKT_NOP		|	\
+	TSRV_PKT_HANDSHAKE	|	\
+	TSRV_PKT_AUTH_OK	|	\
+	TSRV_PKT_AUTH_REJECT	|	\
+	TSRV_PKT_IFACE_DATA	|	\
+	TSRV_PKT_REQSYNC	|	\
+	TSRV_PKT_CLOSE			\
+)
 
+typedef uint8_t tsrv_pkt_type_t;
 
 static_assert(sizeof(tsrv_pkt_type_t) == 1, "Bad sizeof(tsrv_pkt_type_t)");
 
@@ -111,6 +120,7 @@ struct tsrv_pkt {
 	};
 };
 
+#define TSRV_PKT_MIN_READ (offsetof(struct tsrv_pkt, raw_buf))
 
 static_assert(offsetof(struct tsrv_pkt, type) == 0,
 	      "Bad offsetof(struct tsrv_pkt, type)");

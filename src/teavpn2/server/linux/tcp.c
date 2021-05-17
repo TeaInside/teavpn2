@@ -42,6 +42,10 @@
 #define W_IU(CLIENT) W_IP(CLIENT), W_UN(CLIENT)
 #define PRWIU "%s:%d (%s)"
 
+#define DO_BUSY_RECV	1
+#define BUSY_RECV_COUNT	10
+
+#define CLIENT_MAX_ERRC	20u
 
 struct srv_thread {
 	_Atomic(bool)			is_on;
@@ -49,16 +53,30 @@ struct srv_thread {
 	struct srv_state		*state;
 	int				epoll_fd;
 	uint16_t			thread_idx;
+	size_t				pkt_len;
+	union {
+		struct tsrv_pkt		spkt;
+		struct tcli_pkt		cpkt;
+		char			raw_pkt[sizeof(struct tcli_pkt)];
+	};
 };
 
 
 struct srv_client {
 	bool				is_auth;
+	bool				need_encryption;
 	int				cli_fd;
 	char				username[255u];
 	char				src_ip[IPV4_L];
 	uint16_t			src_port;
 	uint16_t			idx;
+	uint16_t			err_count;
+	size_t				recv_s;
+	union {
+		struct tsrv_pkt		spkt;
+		struct tcli_pkt		cpkt;
+		char			raw_pkt[sizeof(struct tcli_pkt)];
+	};
 };
 
 
@@ -89,8 +107,13 @@ struct srv_state {
 	uint16_t			thread_assignee;
 	bool				stop_el;
 	_Atomic(uint16_t)		on_thread_c;
-	size_t				pkt_len;
-	struct tsrv_pkt			pkt;
+};
+
+
+enum clevt {
+	CLE_OK		= 0u,
+	CLE_ERROR	= (1u << 0u),
+	CLE_CLOSE	= (1u << 1u),
 };
 
 
@@ -258,6 +281,8 @@ static void reset_client_state(struct srv_client *client, size_t idx)
 	client->username[0]   = '_';
 	client->username[1]   = '\0';
 	client->idx           = (uint16_t)idx;
+	client->recv_s        = 0u;
+	client->err_count     = 0u;
 }
 
 
@@ -418,7 +443,7 @@ static int epoll_delete(int epl_fd, int fd)
 
 	if (unlikely(epoll_ctl(epl_fd, EPOLL_CTL_DEL, fd, NULL) < 0)) {
 		err = errno;
-		pr_error("epoll_ctl(EPOLL_CTL_DEL): " PRERF, PREAR(err));
+		pr_err("epoll_ctl(EPOLL_CTL_DEL): " PRERF, PREAR(err));
 		return -1;
 	}
 	return 0;
@@ -503,7 +528,78 @@ out_err:
 }
 
 
-static int socket_setup(int tcp_fd, struct srv_state *state)
+static int socket_setup(int cli_fd, struct srv_state *state)
+{
+	int y;
+	int err;
+	int ret;
+	const char *lv, *on; /* level and optname */
+	socklen_t len = sizeof(y);
+	struct srv_cfg *cfg = state->cfg;
+	const void *py = (const void *)&y;
+
+	y = 1;
+	ret = setsockopt(cli_fd, IPPROTO_TCP, TCP_NODELAY, py, len);
+	if (unlikely(ret < 0)) {
+		lv = "IPPROTO_TCP";
+		on = "TCP_NODELAY";
+		goto out_err;
+	}
+
+
+	y = 6;
+	ret = setsockopt(cli_fd, SOL_SOCKET, SO_PRIORITY, py, len);
+	if (unlikely(ret < 0)) {
+		lv = "SOL_SOCKET";
+		on = "SO_PRIORITY";
+		goto out_err;
+	}
+
+
+	y = 1024 * 1024 * 4;
+	ret = setsockopt(cli_fd, SOL_SOCKET, SO_RCVBUFFORCE, py, len);
+	if (unlikely(ret < 0)) {
+		lv = "SOL_SOCKET";
+		on = "SO_RCVBUFFORCE";
+		goto out_err;
+	}
+
+
+	y = 1024 * 1024 * 4;
+	ret = setsockopt(cli_fd, SOL_SOCKET, SO_SNDBUFFORCE, py, len);
+	if (unlikely(ret < 0)) {
+		lv = "SOL_SOCKET";
+		on = "SO_SNDBUFFORCE";
+		goto out_err;
+	}
+
+
+	y = 50000;
+	ret = setsockopt(cli_fd, SOL_SOCKET, SO_BUSY_POLL, py, len);
+	if (unlikely(ret < 0)) {
+		lv = "SOL_SOCKET";
+		on = "SO_BUSY_POLL";
+		goto out_err;
+	}
+
+
+	ret = fd_set_nonblock(cli_fd);
+	if (unlikely(ret < 0))
+		return ret;
+
+	/*
+	 * TODO: Use cfg to set some socket options.
+	 */
+	(void)cfg;
+	return ret;
+out_err:
+	err = errno;
+	pr_err("setsockopt(tcp_fd, %s, %s): " PRERF, lv, on, PREAR(err));
+	return ret;
+}
+
+
+static int socket_setup_main_tcp(int tcp_fd, struct srv_state *state)
 {
 	int y;
 	int err;
@@ -522,57 +618,11 @@ static int socket_setup(int tcp_fd, struct srv_state *state)
 		goto out_err;
 	}
 
-
-	y = 1;
-	ret = setsockopt(tcp_fd, IPPROTO_TCP, TCP_NODELAY, py, len);
-	if (unlikely(ret < 0)) {
-		lv = "IPPROTO_TCP";
-		on = "TCP_NODELAY";
-		goto out_err;
-	}
-
-
-	y = 6;
-	ret = setsockopt(tcp_fd, SOL_SOCKET, SO_PRIORITY, py, len);
-	if (unlikely(ret < 0)) {
-		lv = "SOL_SOCKET";
-		on = "SO_PRIORITY";
-		goto out_err;
-	}
-
-
-	y = 1024 * 1024 * 4;
-	ret = setsockopt(tcp_fd, SOL_SOCKET, SO_RCVBUFFORCE, py, len);
-	if (unlikely(ret < 0)) {
-		lv = "SOL_SOCKET";
-		on = "SO_RCVBUFFORCE";
-		goto out_err;
-	}
-
-
-	y = 1024 * 1024 * 4;
-	ret = setsockopt(tcp_fd, SOL_SOCKET, SO_SNDBUFFORCE, py, len);
-	if (unlikely(ret < 0)) {
-		lv = "SOL_SOCKET";
-		on = "SO_SNDBUFFORCE";
-		goto out_err;
-	}
-
-
-	y = 50000;
-	ret = setsockopt(tcp_fd, SOL_SOCKET, SO_BUSY_POLL, py, len);
-	if (unlikely(ret < 0)) {
-		lv = "SOL_SOCKET";
-		on = "SO_BUSY_POLL";
-		goto out_err;
-	}
-
-
 	/*
 	 * TODO: Use cfg to set some socket options.
 	 */
 	(void)cfg;
-	return ret;
+	return socket_setup(tcp_fd, state);
 out_err:
 	err = errno;
 	pr_err("setsockopt(tcp_fd, %s, %s): " PRERF, lv, on, PREAR(err));
@@ -598,7 +648,7 @@ static int init_tcp_socket(struct srv_state *state)
 
 
 	prl_notice(0, "Setting socket file descriptor up...");
-	ret = socket_setup(tcp_fd, state);
+	ret = socket_setup_main_tcp(tcp_fd, state);
 	if (unlikely(ret < 0))
 		goto out_err;
 
@@ -637,8 +687,10 @@ out_err:
 }
 
 
-static int do_accept(int tcp_fd, struct sockaddr_in *saddr)
+static int do_accept(int tcp_fd, struct sockaddr_in *saddr,
+		     struct srv_state *state)
 {
+	int ret;
 	int cli_fd;
 	socklen_t addrlen = sizeof(*saddr);
 
@@ -650,6 +702,10 @@ static int do_accept(int tcp_fd, struct sockaddr_in *saddr)
 			pr_err("accept(): " PRERF, PREAR(err));
 		return -err;
 	}
+
+	ret = socket_setup(cli_fd, state);
+	if (unlikely(ret))
+		return ret;
 
 	return cli_fd;
 }
@@ -742,7 +798,8 @@ out_close:
 }
 
 
-static int handle_tcp_event(uint32_t revents, struct srv_state *state)
+static int handle_tcp_event(int tcp_fd, uint32_t revents,
+			    struct srv_state *state)
 {
 	int cli_fd;
 	struct sockaddr_in saddr;
@@ -751,7 +808,7 @@ static int handle_tcp_event(uint32_t revents, struct srv_state *state)
 	if (unlikely(revents & err_mask))
 		return -ENETDOWN;
 
-	cli_fd = do_accept(state->tcp_fd, &saddr);
+	cli_fd = do_accept(tcp_fd, &saddr, state);
 	if (unlikely(cli_fd < 0))
 		return cli_fd;
 
@@ -760,11 +817,11 @@ static int handle_tcp_event(uint32_t revents, struct srv_state *state)
 
 
 static int handle_tun_event(int tun_fd, uint32_t revents,
-			    struct srv_state *state)
+			    struct srv_thread *thread, struct srv_state *state)
 {
 	const uint32_t err_mask = EPOLLERR | EPOLLHUP;
 	ssize_t read_ret;
-	struct tsrv_pkt_iface_data *buff = &state->pkt.iface_data;
+	struct tsrv_pkt_iface_data *buff = &thread->spkt.iface_data;
 
 	if (unlikely(revents & err_mask))
 		return -ENETDOWN;
@@ -811,27 +868,348 @@ static void close_client_event_conn(struct srv_client *client,
 }
 
 
-static int handle_client_event(int fd, uint16_t map_to, uint32_t revents,
+static enum clevt handle_clpkt_nop(struct tcli_pkt __maybe_unused *cpkt,
+				   struct srv_thread __maybe_unused *thread,
+				   struct srv_client __maybe_unused *client,
+				   size_t __maybe_unused cdata_len)
+{
+	enum clevt ret = CLE_OK;
+	return ret;
+}
+
+
+static bool version_compare(struct tcli_pkt_handshake *hs)
+{
+	uint32_t cmp_a, cmp_b;
+	struct teavpn2_version *tmp;
+
+	if (hs->has_min) {
+		tmp = &hs->min;
+		cmp_a  = ((uint32_t)tmp->ver << 16u);
+		cmp_a |= ((uint32_t)tmp->patch_lvl << 8u);
+		cmp_a |= ((uint32_t)tmp->sub_lvl << 0u);
+
+		cmp_b  = (VERSION << 16u);
+		cmp_b |= (PATCHLEVEL << 8u);
+		cmp_b |= (SUBLEVEL << 0u);
+
+		if (cmp_b < cmp_a)
+			return false;
+	}
+
+	if (hs->has_max) {
+		tmp = &hs->max;
+		cmp_a  = ((uint32_t)tmp->ver << 16u);
+		cmp_a |= ((uint32_t)tmp->patch_lvl << 8u);
+		cmp_a |= ((uint32_t)tmp->sub_lvl << 0u);
+
+		cmp_b  = (VERSION << 16u);
+		cmp_b |= (PATCHLEVEL << 8u);
+		cmp_b |= (SUBLEVEL << 0u);
+
+		if (cmp_b > cmp_a)
+			return false;
+	}
+
+	return true;
+}
+
+
+static ssize_t send_to_client(struct srv_thread *thread,
+			      struct srv_client *client,
+			      const void *pkt, size_t len)
+{
+	ssize_t send_ret;
+	int cli_fd = client->cli_fd;
+
+	send_ret = send(cli_fd, pkt, len, 0);
+	if (unlikely(send_ret < 0)) {
+		int err = errno;
+		if (err != EAGAIN)
+			pr_err("send(): " PRERF, PREAR(err));
+		return -err;
+	}
+
+	prl_notice(6, "send() to " PRWIU " %zd bytes (passed len = %zu bytes)",
+		   W_IU(client), send_ret, len);
+	return send_ret;
+}
+
+
+static bool acknowledge_handshake(struct srv_thread *thread,
+				  struct srv_client *client,
+				  bool need_encryption)
+{
+	ssize_t tmp_ret;
+	size_t send_len;
+	struct srv_state *state = thread->state;
+	struct tsrv_pkt *spkt = &thread->spkt;
+	struct tsrv_pkt_handshake *hs = &spkt->handshake;
+
+	spkt->type    = TSRV_PKT_HANDSHAKE;
+	spkt->pad_len = 0u;
+	spkt->length  = sizeof(spkt->handshake);
+	send_len      = TSRV_PKT_MIN_READ + sizeof(spkt->handshake);
+
+	hs->need_encryption = false;
+	hs->has_min         = 1u;
+	hs->has_max         = 1u;
+
+	hs->cur.ver         = VERSION;
+	hs->cur.patch_lvl   = PATCHLEVEL;
+	hs->cur.sub_lvl     = SUBLEVEL;
+	memcpy(hs->cur.extra, EXTRAVERSION, sizeof(EXTRAVERSION));
+
+	memcpy(&hs->min, &hs->cur, sizeof(hs->min));
+	memcpy(&hs->max, &hs->cur, sizeof(hs->max));
+
+	tmp_ret = send_to_client(thread, client, spkt, send_len);
+	return ((size_t)tmp_ret == send_len);
+}
+
+
+static enum clevt handle_clpkt_handshake(struct tcli_pkt __maybe_unused *cpkt,
+					 struct srv_thread *thread,
+					 struct srv_client *client,
+					 size_t cdata_len)
+{
+
+	if (client->is_auth)
+		return CLE_OK;
+
+	prl_notice(0, "Receiving handshake from " PRWIU, W_IU(client));
+
+	if (cdata_len != sizeof(cpkt->handshake)) {
+		prl_notice(0, "Invalid handshake data length from " PRWIU,
+			   W_IU(client));
+		goto out_close;
+	}
+
+	if (!version_compare(&cpkt->handshake)) {
+		prl_notice(0, "Invalid handshake version from " PRWIU,
+			   W_IU(client));
+		goto out_close;
+	}
+
+
+	prl_notice(0, "Acknowledging handshake to " PRWIU, W_IU(client));
+	if (acknowledge_handshake(thread, client,
+				  cpkt->handshake.need_encryption))
+		return CLE_OK;
+
+out_close:
+	return CLE_CLOSE;
+}
+
+
+static enum clevt handle_clpkt_iface_data(struct tcli_pkt __maybe_unused *cpkt,
+					  struct srv_thread __maybe_unused *thread,
+					  struct srv_client __maybe_unused *client,
+					  size_t __maybe_unused cdata_len)
+{
+	enum clevt ret = CLE_OK;
+	return ret;
+}
+
+
+static enum clevt handle_clpkt_reqsync(struct tcli_pkt __maybe_unused *cpkt,
+				       struct srv_thread __maybe_unused *thread,
+				       struct srv_client __maybe_unused *client,
+				       size_t __maybe_unused cdata_len)
+{
+	enum clevt ret = CLE_OK;
+	return ret;
+}
+
+
+static enum clevt handle_client_event3(struct tcli_pkt *cpkt,
+				       struct srv_thread *thread,
+				       struct srv_client *client,
+				       size_t cdata_len)
+{
+	switch (cpkt->type) {
+	case TCLI_PKT_NOP:
+		return handle_clpkt_nop(cpkt, thread, client, cdata_len);
+	case TCLI_PKT_HANDSHAKE:
+		return handle_clpkt_handshake(cpkt, thread, client, cdata_len);
+	case TCLI_PKT_IFACE_DATA:
+		return handle_clpkt_iface_data(cpkt, thread, client, cdata_len);
+	case TCLI_PKT_REQSYNC:
+		return handle_clpkt_reqsync(cpkt, thread, client, cdata_len);
+	case TCLI_PKT_CLOSE:
+		return CLE_CLOSE;
+	}
+
+	/*
+	 * Data corruption!
+	 */
+	return client->is_auth ? CLE_ERROR : CLE_CLOSE;
+}
+
+
+static enum clevt handle_client_event2(struct srv_thread *thread,
+				       struct srv_client *client,
+				       size_t recv_s)
+{
+	enum clevt ret = CLE_OK;
+	struct tcli_pkt *cpkt = &client->cpkt;
+	char *raw_pkt = client->raw_pkt;
+
+	/*
+	 * `fdata_len` means full data length.
+	 * It it the expected length of `cpkt->raw_buf`
+	 */
+	size_t fdata_len;
+
+	/*
+	 * `cdata_len` means current received data length.
+	 * It is how many bytes of `cpkt->raw_buf` has been received.
+	 */
+	size_t cdata_len;
+
+	/*
+	 * `fpkt_len` means full packed length.
+	 * It is `TCLI_PKT_MIN_READ + cpkt->length`
+	 */
+	size_t fpkt_len;
+
+
+again:
+	if (unlikely(recv_s < TCLI_PKT_MIN_READ)) {
+		/*
+		 * We must have received `TCLI_PKT_MIN_READ`
+		 * bytes before dereferencing these 3 things:
+		 *   - cpkt->type
+		 *   - cpkt->pad_len
+		 *   - cpkt->length
+		 *
+		 * At this point we don't yet fulfill that 
+		 * length.
+		 *
+		 * So, bail out!
+		 */
+		goto out;
+	}
+
+
+	fdata_len = cpkt->length;
+	fpkt_len  = TCLI_PKT_MIN_READ + fdata_len;
+	cdata_len = recv_s - TCLI_PKT_MIN_READ;
+
+	if (unlikely(fdata_len > sizeof(cpkt->raw_buf))) {
+		ret    = CLE_ERROR;
+		recv_s = 0;
+		goto out;
+	}
+
+
+	if (cdata_len < fdata_len) {
+		/*
+		 * We haven't fully received the data.
+		 * Let's wait a bit longer.
+		 *
+		 * Bail out!
+		 */
+		goto out;
+	}
+
+
+	ret = handle_client_event3(cpkt, thread, client, cdata_len);
+	if (unlikely(ret != CLE_OK)) {
+		recv_s = 0;
+		goto out;
+	}
+
+	if (recv_s > fpkt_len) {
+		/*
+		 * We have extra packet on the tail.
+		 *
+		 * Must memmove to the front before
+		 * we run out of buffer!
+		 *
+		 */
+		size_t tail_len = recv_s - fpkt_len;
+		memmove(raw_pkt, raw_pkt + fpkt_len, tail_len);
+		recv_s = tail_len;
+		goto again;
+	}
+
+out:
+	client->recv_s = recv_s;
+	return ret;
+}
+
+
+static int handle_client_event(uint16_t map_to, int cli_fd, uint32_t revents,
 			       struct srv_thread *thread,
 			       struct srv_state *state)
 {
+#if DO_BUSY_RECV
+	uint8_t busy_count = 0u;
+#endif
+	enum clevt ret;
+	size_t recv_s;
+	size_t recv_len;
 	ssize_t recv_ret;
-	char buff[2048];
+	struct srv_client *client;
 	const uint32_t err_mask = EPOLLERR | EPOLLHUP;
-	struct srv_client *client = &state->clients[map_to - EPL_MAP_SHIFT];
 
+	client = &state->clients[map_to - EPL_MAP_SHIFT];
 	if (unlikely(revents & err_mask))
 		goto out_close;
 
+#if DO_BUSY_RECV
+do_busy_recv:
+#endif
+	recv_s   = client->recv_s;
+	recv_len = sizeof(client->raw_pkt) - recv_s;
+	recv_ret = recv(cli_fd, client->raw_pkt + recv_s, recv_len, 0);
 
-	recv_ret = recv(fd, buff, sizeof(buff), 0);
-	if (unlikely(recv_ret == 0))
+
+	if (unlikely(recv_ret == 0)) {
+		prl_notice(0, "recv() from " PRWIU " returned zero",
+			   W_IU(client));
+		goto out_close;
+	}
+
+
+	if (unlikely(recv_ret < 0)) {
+		int err = errno;
+		if (unlikely(err != EAGAIN)) {
+			pr_err("recv() from " PRWIU ": " PRERF, W_IU(client),
+			       PREAR(err));
+			goto out_close;
+		}
+		goto out;
+	}
+
+	prl_notice(6, "recv() from " PRWIU " %zd bytes", W_IU(client),
+		   recv_ret);
+
+	recv_s += (size_t)recv_ret;
+
+
+	ret = handle_client_event2(thread, client, recv_s);
+	if (unlikely(ret == CLE_ERROR))
+		goto out_err;
+	if (unlikely(ret == CLE_CLOSE))
 		goto out_close;
 
-	prl_notice(0, "recv_ret = %zd", recv_ret);
 
+#if DO_BUSY_RECV
+	if (likely(busy_count++ < BUSY_RECV_COUNT))
+		goto do_busy_recv;
+#endif
+out:
 	return 0;
 
+out_err:
+	if (unlikely(client->err_count++ >= CLIENT_MAX_ERRC)) {
+		pr_err("Client " PRWIU " has reached the max number of "
+		       "errors, closing...", W_IU(client));
+		goto out_close;
+	}
+	return 0;
 out_close:
 	close_client_event_conn(client, thread, state);
 	return 0;
@@ -852,13 +1230,13 @@ static int handle_event(struct epoll_event *event, struct srv_thread *thread,
 		panic("Bug: unmapped file descriptor %d in handle_event()", fd);
 		abort();
 	case EPL_MAP_TO_TCP:
-		ret = handle_tcp_event(revents, state);
+		ret = handle_tcp_event(fd, revents, state);
 		break;
 	case EPL_MAP_TO_TUN:
-		ret = handle_tun_event(fd, revents, state);
+		ret = handle_tun_event(fd, revents, thread, state);
 		break;
 	default:
-		ret = handle_client_event(fd, map_to, revents, thread, state);
+		ret = handle_client_event(map_to, fd, revents, thread, state);
 		break;
 	}
 
@@ -869,7 +1247,8 @@ static int handle_event(struct epoll_event *event, struct srv_thread *thread,
 }
 
 
-static int do_epoll_wait(int epoll_fd, struct epoll_event events[EPL_WAIT_NUM])
+static int do_epoll_wait(int epoll_fd, struct epoll_event events[EPL_WAIT_NUM],
+			 struct srv_thread *thread)
 {
 	int ret;
 
@@ -882,7 +1261,8 @@ static int do_epoll_wait(int epoll_fd, struct epoll_event events[EPL_WAIT_NUM])
 	if (unlikely(ret < 0)) {
 		ret = errno;
 		if (ret == EINTR) {
-			prl_notice(0, "Interrupted!");
+			prl_notice(0, "Thread %u is interrupted!",
+				   thread->thread_idx);
 			return 0;
 		}
 
@@ -899,7 +1279,7 @@ static int do_event_loop_routine(int epoll_fd,
 				 struct srv_thread *thread,
 				 struct srv_state *state)
 {
-	int ret = do_epoll_wait(epoll_fd, events);
+	int ret = do_epoll_wait(epoll_fd, events, thread);
 	if (unlikely(ret < 0))
 		return ret;
 

@@ -34,7 +34,7 @@
 
 #define EPL_MAP_SHIFT	0x00003u
 #define EPL_IN_EVT	(EPOLLIN | EPOLLPRI | EPOLLHUP)
-#define EPL_WAIT_NUM	16
+#define EPL_WAIT_NUM	4u
 
 struct cli_thread {
 	_Atomic(bool)			is_on;
@@ -54,10 +54,15 @@ struct cli_state {
 	uint16_t			*epoll_map;
 
 	bool				stop_el;
+	bool				handshake_ok;
 	bool				authenticated;
 	_Atomic(uint16_t)		on_thread_c;
 	size_t				pkt_len;
-	struct tcli_pkt			pkt;
+	union {
+		struct tsrv_pkt		spkt;
+		struct tcli_pkt		cpkt;
+		char			raw_pkt[sizeof(struct tcli_pkt)];
+	};
 };
 
 
@@ -188,6 +193,7 @@ static int init_state(struct cli_state *state)
 	state->tun_fds          = NULL;
 	state->threads          = NULL;
 	state->epoll_map        = NULL;
+	state->handshake_ok     = false;
 	state->authenticated    = false;
 	atomic_store(&state->on_thread_c, 0);
 
@@ -468,7 +474,7 @@ static int handle_tun_event(int tun_fd, uint32_t revents,
 {
 	const uint32_t err_mask = EPOLLERR | EPOLLHUP;
 	ssize_t read_ret;
-	struct tcli_pkt_iface_data *buff = &state->pkt.iface_data;
+	struct tcli_pkt_iface_data *buff = &state->cpkt.iface_data;
 
 	if (unlikely(revents & err_mask))
 		return -ENETDOWN;
@@ -576,13 +582,89 @@ out_close:
 }
 
 
-static int do_auth(struct cli_thread *thread)
+static ssize_t send_to_server(struct cli_state *state, const void *pkt,
+			      size_t len)
 {
-	int ret = 0;
+	ssize_t send_ret;
+	int tcp_fd = state->tcp_fd;
+
+	send_ret = send(tcp_fd, pkt, len, 0);
+	if (unlikely(send_ret < 0)) {
+		int err = errno;
+		if (err != EAGAIN)
+			pr_err("send(): " PRERF, PREAR(err));
+		return -err;
+	}
+
+	prl_notice(6, "send() to server %zd bytes (passed len = %zu bytes)",
+		   send_ret, len);
+	return send_ret;
+}
+
+
+static int do_handshake(struct cli_thread *thread)
+{
+	uint8_t try;
+	size_t send_len;
+	ssize_t send_ret, tmp_ret;
 	struct cli_state *state = thread->state;
+	char *raw_pkt = state->raw_pkt;
+	struct tcli_pkt *cpkt = &state->cpkt;
+	struct tcli_pkt_handshake *hs = &cpkt->handshake;
 
+	cpkt->type    = TCLI_PKT_HANDSHAKE;
+	cpkt->pad_len = 0u;
+	cpkt->length  = sizeof(cpkt->handshake);
+	send_len      = TCLI_PKT_MIN_READ + sizeof(cpkt->handshake);
 
-	return ret;
+	hs->need_encryption = state->cfg->sock.use_encrypt;
+	hs->has_min         = 1u;
+	hs->has_max         = 1u;
+
+	hs->cur.ver         = VERSION;
+	hs->cur.patch_lvl   = PATCHLEVEL;
+	hs->cur.sub_lvl     = SUBLEVEL;
+	memcpy(hs->cur.extra, EXTRAVERSION, sizeof(EXTRAVERSION));
+
+	memcpy(&hs->min, &hs->cur, sizeof(hs->min));
+	memcpy(&hs->max, &hs->cur, sizeof(hs->max));
+
+	try      = 0;
+	send_ret = 0;
+again:
+	try++;
+	tmp_ret = send_to_server(state, raw_pkt + send_ret, send_len);
+
+	if (unlikely(tmp_ret == -EAGAIN)) {
+		prl_notice(0, "Got EAGAIN on do_handshake()");
+		if (unlikely(try >= 5))
+			goto out_give_up;
+		usleep(500000);
+		prl_notice(0, "Retrying...");
+		goto again;
+	}
+
+	send_ret += tmp_ret;
+	if (unlikely((size_t)send_ret < send_len)) {
+		prl_notice(0, "Got ((size_t)send_ret < send_len) on "
+			   "do_handshake()");
+		if (unlikely(try >= 5))
+			goto out_give_up;
+		usleep(500000);
+		prl_notice(0, "Continuing...");
+		goto again;
+	}
+
+	if (unlikely((size_t)send_ret > send_len)) {
+		panic("Bug: (size_t)send_ret > send_len");
+		abort();
+	}
+
+	return 0;
+
+out_give_up:
+	prl_notice(0, "Giving up...");
+	return -ENETDOWN;
 }
 
 
@@ -604,11 +686,11 @@ static int run_main_thread(struct cli_thread *thread)
 		usleep(50000);
 
 
-	ret = do_auth(thread);
+	ret = do_handshake(thread);
 	if (unlikely(ret))
 		goto out;
 
-	prl_notice(0, "Initialization Sequence Completed");
+	
 	while (likely(!state->stop_el)) {
 		ret = do_event_loop_routine(epoll_fd, events, thread, state);
 		if (unlikely(ret))
@@ -660,8 +742,8 @@ static int run_workers(struct cli_state *state)
 	thread = &threads[0];
 
 	/*
-	 * Main thread is responsible to accept
-	 * new connections, so we add tcp_fd to
+	 * Main thread is responsible to recv()
+	 * from server, so we add tcp_fd to
 	 * its epoll monitoring resource.
 	 */
 	ret = epoll_add(thread->epoll_fd, state->tcp_fd, EPL_IN_EVT);

@@ -20,4 +20,8 @@
 #include <teavpn2/tcp_pkt_client.h>
 #undef INTERNAL____TEAVPN2__TCP_H
 
+static_assert(sizeof(struct tsrv_pkt) == sizeof(struct tcli_pkt),
+	      "sizeof(struct tsrv_pkt) must be equal to "
+	      "sizeof(struct tcli_pkt)");
+
 #endif /* #ifndef TEAVPN2__TCP_H */

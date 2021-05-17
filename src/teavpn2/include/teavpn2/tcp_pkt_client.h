@@ -18,15 +18,22 @@
 
 #include <teavpn2/base.h>
 
+#define TCLI_PKT_NOP		(1u << 0u)
+#define TCLI_PKT_HANDSHAKE	(1u << 1u)
+#define TCLI_PKT_IFACE_DATA	(1u << 2u)
+#define TCLI_PKT_REQSYNC	(1u << 3u)
+#define TCLI_PKT_CLOSE		(1u << 4u)
 
-typedef enum _tcli_pkt_type_t {
-	TCLI_PKT_NOP		= 0u,
-	TCLI_PKT_HANDSHAKE	= (1u << 0u),
-	TCLI_PKT_IFACE_DATA	= (1u << 1u),
-	TCLI_PKT_REQSYNC	= (1u << 2u),
-	TCLI_PKT_CLOSE		= (1u << 3u)
-} __attribute__((packed)) tcli_pkt_type_t;
+#define TCLI_PKT_ALL_BITS 		\
+(					\
+	TCLI_PKT_NOP		|	\
+	TCLI_PKT_HANDSHAKE	|	\
+	TCLI_PKT_IFACE_DATA	|	\
+	TCLI_PKT_REQSYNC	|	\
+	TCLI_PKT_CLOSE			\
+)
 
+typedef uint8_t tcli_pkt_type_t;
 
 static_assert(sizeof(tcli_pkt_type_t) == 1, "Bad sizeof(tcli_pkt_type_t)");
 
@@ -96,6 +103,7 @@ struct tcli_pkt {
 	};
 };
 
+#define TCLI_PKT_MIN_READ (offsetof(struct tcli_pkt, raw_buf))
 
 static_assert(offsetof(struct tcli_pkt, type) == 0,
 	      "Bad offsetof(struct tcli_pkt, type)");
