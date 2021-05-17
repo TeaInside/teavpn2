@@ -25,16 +25,21 @@
 
 #include <bluetea/lib/string.h>
 
-#define CALCULATE_STATS	1
+#define CALCULATE_STATS		1
 
-#define EPL_MAP_SIZE	0x10000u
-#define EPL_MAP_TO_NOP	0x00000u
-#define EPL_MAP_TO_TCP	0x00001u
-#define EPL_MAP_TO_TUN	0x00002u
+#define EPL_MAP_SIZE		0x10000u
+#define EPL_MAP_TO_NOP		0x00000u
+#define EPL_MAP_TO_TCP		0x00001u
+#define EPL_MAP_TO_TUN		0x00002u
 
-#define EPL_MAP_SHIFT	0x00003u
-#define EPL_IN_EVT	(EPOLLIN | EPOLLPRI | EPOLLHUP)
-#define EPL_WAIT_NUM	4u
+#define EPL_MAP_SHIFT		0x00003u
+#define EPL_IN_EVT		(EPOLLIN | EPOLLPRI | EPOLLHUP)
+#define EPL_WAIT_NUM		4u
+
+#define DO_BUSY_RECV		1
+#define BUSY_RECV_COUNT		10
+#define DO_BUSY_READ		1
+#define BUSY_READ_COUNT		10
 
 struct cli_thread {
 	_Atomic(bool)			is_on;
@@ -238,15 +243,13 @@ static int init_iface(struct cli_state *state)
 
 		prl_notice(5, "Allocating TUN fd %zu...", i);
 		tmp_fd = tun_alloc(iff->dev, tun_flags);
-		if (unlikely(tmp_fd < 0)) {
-			ret = tmp_fd;
-			goto out_err;
-		}
+		if (unlikely(tmp_fd < 0))
+			return tmp_fd;
 
 		ret = fd_set_nonblock(tmp_fd);
 		if (unlikely(ret < 0)) {
 			close(tmp_fd);
-			goto out_err;
+			return ret;
 		}
 
 		tun_fds[i] = tmp_fd;
@@ -254,22 +257,6 @@ static int init_iface(struct cli_state *state)
 	}
 
 	return 0;
-out_err:
-	while (i--) {
-		/*
-		 * Several file descriptors may have been opened.
-		 * Let's close it because we failed.
-		 *
-		 * It's our responsibility to close if we fail, not the caller!
-		 */
-		int fd = tun_fds[i];
-
-		prl_notice(5, "Closing tun_fds[%zu] (%d)...", i, fd);
-		epoll_map[fd] = EPL_MAP_TO_NOP;
-		close(fd);
-		tun_fds[i] = -1;
-	}
-	return ret;
 }
 
 
@@ -780,8 +767,7 @@ static void close_tun_fds(int *tun_fds, size_t nn)
 		if (tun_fds[i] == -1)
 			continue;
 
-		prl_notice(3, "Closing state->tun_fds[%zu] (%d)...", i,
-			   tun_fds[i]);
+		prl_notice(3, "Closing tun_fds[%zu] (%d)...", i, tun_fds[i]);
 		close(tun_fds[i]);
 	}
 }
@@ -799,8 +785,8 @@ static void close_epoll_threads(struct cli_thread *threads, size_t nn)
 		if (epoll_fd == -1)
 			continue;
 
-		prl_notice(3, "Closing state->threads[%zu].epoll_fd (%d)...",
-			   i, epoll_fd);
+		prl_notice(3, "Closing threads[%zu].epoll_fd (%d)...", i,
+			   epoll_fd);
 		close(epoll_fd);
 	}
 }
