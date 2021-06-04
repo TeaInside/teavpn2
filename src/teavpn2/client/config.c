@@ -54,7 +54,7 @@ static bool parse_section_socket(struct cli_sock_cfg *sock, const char *name,
 		} b;
 
 		b.do_or = 0ul;
-		strncpy(b.buf, value, sizeof(b.buf));
+		sane_strncpy(b.buf, value, sizeof(b.buf));
 		b.do_or |= 0x20202020ul;
 		b.buf[sizeof(b.buf) - 1] = '\0';
 

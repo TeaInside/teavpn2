@@ -22,8 +22,8 @@ PACKAGE_NAME = $(TARGET_BIN)-$(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)
 # Bin
 #
 AS	:= as
-CC 	:= clang
-CXX	:= clang++
+CC 	:= gcc
+CXX	:= g++
 LD	:= $(CXX)
 VG	:= valgrind
 RM	:= rm

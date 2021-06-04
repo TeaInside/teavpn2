@@ -143,7 +143,7 @@ int teavpn2_client_parse_argv(int argc, char *argv[], struct cli_cfg *cfg)
 			} b;
 
 			b.do_or = 0ul;
-			strncpy(b.buf, retval, sizeof(b.buf));
+			sane_strncpy(b.buf, retval, sizeof(b.buf));
 			b.do_or |= 0x20202020ul;
 			b.buf[sizeof(b.buf) - 1] = '\0';
 

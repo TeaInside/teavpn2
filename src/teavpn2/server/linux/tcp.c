@@ -44,10 +44,10 @@
 #define CLIENT_MAX_ERRC		20u
 
 /* Macros for printing  */
-#define W_IP(CLIENT) ((CLIENT)->src_ip), ((CLIENT)->src_port)
-#define W_UN(CLIENT) ((CLIENT)->username)
-#define W_IU(CLIENT) W_IP(CLIENT), W_UN(CLIENT)
-#define PRWIU "%s:%d (%s)"
+#define W_IP(CLIENT) 		((CLIENT)->src_ip), ((CLIENT)->src_port)
+#define W_UN(CLIENT) 		((CLIENT)->username)
+#define W_IU(CLIENT) 		W_IP(CLIENT), W_UN(CLIENT)
+#define PRWIU 			"%s:%d (%s)"
 
 struct srv_thread {
 	_Atomic(bool)			is_on;
@@ -779,7 +779,7 @@ static int do_accept(int tcp_fd, struct sockaddr_in *saddr,
 	socklen_t addrlen = sizeof(*saddr);
 
 	memset(saddr, 0, sizeof(*saddr));
-	cli_fd = accept(tcp_fd, saddr, &addrlen);
+	cli_fd = accept(tcp_fd, (struct sockaddr *)saddr, &addrlen);
 	if (unlikely(cli_fd < 0)) {
 		int err = errno;
 		if (err != EAGAIN)
@@ -999,8 +999,9 @@ static enum clevt handle_clpkt_handshake(struct tcli_pkt __maybe_unused *cpkt,
 
 	prl_notice(0, "Receiving handshake from " PRWIU, W_IU(client));
 	if (cdata_len != sizeof(cpkt->handshake)) {
-		prl_notice(0, "Invalid handshake data length from " PRWIU,
-			   W_IU(client));
+		prl_notice(0, "Invalid handshake data length from " PRWIU
+			   " (got %zu, expected %zu)", W_IU(client), cdata_len,
+			   sizeof(cpkt->handshake));
 		goto out_close;
 	}
 
@@ -1134,11 +1135,8 @@ again:
 
 
 	ret = handle_client_event3(cpkt, thread, client, cdata_len);
-	if (unlikely(ret != CLE_OK)) {
-		recv_s = 0;
+	if (unlikely(ret != CLE_OK))
 		goto out;
-	}
-
 
 	if (recv_s > fpkt_len) {
 		/*
@@ -1154,6 +1152,7 @@ again:
 		goto again;
 	}
 
+	recv_s = 0;
 out:
 	client->recv_s = recv_s;
 	return ret;
