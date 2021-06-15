@@ -22,6 +22,9 @@
 #endif
 
 
+uint8_t __notice_level = NOTICE_DEFAULT_LEVEL;
+
+
 static __always_inline char *get_time(char *buf)
 {
 	size_t len;

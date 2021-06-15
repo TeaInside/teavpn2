@@ -67,7 +67,7 @@ again:
 
 	memset(&ifr, 0, sizeof(ifr));
 	strncpy(ifr.ifr_name, dev, IFNAMSIZ - 1);
-	trim_cpy(ifr.ifr_name);
+	strtrim_move(ifr.ifr_name);
 	ifr.ifr_flags = flags;
 
 	if (unlikely(ioctl(fd, TUNSETIFF, &ifr) < 0)) {

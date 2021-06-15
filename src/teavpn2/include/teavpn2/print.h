@@ -60,11 +60,12 @@ __pr_debug(const char *fmt, ...);
 
 
 
-#define panic(...)		\
-do {				\
-	pr_emerg("Panic!");	\
-	pr_emerg(__VA_ARGS__);	\
-	abort();		\
+#define panic(...)						\
+do {								\
+	puts("====================================");		\
+	puts("Panic!");						\
+	printf(__VA_ARGS__);					\
+	abort();						\
 } while (0)
 
 

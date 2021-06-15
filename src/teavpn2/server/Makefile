@@ -11,7 +11,7 @@ DEP_DIRS += $(BASE_DEP_DIR)/src/teavpn2/server
 
 
 ifeq ($(UNAME_S),Linux)
-# 	include $(BASE_DIR)/src/teavpn2/server/linux/Makefile
+	include $(BASE_DIR)/src/teavpn2/server/linux/Makefile
 endif
 
 

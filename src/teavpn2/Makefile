@@ -14,9 +14,10 @@ BLUETEA_OBJ_EXTRA := \
 	$(BASE_DIR)/src/bluetea/lib/arena.o \
 	$(BASE_DIR)/src/bluetea/lib/getopt.o \
 	$(BASE_DIR)/src/bluetea/lib/string.o \
+	$(BASE_DIR)/src/bluetea/lib/string/strtrim.o
 
 
-# include $(BASE_DIR)/src/teavpn2/net/Makefile
+include $(BASE_DIR)/src/teavpn2/net/Makefile
 # include $(BASE_DIR)/src/teavpn2/client/Makefile
 include $(BASE_DIR)/src/teavpn2/server/Makefile
 

@@ -23,16 +23,15 @@ int teavpn2_run_server(int argc, char *argv[])
 	if (unlikely(ret))
 		goto out;
 
-	// ret = teavpn2_server_load_config(&cfg);
+	ret = teavpn2_server_load_config(&cfg);
 	if (unlikely(ret))
 		goto out;
 
-	// teavpn2_server_config_dump(&cfg);
+	teavpn2_server_config_dump(&cfg);
 
 	switch (cfg.sock.type) {
 	case SOCK_TCP:
-		// return teavpn2_server_tcp(&cfg);
-		return 1;
+		return teavpn2_server_tcp(&cfg);
 	case SOCK_UDP:
 		pr_err("UDP socket is not yet supported");
 		return -ESOCKTNOSUPPORT;

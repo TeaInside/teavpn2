@@ -8,11 +8,14 @@
  */
 
 
-#ifndef BLUETEA__LIB__ARENA_H
-#define BLUETEA__LIB__ARENA_H
+#ifndef BLUETEA__LIB__STRING_H
+#define BLUETEA__LIB__STRING_H
 
 #include <ctype.h>
 #include <bluetea/base.h>
+
+extern char *escapeshellarg(char *alloc, const char *str, size_t len,
+			    size_t *res_len);
 
 extern char *strtrim(char *str);
 extern char *strtriml(char *str, size_t len);
@@ -63,4 +66,4 @@ static __always_inline char *sane_strncpy(char * __restrict__ dest,
 }
 
 
-#endif /* #ifndef BLUETEA__LIB__ARENA_H */
+#endif /* #ifndef BLUETEA__LIB__STRING_H */
