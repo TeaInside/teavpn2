@@ -7,8 +7,7 @@
 # Copyright (C) 2021  Ammar Faizi
 #
 
-INCLUDE_DIR += -I$(BASE_DIR)/src
+INCLUDE_DIR	+= -I$(BASE_DIR)/src/ext
+DEP_DIRS	+= $(BASE_DEP_DIR)/src/teavpn2/ext
 
-include $(BASE_DIR)/src/bluetea/Makefile
-include $(BASE_DIR)/src/teavpn2/Makefile
-include $(BASE_DIR)/src/ext/Makefile
+include $(BASE_DIR)/src/ext/inih/Makefile
