@@ -8,3 +8,15 @@
  */
 
 #include <bluetea/lib/string.h>
+
+
+char *trunc_str(char *str, size_t n)
+{
+	size_t len = strnlen(str, n);
+
+	if (len < n)
+		return str;
+
+	str[n] = '\0';
+	return str;
+}

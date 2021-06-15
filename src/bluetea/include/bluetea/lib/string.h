@@ -26,6 +26,8 @@ extern size_t htmlspecialchars(char *__restrict__ out, size_t outlen,
 extern size_t htmlspecialcharsl(char *__restrict__ out, size_t outlen,
 				const char *__restrict__ in, size_t inlen);
 
+extern char *trunc_str(char *str, size_t n);
+
 #if 0
 inline static bool is_ws(char c)
 {
@@ -48,6 +50,16 @@ __always_inline static void *short_memcpy(void *__restrict__ dst,
 		*cdst++ = *csrc++;
 
 	return dst;
+}
+
+
+static __always_inline char *sane_strncpy(char * __restrict__ dest,
+					  const char * __restrict__ src,
+					  size_t n)
+{
+	dest = strncpy(dest, src, n - 1);
+	dest[n - 1] = '\0';
+	return dest;
 }
 
 

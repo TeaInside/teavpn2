@@ -10,19 +10,23 @@
 INCLUDE_DIR += -I$(BASE_DIR)/src/teavpn2/include
 DEP_DIRS += $(BASE_DEP_DIR)/src/teavpn2
 
+BLUETEA_OBJ_EXTRA := \
+	$(BASE_DIR)/src/bluetea/lib/arena.o \
+	$(BASE_DIR)/src/bluetea/lib/getopt.o \
+	$(BASE_DIR)/src/bluetea/lib/string.o \
+
 
 # include $(BASE_DIR)/src/teavpn2/net/Makefile
 # include $(BASE_DIR)/src/teavpn2/client/Makefile
-# include $(BASE_DIR)/src/teavpn2/server/Makefile
+include $(BASE_DIR)/src/teavpn2/server/Makefile
 
 
 OBJ_TMP_CC := \
-	$(BASE_DIR)/src/teavpn2/main.o
+	$(BASE_DIR)/src/teavpn2/main.o \
+	$(BASE_DIR)/src/teavpn2/print.o
 
 
-OBJ_PRE_CC += \
-	$(OBJ_TMP_CC) \
-	$(BASE_DIR)/src/bluetea/lib/arena.o
+OBJ_PRE_CC += $(OBJ_TMP_CC) $(BLUETEA_OBJ_EXTRA)
 
 
 $(OBJ_TMP_CC):

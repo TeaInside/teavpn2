@@ -21,6 +21,8 @@
 #include <netinet/in.h>
 #include <bluetea/base.h>
 
+#include <teavpn2/print.h>
+
 #define IFACENAMESIZ (16u)
 
 #ifndef INET_ADDRSTRLEN
