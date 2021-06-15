@@ -12,8 +12,8 @@
 VERSION	= 0
 PATCHLEVEL = 1
 SUBLEVEL = 2
-EXTRAVERSION =
-NAME = Black Mosquito
+EXTRAVERSION = -rc1
+NAME = Green Grass
 TARGET_BIN = teavpn2
 PACKAGE_NAME = $(TARGET_BIN)-$(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)
 
@@ -22,8 +22,8 @@ PACKAGE_NAME = $(TARGET_BIN)-$(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)
 # Bin
 #
 AS	:= as
-CC 	:= gcc
-CXX	:= g++
+CC 	:= cc
+CXX	:= c++
 LD	:= $(CXX)
 VG	:= valgrind
 RM	:= rm
@@ -32,18 +32,34 @@ STRIP	:= strip
 OBJCOPY	:= objcopy
 OBJDUMP	:= objdump
 READELF	:= readelf
+HOSTCC	:= $(CC)
+HOSTCXX	:= $(CXX)
 
 
-LIB_LDFLAGS	:= -lpthread
+# Flag to link any library to $(TARGET_BIN)
+# (middle argumets)
 LDFLAGS		:= -ggdb3
+
+
+# Flag to link any library to $(TARGET_BIN)
+# (end arguments)
+LIB_LDFLAGS	:= -lpthread
+
+
+# Flags that only apply to C
 CFLAGS		:= -std=c11
+
+
+# Flags that only apply to C++
 CXXFLAGS	:= -std=c++2a
-ifeq ($(FORCE_PIE),1)
-	PIC_FLAGS := -fPIE -fpie
-else
-	PIC_FLAGS := -fPIC -fpic
-endif
-PIE_FLAGS := -fPIE -fpie
+
+
+# Flags that only apply to PIC objects.
+PIC_FLAGS	:= -fPIC -fpic
+
+
+# Flags that only apply to PIE objects.
+PIE_FLAGS	:= -fPIE -fpie
 
 
 # `C_CXX_FLAGS` will be appended to `CFLAGS` and `CXXFLAGS`.
@@ -63,6 +79,11 @@ C_CXX_FLAGS := \
 	-DNAME="\"$(NAME)\""
 
 
+
+C_CXX_FLAGS_RELEASE := -DNDEBUG
+C_CXX_FLAGS_DEBUG :=
+
+
 # Valgrind flags
 VGFLAGS	:= \
 	--leak-check=full \
@@ -72,11 +93,14 @@ VGFLAGS	:= \
 	--error-exitcode=99 \
 	-s
 
+
 ifndef DEFAULT_OPTIMIZATION
-	DEFAULT_OPTIMIZATION = -O0
+	DEFAULT_OPTIMIZATION := -O0
 endif
 
+
 STACK_USAGE_SIZE := 2097152
+
 
 GCC_WARN_FLAGS := \
 	-Wall \
@@ -88,6 +112,7 @@ GCC_WARN_FLAGS := \
 	-Wstrict-aliasing=3 \
 	-Wstack-usage=$(STACK_USAGE_SIZE) \
 	-Wunsafe-loop-optimizations
+
 
 CLANG_WARN_FLAGS := \
 	-Wall \
@@ -116,21 +141,22 @@ endif
 include $(BASE_DIR)/src/build/flags.make
 include $(BASE_DIR)/src/build/print.make
 
+
 #######################################
-# Force these to be a simple variable
+# Force these variables to be a simple variable
 OBJ_CC		:=
 OBJ_PRE_CC	:=
 OBJ_TMP_CC	:=
 SHARED_LIB	:=
 #######################################
 
+
 all: $(TARGET_BIN)
 
 include $(BASE_DIR)/src/Makefile
 
-
 #
-# Create dependendy directory
+# Create dependency directories
 #
 $(DEP_DIRS):
 	$(MKDIR_PRINT)
@@ -139,18 +165,18 @@ $(DEP_DIRS):
 
 #
 # Add more dependency chain to objects that are not
-# compiled from the main Makefile (main Makefile is this Makefile).
+# compiled from the main Makefile (main Makefile is *this* Makefile).
 #
 $(OBJ_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
 $(OBJ_PRE_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
 
 
 #
-# Compile object from main Makefile (main Makefile is this Makefile).
+# Compile object from main Makefile (main Makefile is *this* Makefile).
 #
 $(OBJ_CC):
 	$(CC_PRINT)
-	$(Q)$(CC) $(PIC_FLAGS) $(DEPFLAGS) $(CFLAGS) -c $(O_TO_C) -o $(@)
+	$(Q)$(CC) $(PIE_FLAGS) $(DEPFLAGS) $(CFLAGS) -c $(O_TO_C) -o $(@)
 
 
 #
@@ -165,9 +191,12 @@ $(OBJ_CC):
 #
 $(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC) $(FBT_CC_OBJ)
 	$(LD_PRINT)
-	$(Q)$(LD) $(PIC_FLAGS) $(LDFLAGS) $(^) -o "$(@)" $(LIB_LDFLAGS)
+	$(Q)$(LD) $(PIE_FLAGS) $(LDFLAGS) $(^) -o "$(@)" $(LIB_LDFLAGS)
 
 
+#
+# Clean project and also clean bluetea framework objects.
+#
 clean: bluetea_clean
 	$(Q)$(RM) -vrf $(TARGET_BIN) $(DEP_DIRS) $(OBJ_CC) $(OBJ_PRE_CC)
 
