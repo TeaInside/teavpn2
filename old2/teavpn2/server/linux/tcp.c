@@ -27,7 +27,7 @@
 
 
 struct srv_thread {
-	_Atomic(bool)			is_on;
+	_Atomic(bool)			active;
 	pthread_t			pthread;
 };
 
