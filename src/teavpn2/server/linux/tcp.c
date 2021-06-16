@@ -671,14 +671,14 @@ static int init_epoll(int *epoll_fd_p)
 }
 
 
-static void wait_for_threads_to_become_ready(struct srv_state *state)
+static void wait_for_threads_to_be_ready(struct srv_state *state)
 {
 	size_t tr_num = state->cfg->sys.thread;
 
 	if (tr_num == 1)
 		return;
 
-	prl_notice(0, "Waiting for threads to become ready...");
+	prl_notice(0, "Waiting for threads to be ready...");
 	while (atomic_load(&state->online_tr) < tr_num)
 		usleep(50000);
 	prl_notice(0, "Threads are all ready!");
@@ -988,7 +988,7 @@ static __no_inline void *run_thread(void *_thread)
 	atomic_fetch_add(&state->online_tr, 1);
 
 	if (thread->idx == 0) {
-		wait_for_threads_to_become_ready(state);
+		wait_for_threads_to_be_ready(state);
 		prl_notice(0, "Initialization Sequence Completed");
 	}
 
