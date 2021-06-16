@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <linux/ip.h>
+#include <stdalign.h>
 #include <stdatomic.h>
 #include <sys/epoll.h>
 #include <arpa/inet.h>
@@ -20,6 +21,7 @@
 #include <linux/if_tun.h>
 
 #include <teavpn2/tcp_pkt.h>
+#include <teavpn2/allocator.h>
 #include <teavpn2/net/linux/iface.h>
 #include <teavpn2/server/linux/tcp.h>
 
@@ -59,7 +61,7 @@ struct srv_thread {
 	/* `read_s` is the valid bytes in the below union buffer. */
 	size_t				read_s;
 
-	union {
+	alignas(64) union {
 		struct tsrv_pkt		spkt;
 		struct tcli_pkt		cpkt;
 		char			raw_pkt[sizeof(struct tcli_pkt)];
@@ -86,7 +88,7 @@ struct client_slot {
 	/* `recv_s` is the valid bytes in the below union buffer. */
 	size_t				recv_s;
 
-	union {
+	alignas(64) union {
 		struct tsrv_pkt		spkt;
 		struct tcli_pkt		cpkt;
 		char			raw_pkt[sizeof(struct tcli_pkt)];
@@ -173,7 +175,9 @@ static int validate_cfg(struct srv_cfg *cfg)
 
 static void *calloc_wrp(size_t nmemb, size_t size)
 {
-	void *ret = calloc(nmemb, size);
+	void *ret;
+
+	ret = al64_calloc(nmemb, size);
 	if (unlikely(ret == NULL)) {
 		int err = errno;
 		pr_err("calloc(): " PRERF, PREAR(err));
@@ -417,8 +421,8 @@ static int init_state(struct srv_state *state)
 		return ret;
 
 	signal(SIGINT, handle_interrupt);
-	signal(SIGTERM, handle_interrupt);
 	signal(SIGHUP, handle_interrupt);
+	signal(SIGTERM, handle_interrupt);
 	signal(SIGPIPE, SIG_IGN);
 	return ret;
 }
@@ -739,8 +743,8 @@ static int do_accept(int tcp_fd, struct sockaddr_in *saddr,
 }
 
 
-static int register_client2(int cli_fd, int32_t ret_idx, char *src_ip,
-			    uint16_t src_port, struct srv_state *state)
+static int __register_client(int cli_fd, int32_t ret_idx, char *src_ip,
+			     uint16_t src_port, struct srv_state *state)
 {
 	int ret = 0;
 	uint16_t th_idx;
@@ -748,7 +752,7 @@ static int register_client2(int cli_fd, int32_t ret_idx, char *src_ip,
 	uint16_t idx = (uint16_t)ret_idx;
 	struct client_slot *client = &state->clients[idx];
 
-	th_idx = state->tr_assign++ % state->cfg->sys.thread;
+	th_idx = atomic_fetch_add(&state->tr_assign, 1) % state->cfg->sys.thread;
 	thread = &state->threads[th_idx];
 
 	ret = epoll_add(thread->epoll_fd, cli_fd, EPL_IN_EVT);
@@ -805,7 +809,7 @@ static int register_client(int cli_fd, struct sockaddr_in *saddr,
 	}
 
 
-	ret = register_client2(cli_fd, idx, src_ip, src_port, state);
+	ret = __register_client(cli_fd, idx, src_ip, src_port, state);
 	if (unlikely(ret)) {
 		/*
 		 * We need to push back this index,
@@ -884,6 +888,28 @@ static int handle_tun_event(int tun_fd, uint32_t revents,
 }
 
 
+static void close_client_conn(struct client_slot *client,
+			      struct srv_thread *thread,
+			      struct srv_state *state)
+{
+	uint16_t idx = client->idx;
+	int cli_fd = client->cli_fd;
+	struct client_stack *cl_stk = &state->cl_stk;
+
+	prl_notice(0, "Closing connection from " PRWIU " (fd=%d)...",
+		   W_IU(client), cli_fd);
+
+	epoll_delete(thread->epoll_fd, cli_fd);
+	close(cli_fd);
+
+	reset_client_state(client, idx);
+
+	bt_mutex_lock(&cl_stk->lock);
+	clstk_push(cl_stk, idx);
+	bt_mutex_unlock(&cl_stk->lock);
+}
+
+
 static int handle_client_event(uint16_t map_to, int cli_fd, uint32_t revents,
 			       struct srv_thread *thread)
 {
@@ -893,13 +919,12 @@ static int handle_client_event(uint16_t map_to, int cli_fd, uint32_t revents,
 	struct srv_state *state;
 	struct client_slot *client;
 
+	state    = thread->state;
+	client   = &state->clients[map_to - EPL_MAP_SHIFT];
 
 	if (unlikely(revents & EPL_ERR_MASK))
 		goto out_close;
 
-
-	state    = thread->state;
-	client   = &state->clients[map_to - EPL_MAP_SHIFT];
 	recv_s   = client->recv_s;
 	recv_len = sizeof(client->raw_pkt) - recv_s;
 	recv_ret = recv(cli_fd, client->raw_pkt + recv_s, recv_len, 0);
@@ -925,10 +950,10 @@ static int handle_client_event(uint16_t map_to, int cli_fd, uint32_t revents,
 	pr_debug("recv() from " PRWIU " %zd bytes", W_IU(client), recv_ret);
 
 out:
-	
-	
+
 
 out_close:
+	close_client_conn(client, thread, state);
 	return 0;
 }
 
@@ -1011,6 +1036,7 @@ static __no_inline void *run_thread(void *_thread)
 
 static int run_workers(struct srv_state *state)
 {
+	void *main_ret;
 	int ret, *tun_fds = state->tun_fds;
 	size_t i, nn = state->cfg->sys.thread;
 	struct srv_thread *thread = NULL, *threads = state->threads;
@@ -1064,7 +1090,10 @@ static int run_workers(struct srv_state *state)
 	if (unlikely(ret))
 		goto out_err;
 
-	return (int)(intptr_t)run_thread(thread);
+
+	// `main_ret` is just to shut the clang up!
+	main_ret = run_thread(thread);
+	return (int)((intptr_t)main_ret);
 
 out_err:
 	state->stop = true;
@@ -1148,11 +1177,11 @@ static void destroy_state(struct srv_state *state)
 {
 	close_fds(state);
 	bt_mutex_destroy(&state->cl_stk.lock);
-	free(state->cl_stk.arr);
-	free(state->tun_fds);
-	free(state->threads);
-	free(state->clients);
-	free(state->epoll_map);
+	al64_free(state->cl_stk.arr);
+	al64_free(state->tun_fds);
+	al64_free(state->threads);
+	al64_free(state->clients);
+	al64_free(state->epoll_map);
 }
 
 
@@ -1161,7 +1190,7 @@ int teavpn2_server_tcp(struct srv_cfg *cfg)
 	int ret = 0;
 	struct srv_state *state;
 
-	state = malloc(sizeof(*state));
+	state = al64_malloc(sizeof(*state));
 	if (unlikely(!state)) {
 		ret = errno;
 		pr_err("malloc(): " PRERF, PREAR(ret));
@@ -1187,6 +1216,6 @@ int teavpn2_server_tcp(struct srv_cfg *cfg)
 	ret = run_workers(state);
 out:
 	destroy_state(state);
-	free(state);
+	al64_free(state);
 	return ret;
 }
