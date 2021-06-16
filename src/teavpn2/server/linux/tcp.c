@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <pthread.h>
 #include <linux/ip.h>
 #include <stdatomic.h>
@@ -35,7 +36,7 @@
 #define EPL_WAIT_ARRSIZ		16
 #define CLIENT_MAX_ERRC		20u
 
-
+static const uint32_t EPL_ERR_MASK = EPOLLERR | EPOLLHUP;
 
 /* Macros for printing  */
 #define W_IP(CLIENT) 		((CLIENT)->src_ip), ((CLIENT)->src_port)
@@ -48,7 +49,9 @@ struct srv_thread {
 	_Atomic(bool)			is_online;
 	pthread_t			thread;
 	struct srv_state		*state;
+	int				tun_fd;
 	int				epoll_fd;
+	int				epoll_timeout;
 
 	/* `idx` is the index where it's stored in the thread array. */
 	uint16_t			idx;
@@ -71,7 +74,7 @@ struct client_slot {
 	char				username[0x100u];
 
 	/* Human readable src_ip and src_port */
-	char				src_ip[IPV4_L];
+	char				src_ip[IPV4_L + 1u];
 	uint16_t			src_port;
 
 	/* `idx` is the index where it's stored in the client slot array. */
@@ -304,7 +307,7 @@ static int32_t clstk_pop(struct client_stack *cl_stk)
 
 static int init_state_client_stack(struct srv_state *state)
 {
-	int ret;
+	int32_t ret;
 	uint16_t *arr;
 	size_t nn = state->cfg->sock.max_conn;
 	struct client_stack *cl_stk = &state->cl_stk;
@@ -329,8 +332,6 @@ static int init_state_client_stack(struct srv_state *state)
  * Test only.
  */
 {
-	int32_t ret;
-
 	/*
 	 * Push stack.
 	 */
@@ -380,7 +381,7 @@ static int init_state_client_stack(struct srv_state *state)
 
 static int init_state(struct srv_state *state)
 {
-	int ret = 0;
+	int ret;
 
 	state->intr_sig    = -1;
 	state->tcp_fd      = -1;
@@ -423,7 +424,7 @@ static int init_state(struct srv_state *state)
 }
 
 
-static int socket_setup(int cli_fd, struct srv_state *state)
+static __no_inline int socket_setup(int cli_fd, struct srv_state *state)
 {
 	int y;
 	int err;
@@ -620,6 +621,463 @@ out_err:
 }
 
 
+static int epoll_add(int epl_fd, int fd, uint32_t events)
+{
+	int err;
+	struct epoll_event event;
+
+	/* Shut the valgrind up! */
+	memset(&event, 0, sizeof(struct epoll_event));
+
+	event.events  = events;
+	event.data.fd = fd;
+	if (unlikely(epoll_ctl(epl_fd, EPOLL_CTL_ADD, fd, &event) < 0)) {
+		err = errno;
+		pr_err("epoll_ctl(EPOLL_CTL_ADD): " PRERF, PREAR(err));
+		return -err;
+	}
+	return 0;
+}
+
+
+static int epoll_delete(int epl_fd, int fd)
+{
+	int err;
+
+	if (unlikely(epoll_ctl(epl_fd, EPOLL_CTL_DEL, fd, NULL) < 0)) {
+		err = errno;
+		pr_err("epoll_ctl(EPOLL_CTL_DEL): " PRERF, PREAR(err));
+		return -1;
+	}
+	return 0;
+}
+
+
+static int init_epoll(int *epoll_fd_p)
+{
+	int ret;
+	int epoll_fd;
+
+	prl_notice(3, "Initializing epoll...");
+	epoll_fd = epoll_create(255);
+	if (unlikely(epoll_fd < 0)) {
+		ret = errno;
+		pr_err("epoll_create(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+
+	*epoll_fd_p = epoll_fd;
+	return 0;
+}
+
+
+static void wait_for_threads_to_become_ready(struct srv_state *state)
+{
+	size_t tr_num = state->cfg->sys.thread;
+
+	if (tr_num == 1)
+		return;
+
+	prl_notice(0, "Waiting for threads to become ready...");
+	while (atomic_load(&state->online_tr) < tr_num)
+		usleep(50000);
+	prl_notice(0, "Threads are all ready!");
+}
+
+
+static int do_epoll_wait(struct srv_thread *thread,
+			 struct epoll_event events[EPL_WAIT_ARRSIZ])
+{
+	int ret;
+
+	ret = epoll_wait(thread->epoll_fd, events, EPL_WAIT_ARRSIZ,
+			 thread->epoll_timeout);
+	if (unlikely(!ret)) {
+		/*
+		 * epoll_wait has reached its timeout.
+		 */
+		pr_debug("epoll_wait on thread %u has reached its timeout",
+			 thread->idx);
+		return ret;
+	}
+
+	if (unlikely(ret < 0)) {
+		ret = errno;
+		if (unlikely(ret != EINTR)) {
+			pr_err("epoll_wait(): " PRERF, PREAR(ret));
+			return -ret;
+		}
+		prl_notice(0, "Thread %u is interrupted!", thread->idx);
+		return 0;
+	}
+
+	return ret;
+}
+
+
+static int do_accept(int tcp_fd, struct sockaddr_in *saddr,
+		     struct srv_thread *thread)
+{
+	int ret;
+	int cli_fd;
+	socklen_t addrlen = sizeof(*saddr);
+
+	memset(saddr, 0, sizeof(*saddr));
+	cli_fd = accept(tcp_fd, (struct sockaddr *)saddr, &addrlen);
+	if (unlikely(cli_fd < 0)) {
+		int err = errno;
+		if (err != EAGAIN)
+			pr_err("accept(): " PRERF, PREAR(err));
+		return -err;
+	}
+
+	ret = socket_setup(cli_fd, thread->state);
+	if (unlikely(ret))
+		return ret;
+
+	return cli_fd;
+}
+
+
+static int register_client2(int cli_fd, int32_t ret_idx, char *src_ip,
+			    uint16_t src_port, struct srv_state *state)
+{
+	int ret = 0;
+	uint16_t th_idx;
+	struct srv_thread *thread;
+	uint16_t idx = (uint16_t)ret_idx;
+	struct client_slot *client = &state->clients[idx];
+
+	th_idx = state->tr_assign++ % state->cfg->sys.thread;
+	thread = &state->threads[th_idx];
+
+	ret = epoll_add(thread->epoll_fd, cli_fd, EPL_IN_EVT);
+	if (unlikely(ret))
+		goto out;
+
+	state->epoll_map[cli_fd] = idx + EPL_MAP_SHIFT;
+
+	client->cli_fd   = cli_fd;
+	client->src_port = src_port;
+	sane_strncpy(client->src_ip, src_ip, sizeof(client->src_ip));
+out:
+	return ret;
+}
+
+
+static int register_client(int cli_fd, struct sockaddr_in *saddr,
+			   struct srv_thread *thread)
+{
+	int ret = 0;
+	int32_t idx;
+	uint16_t src_port = 0;
+	char src_ip[IPV4_L] = {0};
+	struct srv_state *state = thread->state;
+	struct client_stack *cl_stk = &state->cl_stk;
+
+	if (unlikely(!inet_ntop(AF_INET, &saddr->sin_addr, src_ip,
+				sizeof(src_ip)))) {
+		ret = errno;
+		pr_err("inet_ntop(): " PRERF, PREAR(ret));
+		ret = -ret;
+		goto out_close;
+	}
+	src_ip[sizeof(src_ip) - 1] = '\0';
+	src_port = ntohs(saddr->sin_port);
+
+
+	if ((uint32_t)cli_fd >= (EPL_MAP_SIZE - EPL_MAP_SHIFT - 1u)) {
+		pr_err("Cannot accept connection from %s:%u because the "
+		       "accepted fd is too big (%d)", src_ip, src_port, cli_fd);
+		ret = -EAGAIN;
+		goto out_close;
+	}
+
+
+	bt_mutex_lock(&cl_stk->lock);
+	idx = clstk_pop(cl_stk);
+	bt_mutex_unlock(&cl_stk->lock);
+	if (unlikely(idx == -1)) {
+		pr_err("Client slot is full, cannot accept connection from "
+		       "%s:%u", src_ip, src_port);
+		ret = -EAGAIN;
+		goto out_close;
+	}
+
+
+	ret = register_client2(cli_fd, idx, src_ip, src_port, state);
+	if (unlikely(ret)) {
+		/*
+		 * We need to push back this index,
+		 * because this popped `idx` is not
+		 * used at the moment.
+		 */
+		goto out_push;
+	}
+
+
+	prl_notice(0, "New connection from " PRWIU, W_IU(&state->clients[idx]));
+	return ret;
+
+
+out_push:
+	bt_mutex_lock(&cl_stk->lock);
+	clstk_push(cl_stk, (uint16_t)idx);
+	bt_mutex_unlock(&cl_stk->lock);
+
+out_close:
+	prl_notice(0, "Closing connection from %s:%u (fd=%d)...", src_ip,
+		   src_port, cli_fd);
+	close(cli_fd);
+	return ret;
+}
+
+
+static int handle_tcp_event(int tcp_fd, uint32_t revents,
+			    struct srv_thread *thread)
+{
+	int cli_fd;
+	struct sockaddr_in saddr;
+
+	if (unlikely(revents & EPL_ERR_MASK))
+		return -ENETDOWN;
+
+	cli_fd = do_accept(tcp_fd, &saddr, thread);
+	if (unlikely(cli_fd < 0))
+		return cli_fd;
+
+	return register_client(cli_fd, &saddr, thread);
+}
+
+
+static int handle_tun_event(int tun_fd, uint32_t revents,
+			    struct srv_thread *thread)
+{
+	ssize_t read_ret;
+	struct srv_state *state;
+	struct tsrv_pkt_iface_data *buff;
+
+	if (unlikely(revents & EPL_ERR_MASK))
+		return -ENETDOWN;
+
+	state    = thread->state;
+	buff     = &thread->spkt.iface_data;
+	read_ret = read(tun_fd, buff, sizeof(*buff));
+
+	if (unlikely(read_ret < 0)) {
+		int err = errno;
+
+		if (likely(err == EAGAIN))
+			return 0;
+
+		pr_err("read(tun_fd=%d): " PRERF, tun_fd, PREAR(err));
+		state->stop = true;
+		return -err;
+	}
+
+
+	if (unlikely(read_ret == 0))
+		return 0;
+
+	pr_debug("Read %zd bytes from tun_fd (%d)", read_ret, tun_fd);
+	return 0;
+}
+
+
+static int handle_client_event(uint16_t map_to, int cli_fd, uint32_t revents,
+			       struct srv_thread *thread)
+{
+	size_t recv_s;
+	size_t recv_len;
+	ssize_t recv_ret;
+	struct srv_state *state;
+	struct client_slot *client;
+
+
+	if (unlikely(revents & EPL_ERR_MASK))
+		goto out_close;
+
+
+	state    = thread->state;
+	client   = &state->clients[map_to - EPL_MAP_SHIFT];
+	recv_s   = client->recv_s;
+	recv_len = sizeof(client->raw_pkt) - recv_s;
+	recv_ret = recv(cli_fd, client->raw_pkt + recv_s, recv_len, 0);
+
+
+	if (unlikely(recv_ret == 0)) {
+		prl_notice(0, "recv() from " PRWIU " returned 0", W_IU(client));
+		goto out_close;
+	}
+
+
+	if (unlikely(recv_ret < 0)) {
+		int err = errno;
+		if (unlikely(err != EAGAIN)) {
+			pr_err("recv() from " PRWIU ": " PRERF, W_IU(client),
+			       PREAR(err));
+			goto out_close;
+		}
+		goto out;
+	}
+
+
+	pr_debug("recv() from " PRWIU " %zd bytes", W_IU(client), recv_ret);
+
+out:
+	
+	
+
+out_close:
+	return 0;
+}
+
+
+static int handle_event(struct srv_thread *thread, struct epoll_event *event)
+{
+	int ret = 0;
+	uint16_t map_to;
+	int fd = event->data.fd;
+	uint32_t revents = event->events;
+
+	map_to = thread->state->epoll_map[(size_t)fd];
+	switch (map_to) {
+	case EPL_MAP_TO_NOP:
+		panic("Bug: unmapped file descriptor %d in handle_event()", fd);
+		break;
+	case EPL_MAP_TO_TCP:
+		ret = handle_tcp_event(fd, revents, thread);
+		break;
+	case EPL_MAP_TO_TUN:
+		ret = handle_tun_event(fd, revents, thread);
+		break;
+	default:
+		ret = handle_client_event(map_to, fd, revents, thread);
+		break;
+	}
+
+	if (unlikely(ret == -EAGAIN || ret == -EINPROGRESS))
+		ret = 0;
+
+	return ret;
+}
+
+
+static int handle_events(struct srv_thread *thread,
+			 struct epoll_event events[EPL_WAIT_ARRSIZ],
+			 int event_num)
+{
+	int ret = 0;
+	for (int i = 0; i < event_num; i++) {
+		ret = handle_event(thread, &events[i]);
+		if (unlikely(ret))
+			break;
+	}
+	return ret;
+}
+
+
+static __no_inline void *run_thread(void *_thread)
+{
+	intptr_t ret = 0;
+	struct srv_thread *thread = _thread;
+	struct srv_state *state = thread->state;
+	struct epoll_event events[EPL_WAIT_ARRSIZ];
+
+	atomic_store(&thread->is_online, true);
+	atomic_fetch_add(&state->online_tr, 1);
+
+	if (thread->idx == 0) {
+		wait_for_threads_to_become_ready(state);
+		prl_notice(0, "Initialization Sequence Completed");
+	}
+
+	while (likely(!state->stop)) {
+		ret = do_epoll_wait(thread, events);
+		if (unlikely(ret < 0))
+			break;
+
+		ret = handle_events(thread, events, (int)ret);
+		if (unlikely(ret))
+			break;
+	}
+
+	atomic_store(&thread->is_online, false);
+	atomic_fetch_sub(&state->online_tr, 1);
+
+	return (void *)ret;
+}
+
+
+static int run_workers(struct srv_state *state)
+{
+	int ret, *tun_fds = state->tun_fds;
+	size_t i, nn = state->cfg->sys.thread;
+	struct srv_thread *thread = NULL, *threads = state->threads;
+
+	if (unlikely(nn == 0))
+		return -EINVAL;
+
+	/*
+	 * Distribute tun_fds to all threads. So each thread has
+	 * its own tun_fds for writing.
+	 */
+	for (i = 0; i < nn; i++) {
+		int tun_fd = tun_fds[i];
+
+		thread = &threads[i];
+		thread->epoll_fd = -1;
+		thread->epoll_timeout = 5000;
+
+		/*
+		 * Each thread has its own epoll.
+		 */
+		ret = init_epoll(&thread->epoll_fd);
+		if (unlikely(ret))
+			goto out_err;
+
+		ret = epoll_add(thread->epoll_fd, tun_fd, EPL_IN_EVT);
+		if (unlikely(ret))
+			goto out_err;
+
+		/*
+		 * Don't spawn a thread for `i == 0`,
+		 * because we are going to run it on
+		 * the main thread.
+		 */
+		if (unlikely(i == 0))
+			continue;
+
+		pthread_create(&thread->thread, NULL, run_thread, thread);
+		pthread_detach(thread->thread);
+	}
+
+
+	thread = &threads[0];
+
+	/*
+	 * Main thread is responsible to accept
+	 * new connections, so we add tcp_fd to
+	 * its epoll monitoring resource.
+	 */
+	ret = epoll_add(thread->epoll_fd, state->tcp_fd, EPL_IN_EVT);
+	if (unlikely(ret))
+		goto out_err;
+
+	return (int)(intptr_t)run_thread(thread);
+
+out_err:
+	state->stop = true;
+	while (i--) {
+		thread = &threads[i];
+		close(thread->epoll_fd);
+		thread->epoll_fd = -1;
+		pthread_kill(thread->thread, SIGTERM);
+	}
+	return ret;
+}
+
+
 static void close_tun_fds(int *tun_fds, size_t nn)
 {
 	if (!tun_fds)
@@ -725,6 +1183,8 @@ int teavpn2_server_tcp(struct srv_cfg *cfg)
 	ret = init_tcp_socket(state);
 	if (unlikely(ret))
 		goto out;
+
+	ret = run_workers(state);
 out:
 	destroy_state(state);
 	free(state);

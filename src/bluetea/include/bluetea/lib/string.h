@@ -42,7 +42,7 @@ inline static bool is_ws(char c)
 #define is_ws(c) isspace((unsigned char)(c))
 
 
-__always_inline static void *short_memcpy(void *__restrict__ dst,
+static __always_inline void *short_memcpy(void *__restrict__ dst,
 					  const void *__restrict__ src,
 					  uint8_t len)
 {
