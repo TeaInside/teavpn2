@@ -7,7 +7,6 @@
  *  Copyright (C) 2021  Ammar Faizi
  */
 
-#include <poll.h>
 #include <unistd.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -15,7 +14,6 @@
 #include <pthread.h>
 #include <linux/ip.h>
 #include <stdalign.h>
-#include <sys/epoll.h>
 #include <stdatomic.h>
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
@@ -650,7 +648,6 @@ out_err:
 
 static int init_iface(struct srv_state *state)
 {
-	int ret;
 	size_t i;
 	int *tun_fds = state->tun_fds;
 	size_t nn = state->cfg->sys.thread;
@@ -730,22 +727,6 @@ out_err:
 }
 
 
-static int add_ring_poll(struct io_uring *ring, int fd, int32_t poll_mask,
-			 void *user_data)
-{
-	struct io_uring_sqe *sqe;
-
-	sqe = io_uring_get_sqe(ring);
-	if (unlikely(!sqe)) {
-		pr_err("io_uring_get_sqe(): " PRERF, PREAR(ENOMEM));
-		return -ENOMEM;
-	}
-	io_uring_prep_poll_add(sqe, fd, poll_mask);
-	io_uring_sqe_set_data(sqe, (void *)(uintptr_t)user_data);
-	return 0;
-}
-
-
 static struct ring_queue *get_ring_queue(struct srv_state *state)
 {
 	int32_t idx;
@@ -802,7 +783,7 @@ static int do_uring_wait(struct io_uring *ring, struct io_uring_cqe **cqe)
 static int handle_tun_event(struct srv_thread *thread, struct io_uring_cqe *cqe,
 			    struct ring_queue *rq)
 {
-	int ret = 0;
+	(void)rq;
 	pr_debug("TUN = %d", cqe->res);
 	io_uring_cqe_seen(&thread->ring, cqe);
 	return 0;
@@ -822,6 +803,8 @@ static int __register_client(struct srv_thread *thread, int32_t idx, int cli_fd,
 	uint16_t th_idx = 0; /* Thread index (the assignee). */
 
 
+	client = &state->clients[idx];
+
 	if (unlikely(num_threads <= 1)) {
 		/*
 		 * We are single threaded.
@@ -830,8 +813,6 @@ static int __register_client(struct srv_thread *thread, int32_t idx, int cli_fd,
 		rq = get_ring_queue(state);
 		goto out_reg;
 	}
-
-
 
 	for (size_t i = 0; i < (num_threads + 1u); i++) {
 		/*
@@ -854,7 +835,6 @@ static int __register_client(struct srv_thread *thread, int32_t idx, int cli_fd,
 		break;
 	}
 
-
 out_reg:
 	if (unlikely(!rq)) {
 		pr_err("Cannot get ring queue on __register_client()");
@@ -872,9 +852,7 @@ out_reg:
 
 	io_uring_prep_recv(sqe, cli_fd, client->raw_pkt,
 			   sizeof(client->raw_pkt), MSG_WAITALL);
-
-
-	client   = &state->clients[idx];
+	
 	rq->type = RING_QUE_CLIENT;
 	rq->ptr  = client;
 	io_uring_sqe_set_data(sqe, rq);
@@ -1062,13 +1040,6 @@ invalid_cqe:
 	VT_HEXDUMP(cqe, sizeof(*cqe));
 	panic("Invalid CQE!");
 	__builtin_unreachable();
-}
-
-
-static int thread_wait(struct srv_state *state, size_t tr_num)
-{
-
-	return 0;
 }
 
 
@@ -1286,9 +1257,9 @@ out:
 }
 
 
-static void wait_for_threads(struct srv_state *state)
+static void wait_for_threads_to_exit(struct srv_state *state)
 {
-
+	(void)state;
 }
 
 
@@ -1397,7 +1368,7 @@ int teavpn2_server_tcp(struct srv_cfg *cfg)
 
 	ret = run_workers(state);
 out:
-	wait_for_threads(state);
+	wait_for_threads_to_exit(state);
 	destroy_state(state);
 	al64_free(state);
 	return ret;
