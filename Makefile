@@ -43,7 +43,7 @@ LDFLAGS		:= -ggdb3
 
 # Flag to link any library to $(TARGET_BIN)
 # (end arguments)
-LIB_LDFLAGS	:= -lpthread
+LIB_LDFLAGS	:= -lasan -lpthread
 
 
 # Flags that only apply to C
@@ -77,7 +77,7 @@ C_CXX_FLAGS := \
 	-DSUBLEVEL=$(SUBLEVEL) \
 	-DEXTRAVERSION="\"$(EXTRAVERSION)\"" \
 	-DNAME="\"$(NAME)\"" \
-	-fno-inline
+	-fno-inline -fsanitize=address
 
 
 

@@ -57,6 +57,12 @@
 #define RING_QUE_TCP		(1u << 2u)
 #define RING_QUE_CLIENT		(1u << 3u)
 
+/* Macros for printing  */
+#define W_IP(CLIENT) 		((CLIENT)->src_ip), ((CLIENT)->src_port)
+#define W_UN(CLIENT) 		((CLIENT)->username)
+#define W_IU(CLIENT) 		W_IP(CLIENT), W_UN(CLIENT)
+#define PRWIU 			"%s:%d (%s)"
+
 struct ring_queue {
 	uint32_t			type;
 	uint32_t			idx;
@@ -770,10 +776,18 @@ static struct ring_queue *put_ring_queue(struct srv_state *state,
 static int do_uring_wait(struct io_uring *ring, struct io_uring_cqe **cqe)
 {
 	int ret;
+	struct __kernel_timespec ts = {
+		.tv_sec = 0,
+		.tv_nsec = 1000000000
+	};
 
-	ret = io_uring_wait_cqe(ring, cqe);
+
+	ret = io_uring_wait_cqe_timeout(ring, cqe, &ts);
 	if (likely(!ret))
 		return 0;
+
+	if (unlikely(ret == -ETIME))
+		return ret;
 
 	if (unlikely(ret == -EINTR)) {
 		pr_notice("Interrupted!");
@@ -795,24 +809,60 @@ static int handle_tun_event(struct srv_thread *thread, struct io_uring_cqe *cqe,
 }
 
 
-static int handle_tcp_event(struct srv_thread *thread, struct io_uring_cqe *cqe,
-			    struct ring_queue *rq)
+static int __register_client(struct srv_thread *thread, int32_t idx, int cli_fd,
+			     const char *src_ip, uint16_t src_port)
 {
 	int ret = 0;
-	struct accept_data *acc;
 	struct io_uring_sqe *sqe;
+	struct client_slot *client;
+	struct ring_queue *rq = NULL;
+	struct srv_thread *picked = NULL;
 	struct srv_state *state = thread->state;
-
-	pr_debug("TCP = %d", cqe->res);
-
-
+	size_t num_threads = state->cfg->sys.thread;
+	uint16_t th_idx = 0; /* Thread index (the assignee). */
 
 
+	if (unlikely(num_threads <= 1)) {
+		/*
+		 * We are single threaded.
+		 */
+		picked = thread;
+		rq = get_ring_queue(state);
+		goto out_reg;
+	}
 
-	io_uring_cqe_seen(&thread->ring, cqe);
-	put_ring_queue(state, rq);
-out_rearm:
-	sqe = io_uring_get_sqe(&thread->ring);
+
+
+	for (size_t i = 0; i < (num_threads + 1u); i++) {
+		/*
+		 * We are multi threaded.
+		 */
+		_Atomic(uint32_t) *tr_as = &state->tr_assign;
+
+		th_idx = atomic_fetch_add(tr_as, 1) % state->cfg->sys.thread;
+		picked = &state->threads[th_idx];
+
+		/*
+		 * Try to get possible ring queue.
+		 *
+		 * TODO: Separate ring queue per thread.
+		 */
+		rq = get_ring_queue(state);
+		if (unlikely(!rq))
+			continue;
+
+		break;
+	}
+
+
+out_reg:
+	if (unlikely(!rq)) {
+		pr_err("Cannot get ring queue on __register_client()");
+		return -EAGAIN;
+	}
+
+
+	sqe = io_uring_get_sqe(&picked->ring);
 	if (unlikely(!sqe)) {
 		pr_emerg("Impossible happened!");
 		panic("io_uring_get_sqe() run out of sqe");
@@ -820,10 +870,144 @@ out_rearm:
 	}
 
 
+	io_uring_prep_recv(sqe, cli_fd, client->raw_pkt,
+			   sizeof(client->raw_pkt), MSG_WAITALL);
+
+
+	client   = &state->clients[idx];
+	rq->type = RING_QUE_CLIENT;
+	rq->ptr  = client;
+	io_uring_sqe_set_data(sqe, rq);
+
+	ret = io_uring_submit(&picked->ring);
+	if (unlikely(ret < 0)) {
+		pr_err("io_uring_submit(): " PRERF, PREAR((int)-ret));
+		goto out;
+	}
+
+
+	ret = 0;
+	client->cli_fd   = cli_fd;
+	client->src_port = src_port;
+	sane_strncpy(client->src_ip, src_ip, sizeof(client->src_ip));
+
+	prl_notice(0, "New connection from " PRWIU " (fd=%d) (thread=%u)",
+		   W_IU(client), cli_fd, th_idx);
+out:
+	return ret;
+}
+
+
+static int register_client(struct srv_thread *__restrict__ thread, int cli_fd)
+{
+	int ret = 0;
+	int32_t idx;
+	uint16_t src_port = 0;
+	char src_ip[IPV4_L] = {0};
+	struct srv_state *state = thread->state;
+
+	/*
+	 * The remote IP and port in big-endian representation.
+	 */
+	struct sockaddr_in *saddr = &state->acc.addr;
+	struct in_addr *sin_addr = &saddr->sin_addr;
+
+
+	if (unlikely(!inet_ntop(AF_INET, sin_addr, src_ip, sizeof(src_ip)))) {
+		ret = errno;
+		pr_err("inet_ntop(): " PRERF, PREAR(ret));
+		ret = -ret;
+		goto out_close;
+	}
+	src_ip[sizeof(src_ip) - 1] = '\0';
+	src_port = ntohs(saddr->sin_port);
+
+
+
+	bt_mutex_lock(&state->cl_stk.lock);
+	idx = srstk_pop(&state->cl_stk);
+	bt_mutex_unlock(&state->cl_stk.lock);
+	if (unlikely(idx == -1)) {
+		pr_err("Client slot is full, cannot accept connection from "
+		       "%s:%u", src_ip, src_port);
+		ret = -EAGAIN;
+		goto out_close;
+	}
+
+
+	ret = __register_client(thread, idx, cli_fd, src_ip, src_port);
+	if (unlikely(ret)) {
+		/*
+		 * We need to push back this index,
+		 * because this popped `idx` is not
+		 * used at the moment.
+		 */
+		goto out_push;
+	}
+	return 0;
+
+
+out_push:
+	bt_mutex_lock(&state->cl_stk.lock);
+	srstk_push(&state->cl_stk, (uint16_t)idx);
+	bt_mutex_unlock(&state->cl_stk.lock);
+
+
+out_close:
+	pr_notice("Closing connection from %s:%u (fd=%d) (thread=%u) Error: "
+		  PRERF "...", src_ip, src_port, cli_fd, thread->idx,
+		  PREAR(-ret));
+	close(cli_fd);
+	return ret;
+}
+
+
+static int handle_tcp_event(struct srv_thread *thread, struct io_uring_cqe *cqe,
+			    struct ring_queue *rq)
+{
+	int ret = 0, cli_fd;
+	struct accept_data *acc;
+	struct io_uring_sqe *sqe;
+	struct srv_state *state = thread->state;
+
+	put_ring_queue(state, rq);
+	io_uring_cqe_seen(&thread->ring, cqe);
+
+	cli_fd = cqe->res;
+	if (unlikely(cli_fd < 0)) {
+		ret = cli_fd;
+		goto out_err;
+	}
+
+	ret = register_client(thread, cli_fd);
+	goto out;
+
+
+out_err:
+	if (unlikely(ret == -EAGAIN))
+		goto out_rearm;
+
+	/*
+	 * Fatal error, stop everything!
+	 */
+	pr_err("accpet(): " PRERF, PREAR(-ret));
+	state->stop = true;
+	return ret;
+
+
+out_rearm:
 	rq = get_ring_queue(state);
 	if (unlikely(!rq)) {
 		pr_emerg("Impossible happened!");
 		panic("get_ring_queue() run out of queue");
+		__builtin_unreachable();
+	}
+
+
+	sqe = io_uring_get_sqe(&thread->ring);
+	if (unlikely(!sqe)) {
+		pr_emerg("Impossible happened!");
+		panic("io_uring_get_sqe() run out of sqe");
 		__builtin_unreachable();
 	}
 
@@ -838,7 +1022,8 @@ out_rearm:
 	rq->type = RING_QUE_TCP;
 	rq->fd   = state->tcp_fd;
 	io_uring_sqe_set_data(sqe, rq);
-	return 0;
+out:
+	return ret;
 }
 
 
@@ -863,10 +1048,14 @@ static int handle_event(struct srv_thread *thread, struct io_uring_cqe *cqe)
 		pr_debug("CLI = %d", cqe->res);
 		break;
 	default:
+		pr_emerg("Invalid rq->type");
 		goto invalid_cqe;
 	}
-	return ret;
 
+	if (unlikely(ret == -EAGAIN))
+		ret = 0;
+
+	return ret;
 
 invalid_cqe:
 	pr_emerg("Invalid CQE on handle_event()");
@@ -889,7 +1078,7 @@ static int wait_for_threads_to_be_ready(struct srv_state *state, bool is_main)
 
 	if (tr_num == 1)
 		/* 
-		 * Don't wait, we are single-threaded.
+		 * Don't wait, we are single threaded.
 		 */
 		return 0;
 
@@ -942,6 +1131,9 @@ static __no_inline void *run_thread(void *_thread)
 
 		cqe = NULL;
 		ret = do_uring_wait(ring, &cqe);
+		if (unlikely(ret == -ETIME))
+			continue;
+
 		if (unlikely(ret))
 			break;
 
@@ -990,18 +1182,17 @@ static int spawn_threads(struct srv_state *state)
 		}
 		thread->ring_init = true;
 
+		rq = get_ring_queue(state);
+		if (unlikely(!rq)) {
+			pr_err("get_ring_queue(): " PRERF, PREAR(EAGAIN));
+			ret = -EAGAIN;
+			break;
+		}
 
 		sqe = io_uring_get_sqe(ring);
 		if (unlikely(!sqe)) {
 			pr_err("io_uring_get_sqe(): " PRERF, PREAR(ENOMEM));
 			ret = -ENOMEM;
-			break;
-		}
-
-		rq = get_ring_queue(state);
-		if (unlikely(!rq)) {
-			pr_err("get_ring_queue(): " PRERF, PREAR(EAGAIN));
-			ret = -EAGAIN;
 			break;
 		}
 
@@ -1062,18 +1253,17 @@ static int run_workers(struct srv_state *state)
 	 */
 	acc    = &state->acc;
 	thread = &state->threads[0];
-	sqe = io_uring_get_sqe(&thread->ring);
-	if (unlikely(!sqe)) {
-		pr_err("io_uring_get_sqe(): " PRERF, PREAR(ENOMEM));
-		ret = -ENOMEM;
-		goto out;
-	}
-
-
 	rq = get_ring_queue(state);
 	if (unlikely(!rq)) {
 		pr_err("get_ring_queue(): " PRERF, PREAR(EAGAIN));
 		ret = -EAGAIN;
+		goto out;
+	}
+
+	sqe = io_uring_get_sqe(&thread->ring);
+	if (unlikely(!sqe)) {
+		pr_err("io_uring_get_sqe(): " PRERF, PREAR(ENOMEM));
+		ret = -ENOMEM;
 		goto out;
 	}
 
@@ -1082,7 +1272,6 @@ static int run_workers(struct srv_state *state)
 	memset(&acc->addr, 0, sizeof(acc->addr));
 	io_uring_prep_accept(sqe, state->tcp_fd, (struct sockaddr *)&acc->addr,
 			     &acc->addrlen, 0);
-
 
 	rq->type = RING_QUE_TCP;
 	rq->fd   = state->tcp_fd;
@@ -1094,6 +1283,12 @@ static int run_workers(struct srv_state *state)
 	ret = (int)((intptr_t)run_thread(thread));
 out:
 	return ret;
+}
+
+
+static void wait_for_threads(struct srv_state *state)
+{
+
 }
 
 
@@ -1162,8 +1357,10 @@ static void destroy_state(struct srv_state *state)
 	close_fds(state);
 	close_threads(state->threads, state->cfg->sys.thread);
 	bt_mutex_destroy(&state->cl_stk.lock);
+	bt_mutex_destroy(&state->rq_stk.lock);
 	al64_free(state->cl_stk.arr);
 	al64_free(state->rq_stk.arr);
+	al64_free(state->ring_que);
 	al64_free(state->tun_fds);
 	al64_free(state->threads);
 	al64_free(state->clients);
@@ -1200,6 +1397,7 @@ int teavpn2_server_tcp(struct srv_cfg *cfg)
 
 	ret = run_workers(state);
 out:
+	wait_for_threads(state);
 	destroy_state(state);
 	al64_free(state);
 	return ret;
