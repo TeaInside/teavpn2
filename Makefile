@@ -76,7 +76,8 @@ C_CXX_FLAGS := \
 	-DPATCHLEVEL=$(PATCHLEVEL) \
 	-DSUBLEVEL=$(SUBLEVEL) \
 	-DEXTRAVERSION="\"$(EXTRAVERSION)\"" \
-	-DNAME="\"$(NAME)\""
+	-DNAME="\"$(NAME)\"" \
+	-fno-inline
 
 
 
@@ -148,6 +149,7 @@ OBJ_CC		:=
 OBJ_PRE_CC	:=
 OBJ_TMP_CC	:=
 SHARED_LIB	:=
+OBJ_EXTRA	:=
 #######################################
 
 
@@ -189,7 +191,7 @@ $(OBJ_CC):
 #
 # Link the target bin.
 #
-$(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC) $(FBT_CC_OBJ)
+$(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC) $(FBT_CC_OBJ) $(OBJ_EXTRA)
 	$(LD_PRINT)
 	$(Q)$(LD) $(PIE_FLAGS) $(LDFLAGS) $(^) -o "$(@)" $(LIB_LDFLAGS)
 
@@ -201,4 +203,6 @@ clean: bluetea_clean
 	$(Q)$(RM) -vrf $(TARGET_BIN) $(DEP_DIRS) $(OBJ_CC) $(OBJ_PRE_CC)
 
 
-.PHONY: all clean
+clean_all: clean ext_clean
+
+.PHONY: all clean clean_all

@@ -63,8 +63,11 @@ __pr_debug(const char *fmt, ...);
 #define panic(...)						\
 do {								\
 	puts("====================================");		\
-	puts("Panic!");						\
+	printf("Panic at %s:%d\n", __FILE__, __LINE__);		\
+	puts("Not syncing...");					\
 	printf(__VA_ARGS__);					\
+	printf("\n");						\
+	fflush(stdout);						\
 	abort();						\
 } while (0)
 

@@ -47,7 +47,7 @@ int tun_alloc(const char *dev, short flags)
 	}
 
 again:
-	fd = open(dtf, O_RDWR | O_NONBLOCK);
+	fd = open(dtf, O_RDWR);
 	if (unlikely(fd < 0)) {
 		err = errno;
 		pr_err("open(\"%s\", O_RDWR): " PRERF, dtf, PREAR(err));

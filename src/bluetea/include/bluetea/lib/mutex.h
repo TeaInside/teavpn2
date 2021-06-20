@@ -65,6 +65,13 @@ static MUT_INLINE int bt_mutex_lock(struct bt_mutex *lock)
 }
 
 
+static MUT_INLINE int bt_mutex_trylock(struct bt_mutex *lock)
+{
+	assert(lock->init);
+	return pthread_mutex_trylock(&lock->mutex);
+}
+
+
 static MUT_INLINE int bt_mutex_unlock(struct bt_mutex *lock)
 {
 	assert(lock->init);
