@@ -19,13 +19,13 @@
 #include <netinet/tcp.h>
 #include <linux/if_tun.h>
 
-#include <bluetea/lib/mutex.h>
-#include <bluetea/lib/string.h>
-
 #include <teavpn2/tcp_pkt.h>
 #include <teavpn2/allocator.h>
 #include <teavpn2/net/linux/iface.h>
 #include <teavpn2/server/linux/tcp.h>
+
+#include <bluetea/lib/mutex.h>
+#include <bluetea/lib/string.h>
 
 /*
  * See: https://github.com/axboe/liburing/issues/366
@@ -41,120 +41,130 @@
 #  pragma clang diagnostic pop
 #endif
 
+#define EPL_MAP_SIZE		0x10000u
+#define EPL_MAP_TO_NOP		0x00000u
+#define EPL_MAP_TO_TCP		0x00001u
+#define EPL_MAP_TO_TUN		0x00002u
+#define EPL_MAP_SHIFT		0x00003u
+#define EPL_IN_EVT		(EPOLLIN | EPOLLPRI | EPOLLHUP)
+#define EPL_WAIT_ARRSIZ		16
+#define CLIENT_MAX_ERRC		20u
 
 #define RING_QUE_NOP		(1u << 0u)
 #define RING_QUE_TUN		(1u << 1u)
 #define RING_QUE_TCP		(1u << 2u)
-#define UPTR(X)			((void *)(uintptr_t)(X))
-#define IPTR(X)			((void *)(intptr_t)(X))
+#define RING_QUE_CLIENT		(1u << 3u)
 
 /* Macros for printing  */
 #define W_IP(CLIENT) 		((CLIENT)->src_ip), ((CLIENT)->src_port)
 #define W_UN(CLIENT) 		((CLIENT)->username)
 #define W_IU(CLIENT) 		W_IP(CLIENT), W_UN(CLIENT)
 #define PRWIU 			"%s:%d (%s)"
-#define PKT_SIZE		(sizeof(struct tcli_pkt))
 
-
-struct client_slot {
-	bool					is_authenticated;
-	bool					is_encrypted;
-	int					cli_fd;
-	char					username[0x100u];
-
-	/* Human readable src_ip and src_port */
-	char					src_ip[IPV4_L + 1u];
-	uint16_t				src_port;
-
-	/* `idx` is the index where it's stored in the client slot array. */
-	uint16_t				idx;
-
-	uint16_t				err_count;
-
-	/* `recv_s` is the valid bytes in the below union buffer. */
-	size_t					recv_s;
-	alignas(64) union {
-		struct tsrv_pkt			spkt;
-		struct tcli_pkt			cpkt;
-		char				raw_pkt[PKT_SIZE];
+struct ring_queue {
+	uint32_t			type;
+	uint32_t			idx;
+	union {
+		int			fd;
+		void			*ptr;
 	};
 };
 
 
 struct srv_thread {
-	_Atomic(bool)				is_online;
-	bool					ring_init;
-	pthread_t				thread;
-	struct srv_state			*state;
-	struct io_uring				ring;
-	int					tun_fd;
-	struct __kernel_timespec		ring_timeout;
+	_Atomic(bool)			is_online;
+	bool				ring_init;
+	pthread_t			thread;
+	struct srv_state		*state;
+	struct io_uring			ring;
+	int				tun_fd;
 
 	/* `idx` is the index where it's stored in the thread array. */
-	uint16_t				idx;
+	uint16_t			idx;
 
 	/* `read_s` is the valid bytes in the below union buffer. */
-	size_t					read_s;
+	size_t				read_s;
 
 	alignas(64) union {
-		struct tsrv_pkt			spkt;
-		struct tcli_pkt			cpkt;
-		char				raw_pkt[PKT_SIZE];
+		struct tsrv_pkt		spkt;
+		struct tcli_pkt		cpkt;
+		char			raw_pkt[sizeof(struct tcli_pkt)];
 	};
 };
 
 
+struct client_slot {
+	bool				is_authenticated;
+	bool				is_encrypted;
+	int				cli_fd;
+	char				username[0x100u];
+
+	/* Human readable src_ip and src_port */
+	char				src_ip[IPV4_L + 1u];
+	uint16_t			src_port;
+
+	/* `idx` is the index where it's stored in the client slot array. */
+	uint16_t			idx;
+
+	uint16_t			err_count;
+
+	/* `recv_s` is the valid bytes in the below union buffer. */
+	size_t				recv_s;
+
+	alignas(64) union {
+		struct tsrv_pkt		spkt;
+		struct tcli_pkt		cpkt;
+		char			raw_pkt[sizeof(struct tcli_pkt)];
+	};
+
+	struct bt_mutex			lock;
+};
+
+
 struct srv_stack {
-	struct bt_mutex				lock;
-	uint16_t				*arr;
-	uint16_t				sp;
-	uint16_t				max_sp;
+	struct bt_mutex			lock;
+	uint16_t			*arr;
+	uint16_t			sp;
+	uint16_t			max_sp;
 };
 
 
 struct accept_data {
-	int					acc_fd;
-	socklen_t				addrlen;
-	struct sockaddr_in			addr;
+	int				acc_fd;
+	socklen_t			addrlen;
+	struct sockaddr_in		addr;
 };
 
 
 struct srv_state {
-	int					intr_sig;
-	int					tcp_fd;
-	_Atomic(uint32_t)			tr_assign;
-	_Atomic(uint32_t)			online_tr;
-
-	/* Array of tun fds */
-	int					*tun_fds;
+	int				intr_sig;
+	int				tcp_fd;
+	uint32_t			ring_que_c;
+	int				*tun_fds;
+	struct ring_queue		*ring_que;
 
 	/* Client slot array */
-	struct client_slot			*clients;
+	struct client_slot		*clients;
 
 	/* Thread array */
-	struct srv_thread			*threads;
+	struct srv_thread		*threads;
 
-	struct srv_cfg				*cfg;
-
-	struct accept_data			acc;
-	struct srv_stack			cl_stk;
-	struct srv_stack			rq_stk;
-	bool					stop;
+	struct srv_cfg			*cfg;
+	_Atomic(uint32_t)		tr_assign;
+	_Atomic(uint32_t)		online_tr;
+	struct accept_data		acc;
+	struct srv_stack		cl_stk;
+	struct srv_stack		rq_stk;
+	bool				stop;
 };
 
 
-/*
- * For interrupt only!
- */
-static struct srv_state *g_state = NULL;
+static struct srv_state *g_state;
 
 
 static void handle_interrupt(int sig)
 {
 	struct srv_state *state = g_state;
-
-	if (state->intr_sig != -1)
-		return;
 
 	printf("\nInterrupt caught: %d\n", sig);
 	if (state) {
@@ -245,6 +255,70 @@ static void reset_client_state(struct client_slot *client, size_t idx)
 }
 
 
+static int init_state_client_slot_array(struct srv_state *state)
+{
+	struct client_slot *clients;
+	size_t nn = state->cfg->sock.max_conn;
+
+	clients = calloc_wrp(nn, sizeof(*clients));
+	if (unlikely(!clients))
+		return -ENOMEM;
+
+	for (size_t i = 0; i < nn; i++) {
+		int ret;
+		reset_client_state(&clients[i], i);
+
+		if ((ret = bt_mutex_init(&clients[i].lock, NULL)))
+			panic("bt_mutex_init(): " PRERF, PREAR(ret));
+	}
+
+	state->clients = clients;
+	return 0;
+}
+
+
+static int init_state_ring_queue_array(struct srv_state *state)
+{
+	struct ring_queue *ring_que, *que;
+	size_t nn = state->ring_que_c;
+
+	ring_que = calloc_wrp(nn, sizeof(*ring_que));
+	if (unlikely(!ring_que))
+		return -ENOMEM;
+
+	for (size_t i = 0; i < nn; i++) {
+		que = &ring_que[i];
+		que->type = RING_QUE_NOP;
+		que->idx  = (uint32_t)i;
+		que->ptr  = NULL;
+	}
+
+	state->ring_que = ring_que;
+	return 0;
+}
+
+
+static int init_state_threads(struct srv_state *state)
+{
+	struct srv_thread *threads, *thread;
+	struct srv_cfg *cfg = state->cfg;
+	size_t nn = cfg->sys.thread;
+
+	threads = calloc_wrp(nn, sizeof(*threads));
+	if (unlikely(!threads))
+		return -ENOMEM;
+
+	for (size_t i = 0; i < nn; i++) {
+		thread = &threads[i];
+		thread->idx   = (uint16_t)i;
+		thread->state = state;
+	}
+
+	state->threads = threads;
+	return 0;
+}
+
+
 static int32_t srstk_push(struct srv_stack *cl_stk, uint16_t idx)
 {
 	uint16_t sp = cl_stk->sp;
@@ -277,44 +351,6 @@ static int32_t srstk_pop(struct srv_stack *cl_stk)
 	ret = (int32_t)cl_stk->arr[sp++];
 	cl_stk->sp = sp;
 	return ret;
-}
-
-
-static int init_state_client_slot_array(struct srv_state *state)
-{
-	struct client_slot *clients;
-	size_t nn = state->cfg->sock.max_conn;
-
-	clients = calloc_wrp(nn, sizeof(*clients));
-	if (unlikely(!clients))
-		return -ENOMEM;
-
-	for (size_t i = 0; i < nn; i++)
-		reset_client_state(&clients[i], i);
-
-	state->clients = clients;
-	return 0;
-}
-
-
-static int init_state_threads(struct srv_state *state)
-{
-	struct srv_thread *threads, *thread;
-	struct srv_cfg *cfg = state->cfg;
-	size_t nn = cfg->sys.thread;
-
-	threads = calloc_wrp(nn, sizeof(*threads));
-	if (unlikely(!threads))
-		return -ENOMEM;
-
-	for (size_t i = 0; i < nn; i++) {
-		thread = &threads[i];
-		thread->idx   = (uint16_t)i;
-		thread->state = state;
-	}
-
-	state->threads = threads;
-	return 0;
 }
 
 
@@ -390,6 +426,79 @@ static int init_state_client_stack(struct srv_state *state)
 }
 
 
+static int init_state_ring_queue_stack(struct srv_state *state)
+{
+	int32_t ret;
+	uint16_t *arr;
+	size_t nn = state->ring_que_c;
+	struct srv_stack *rq_stk = &state->rq_stk;
+
+	arr = calloc_wrp(nn, sizeof(*arr));
+	if (unlikely(!arr))
+		return -ENOMEM;
+
+	ret = bt_mutex_init(&rq_stk->lock, NULL);
+	if (unlikely(ret)) {
+		pr_err("mutex_init(&rq_stk->lock, NULL): " PRERF, PREAR(ret));
+		return -ret;
+	}
+
+	rq_stk->sp = (uint16_t)nn;
+	rq_stk->max_sp = (uint16_t)nn;
+	rq_stk->arr = arr;
+
+#ifndef NDEBUG
+/*
+ * Test only.
+ */
+{
+	/*
+	 * Push stack.
+	 */
+	for (size_t i = 0; i < nn; i++) {
+		ret = srstk_push(rq_stk, (uint16_t)i);
+		__asm__ volatile("":"+r"(rq_stk)::"memory");
+		BT_ASSERT((uint16_t)ret == (uint16_t)i);
+	}
+
+	/*
+	 * Push full stack.
+	 */
+	for (size_t i = 0; i < 100; i++) {
+		ret = srstk_push(rq_stk, (uint16_t)i);
+		__asm__ volatile("":"+r"(rq_stk)::"memory");
+		BT_ASSERT(ret == -1);
+	}
+
+	/*
+	 * Pop stack.
+	 */
+	for (size_t i = nn; i--;) {
+		ret = srstk_pop(rq_stk);
+		__asm__ volatile("":"+r"(rq_stk)::"memory");
+		BT_ASSERT((uint16_t)ret == (uint16_t)i);
+	}
+
+
+	/*
+	 * Pop empty stack.
+	 */
+	for (size_t i = 0; i < 100; i++) {
+		ret = srstk_pop(rq_stk);
+		__asm__ volatile("":"+r"(rq_stk)::"memory");
+		BT_ASSERT(ret == -1);
+	}
+}
+#endif
+	while (nn--)
+		srstk_push(rq_stk, (uint16_t)nn);
+
+	BT_ASSERT(rq_stk->sp == 0);
+	return 0;
+
+}
+
+
 static int init_state(struct srv_state *state)
 {
 	int ret;
@@ -401,6 +510,8 @@ static int init_state(struct srv_state *state)
 	state->stop        = false;
 	atomic_store(&state->tr_assign, 0);
 	atomic_store(&state->online_tr, 0);
+
+	state->ring_que_c = state->cfg->sock.max_conn + 10u;
 
 	ret = validate_cfg(state->cfg);
 	if (unlikely(ret))
@@ -414,6 +525,10 @@ static int init_state(struct srv_state *state)
 	if (unlikely(ret))
 		return ret;
 
+	ret = init_state_ring_queue_array(state);
+	if (unlikely(ret))
+		return ret;
+
 	ret = init_state_threads(state);
 	if (unlikely(ret))
 		return ret;
@@ -422,42 +537,15 @@ static int init_state(struct srv_state *state)
 	if (unlikely(ret))
 		return ret;
 
-	pr_notice("Setting up interrupt handler...");
+	ret = init_state_ring_queue_stack(state);
+	if (unlikely(ret))
+		return ret;
+
 	signal(SIGINT, handle_interrupt);
 	signal(SIGHUP, handle_interrupt);
 	signal(SIGTERM, handle_interrupt);
 	signal(SIGPIPE, SIG_IGN);
-	pr_notice("My PID: %d", getpid());
 	return ret;
-}
-
-
-static int init_iface(struct srv_state *state)
-{
-	size_t i;
-	int *tun_fds = state->tun_fds;
-	size_t nn = state->cfg->sys.thread;
-	struct if_info *iff = &state->cfg->iface;
-	const short tun_flags = IFF_TUN | IFF_NO_PI | IFF_MULTI_QUEUE;
-
-	prl_notice(3, "Allocating virtual network interface...");
-	for (i = 0; i < nn; i++) {
-		int tmp_fd;
-
-		prl_notice(5, "Allocating TUN fd %zu...", i);
-		tmp_fd = tun_alloc(iff->dev, tun_flags);
-		if (unlikely(tmp_fd < 0))
-			return tmp_fd;
-
-		tun_fds[i] = tmp_fd;
-	}
-
-	if (unlikely(!teavpn_iface_up(iff))) {
-		pr_err("Cannot bring virtual network interface up");
-		return -ENETDOWN;
-	}
-
-	return 0;	
 }
 
 
@@ -558,6 +646,35 @@ out_err:
 }
 
 
+static int init_iface(struct srv_state *state)
+{
+	size_t i;
+	int *tun_fds = state->tun_fds;
+	size_t nn = state->cfg->sys.thread;
+	struct if_info *iff = &state->cfg->iface;
+
+	prl_notice(3, "Allocating virtual network interface...");
+	for (i = 0; i < nn; i++) {
+		int tmp_fd;
+		const short tun_flags = IFF_TUN | IFF_NO_PI | IFF_MULTI_QUEUE;
+
+		prl_notice(5, "Allocating TUN fd %zu...", i);
+		tmp_fd = tun_alloc(iff->dev, tun_flags);
+		if (unlikely(tmp_fd < 0))
+			return tmp_fd;
+
+		tun_fds[i] = tmp_fd;
+	}
+
+	if (unlikely(!teavpn_iface_up(iff))) {
+		pr_err("Cannot bring virtual network interface up");
+		return -ENETDOWN;
+	}
+
+	return 0;	
+}
+
+
 static int init_tcp_socket(struct srv_state *state)
 {
 	int ret;
@@ -610,60 +727,66 @@ out_err:
 }
 
 
-static int wait_for_threads_to_be_ready(struct srv_state *state, bool is_main)
+static struct ring_queue *get_ring_queue(struct srv_state *state)
 {
-	size_t tr_num = state->cfg->sys.thread;
+	int32_t idx;
+	bt_mutex_lock(&state->rq_stk.lock);
+	idx = srstk_pop(&state->rq_stk);
+	bt_mutex_unlock(&state->rq_stk.lock);
+	if (unlikely(idx == -1))
+		return NULL;
 
-	if (tr_num == 1)
-		/* 
-		 * Don't wait, we are single threaded.
-		 */
-		return 0;
-
-
-	if (is_main) {
-		pr_notice("Waiting for threads to be ready...");
-		while (likely(atomic_load(&state->online_tr) < tr_num)) {
-			if (unlikely(state->stop))
-				return -EINTR;
-			usleep(50000);
-		}
-		pr_notice("Threads are all ready!");
-		pr_notice("Initialization Sequence Completed");
-		return 0;
-	} else {
-		struct srv_thread *mt = &state->threads[0];
-		while (likely(!atomic_load(&mt->is_online))) {
-			if (unlikely(state->stop))
-				return -EINTR;
-			usleep(50000);
-		}
-		return -EALREADY;
-	}
+	return &state->ring_que[idx];
 }
 
 
-static int do_uring_wait(struct srv_thread *thread, struct io_uring_cqe **cqe_p)
+static struct ring_queue *put_ring_queue(struct srv_state *state,
+					 struct ring_queue *que)
+{
+	int32_t idx;
+	bt_mutex_lock(&state->rq_stk.lock);
+	idx = srstk_push(&state->rq_stk, que->idx);
+	bt_mutex_unlock(&state->rq_stk.lock);
+	if (unlikely(idx == -1))
+		panic("Stack overflow on put_ring_queue()");
+
+	return &state->ring_que[idx];
+}
+
+
+static int do_uring_wait(struct io_uring *ring, struct io_uring_cqe **cqe)
 {
 	int ret;
-	struct __kernel_timespec *timeout = &thread->ring_timeout;
+	struct __kernel_timespec ts = {
+		.tv_sec = 0,
+		.tv_nsec = 1000000000
+	};
 
-	ret = io_uring_wait_cqe_timeout(&thread->ring, cqe_p, timeout);
+
+	ret = io_uring_wait_cqe_timeout(ring, cqe, &ts);
 	if (likely(!ret))
 		return 0;
 
-	if (unlikely(ret == -ETIME)) {
-		timeout->tv_sec += 1;
+	if (unlikely(ret == -ETIME))
 		return ret;
-	}
 
 	if (unlikely(ret == -EINTR)) {
-		pr_notice("Interrupted (thread=%u)", thread->idx);
+		pr_notice("Interrupted!");
 		return 0;
 	}
 
 	pr_err("io_uring_wait_cqe(): " PRERF, PREAR(-ret));
 	return -ret;
+}
+
+
+static int handle_tun_event(struct srv_thread *thread, struct io_uring_cqe *cqe,
+			    struct ring_queue *rq)
+{
+	(void)rq;
+	pr_debug("TUN = %d", cqe->res);
+	io_uring_cqe_seen(&thread->ring, cqe);
+	return 0;
 }
 
 
@@ -673,21 +796,23 @@ static int __register_client(struct srv_thread *thread, int32_t idx, int cli_fd,
 	int ret = 0;
 	struct io_uring_sqe *sqe;
 	struct client_slot *client;
-	struct srv_thread *assignee = NULL;
+	struct ring_queue *rq = NULL;
+	struct srv_thread *picked = NULL;
 	struct srv_state *state = thread->state;
 	size_t num_threads = state->cfg->sys.thread;
 	uint16_t th_idx = 0; /* Thread index (the assignee). */
 
 
+	client = &state->clients[idx];
+
 	if (unlikely(num_threads <= 1)) {
 		/*
 		 * We are single threaded.
 		 */
-		assignee = thread;
-		sqe = io_uring_get_sqe(&assignee->ring);
+		picked = thread;
+		rq = get_ring_queue(state);
 		goto out_reg;
 	}
-
 
 	for (size_t i = 0; i < (num_threads + 1u); i++) {
 		/*
@@ -695,52 +820,46 @@ static int __register_client(struct srv_thread *thread, int32_t idx, int cli_fd,
 		 */
 		_Atomic(uint32_t) *tr_as = &state->tr_assign;
 
-
-		th_idx   = atomic_fetch_add(tr_as, 1) % state->cfg->sys.thread;
-		assignee = &state->threads[th_idx];
-
+		th_idx = atomic_fetch_add(tr_as, 1) % state->cfg->sys.thread;
+		picked = &state->threads[th_idx];
 
 		/*
-		 * Try to get sqe from the assigned thread.
+		 * Try to get possible ring queue.
 		 *
-		 * If it doesn't have free sqe, try again with
-		 * different assignee.
+		 * TODO: Separate ring queue per thread.
 		 */
-		sqe = io_uring_get_sqe(&assignee->ring);
-		if (unlikely(!sqe))
-			/*
-			 * Try again, check another thread!
-			 */
+		rq = get_ring_queue(state);
+		if (unlikely(!rq))
 			continue;
 
-
-		/*
-		 * We got a thread with free sqe. Go on!
-		 */
 		break;
 	}
 
-
-
 out_reg:
-	if (unlikely(!sqe)) {
-		/*
-		 * We have checked all threads, but couldn't find
-		 * free sqe. So we need to drop this client.
-		 */
+	if (unlikely(!rq)) {
+		pr_err("Cannot get ring queue on __register_client()");
 		return -EAGAIN;
 	}
 
 
-	client = &state->clients[idx];
+	sqe = io_uring_get_sqe(&picked->ring);
+	if (unlikely(!sqe)) {
+		pr_emerg("Impossible happened!");
+		panic("io_uring_get_sqe() run out of sqe");
+		__builtin_unreachable();
+	}
+
+
 	io_uring_prep_recv(sqe, cli_fd, client->raw_pkt,
 			   sizeof(client->raw_pkt), MSG_WAITALL);
-	io_uring_sqe_set_data(sqe, client);
+	
+	rq->type = RING_QUE_CLIENT;
+	rq->ptr  = client;
+	io_uring_sqe_set_data(sqe, rq);
 
-
-	ret = io_uring_submit(&assignee->ring);
+	ret = io_uring_submit(&picked->ring);
 	if (unlikely(ret < 0)) {
-		pr_err("io_uring_submit(): " PRERF, PREAR(-ret));
+		pr_err("io_uring_submit(): " PRERF, PREAR((int)-ret));
 		goto out;
 	}
 
@@ -749,14 +868,15 @@ out_reg:
 	client->cli_fd   = cli_fd;
 	client->src_port = src_port;
 	sane_strncpy(client->src_ip, src_ip, sizeof(client->src_ip));
-	prl_notice(0, "New connection from " PRWIU " (fd=%d) (target_thread=%u)",
+
+	prl_notice(0, "New connection from " PRWIU " (fd=%d) (thread=%u)",
 		   W_IU(client), cli_fd, th_idx);
 out:
 	return ret;
 }
 
 
-static int register_client(struct srv_thread *thread, int cli_fd)
+static int register_client(struct srv_thread *__restrict__ thread, int cli_fd)
 {
 	int ret = 0;
 	int32_t idx;
@@ -770,9 +890,7 @@ static int register_client(struct srv_thread *thread, int cli_fd)
 	struct sockaddr_in *saddr = &state->acc.addr;
 	struct in_addr *sin_addr = &saddr->sin_addr;
 
-	/*
-	 * Get the human readable IP address.
-	 */
+
 	if (unlikely(!inet_ntop(AF_INET, sin_addr, src_ip, sizeof(src_ip)))) {
 		ret = errno;
 		pr_err("inet_ntop(): " PRERF, PREAR(ret));
@@ -783,9 +901,7 @@ static int register_client(struct srv_thread *thread, int cli_fd)
 	src_port = ntohs(saddr->sin_port);
 
 
-	/*
-	 * Lookup for free client slot.
-	 */
+
 	bt_mutex_lock(&state->cl_stk.lock);
 	idx = srstk_pop(&state->cl_stk);
 	bt_mutex_unlock(&state->cl_stk.lock);
@@ -797,9 +913,6 @@ static int register_client(struct srv_thread *thread, int cli_fd)
 	}
 
 
-	/*
-	 * Register the client to the client slot array.
-	 */
 	ret = __register_client(thread, idx, cli_fd, src_ip, src_port);
 	if (unlikely(ret)) {
 		/*
@@ -807,12 +920,12 @@ static int register_client(struct srv_thread *thread, int cli_fd)
 		 * because this popped `idx` is not
 		 * used at the moment.
 		 */
-		goto out_close_push;
+		goto out_push;
 	}
 	return 0;
 
 
-out_close_push:
+out_push:
 	bt_mutex_lock(&state->cl_stk.lock);
 	srstk_push(&state->cl_stk, (uint16_t)idx);
 	bt_mutex_unlock(&state->cl_stk.lock);
@@ -827,25 +940,25 @@ out_close:
 }
 
 
-static int handle_event_tcp(struct srv_thread *thread, struct io_uring_cqe *cqe)
+static int handle_tcp_event(struct srv_thread *thread, struct io_uring_cqe *cqe,
+			    struct ring_queue *rq)
 {
 	int ret = 0, cli_fd;
 	struct accept_data *acc;
 	struct io_uring_sqe *sqe;
 	struct srv_state *state = thread->state;
 
-
-	cli_fd = (int)cqe->res;
+	put_ring_queue(state, rq);
 	io_uring_cqe_seen(&thread->ring, cqe);
+
+	cli_fd = cqe->res;
 	if (unlikely(cli_fd < 0)) {
 		ret = cli_fd;
 		goto out_err;
 	}
 
-
 	ret = register_client(thread, cli_fd);
-	if (unlikely(!ret))
-		goto out_rearm;
+	goto out;
 
 
 out_err:
@@ -861,10 +974,18 @@ out_err:
 
 
 out_rearm:
+	rq = get_ring_queue(state);
+	if (unlikely(!rq)) {
+		pr_emerg("Impossible happened!");
+		panic("get_ring_queue() run out of queue");
+		__builtin_unreachable();
+	}
+
+
 	sqe = io_uring_get_sqe(&thread->ring);
 	if (unlikely(!sqe)) {
 		pr_emerg("Impossible happened!");
-		panic("io_uring run out of sqe on handle_event_tcp()");
+		panic("io_uring_get_sqe() run out of sqe");
 		__builtin_unreachable();
 	}
 
@@ -875,108 +996,11 @@ out_rearm:
 	memset(&acc->addr, 0, sizeof(acc->addr));
 	io_uring_prep_accept(sqe, state->tcp_fd, (struct sockaddr *)&acc->addr,
 			     &acc->addrlen, 0);
-	io_uring_sqe_set_data(sqe, UPTR(RING_QUE_TCP));
-	ret = io_uring_submit(&thread->ring);
-	if (unlikely(ret < 0)) {
-		pr_err("io_uring_submit(): " PRERF, PREAR(-ret));
-	} else {
-		ret = 0;
-	}
 
-	return ret;
-}
-
-
-static void close_client_conn(struct srv_thread *thread,
-			      struct client_slot *client)
-{
-	uint16_t cli_idx = client->idx;
-	struct srv_state *state = thread->state;
-
-	pr_notice("Closing connection from " PRWIU " (fd=%d) (thread=%u)...",
-		  W_IU(client), client->cli_fd, thread->idx);
-
-	close(client->cli_fd);
-	reset_client_state(client, cli_idx);
-
-	bt_mutex_lock(&state->cl_stk.lock);
-	srstk_push(&state->cl_stk, cli_idx);
-	bt_mutex_unlock(&state->cl_stk.lock);
-}
-
-
-static int __handle_event_client(struct srv_thread *thread,
-				 struct client_slot *client)
-{
-	int ret = 0;
-
-
-
-	return ret;
-}
-
-
-static int handle_event_client(struct srv_thread *thread,
-			       struct io_uring_cqe *cqe)
-{
-	int ret = 0;
-	struct io_uring_sqe *sqe;
-	struct client_slot *client;	
-	ssize_t recv_ret = (ssize_t)cqe->res;
-
-
-	client = io_uring_cqe_get_data(cqe);
-	io_uring_cqe_seen(&thread->ring, cqe);
-
-
-	if (unlikely(recv_ret == 0)) {
-		prl_notice(0, "recv() from " PRWIU " returned 0", W_IU(client));
-		/* return 0; */
-		goto out_close;
-	}
-
-
-	if (unlikely(recv_ret < 0)) {
-		prl_notice(0, "recv() from " PRWIU " error | " PRERF,
-			   W_IU(client), PREAR((int)-recv_ret));
-		/* return 0; */
-		goto out_close;
-	}
-
-
-	// pr_debug("recv() %zd bytes from " PRWIU, recv_ret, W_IU(client));
-
-	ret = __handle_event_client(thread, client);
-	if (unlikely(ret))
-		goto out_close;
-
-
-	/* Just for clarity, nothing went wrong so far. */
-	goto out_rearm;
-
-
-out_rearm:
-	sqe = io_uring_get_sqe(&thread->ring);
-	if (unlikely(!sqe)) {
-		pr_emerg("Impossible happened!");
-		panic("io_uring run out of sqe on handle_event_tcp()");
-		__builtin_unreachable();
-	}
-
-	io_uring_prep_recv(sqe, client->cli_fd, client->raw_pkt,
-			   sizeof(client->raw_pkt), MSG_WAITALL);
-	io_uring_sqe_set_data(sqe, client);
-
-
-	ret = io_uring_submit(&thread->ring);
-	if (unlikely(ret < 0)) {
-		pr_err("io_uring_submit(): " PRERF, PREAR(-ret));
-		goto out_close;
-	}
-	return 0;
-
-out_close:
-	close_client_conn(thread, client);
+	rq->type = RING_QUE_TCP;
+	rq->fd   = state->tcp_fd;
+	io_uring_sqe_set_data(sqe, rq);
+out:
 	return ret;
 }
 
@@ -984,34 +1008,75 @@ out_close:
 static int handle_event(struct srv_thread *thread, struct io_uring_cqe *cqe)
 {
 	int ret = 0;
-	uint32_t type;
+	struct ring_queue *rq;
 
-	type = (uint32_t)(uintptr_t)io_uring_cqe_get_data(cqe);
-	switch (type) {
-	case RING_QUE_NOP:
-		pr_err("Got RING_QUE_NOP on handle_event()");
+	rq = io_uring_cqe_get_data(cqe);
+	if (unlikely(!rq))
 		goto invalid_cqe;
-	case RING_QUE_TCP:
-		ret = handle_event_tcp(thread, cqe);
-		break;
+
+
+	switch (rq->type) {
 	case RING_QUE_TUN:
-		pr_debug("RING_QUE_TUN");
-		io_uring_cqe_seen(&thread->ring, cqe);
+		ret = handle_tun_event(thread, cqe, rq);
+		break;
+	case RING_QUE_TCP:
+		ret = handle_tcp_event(thread, cqe, rq);
+		break;
+	case RING_QUE_CLIENT:
+		pr_debug("CLI = %d", cqe->res);
 		break;
 	default:
-		ret = handle_event_client(thread, cqe);
-		break;
+		pr_emerg("Invalid rq->type");
+		goto invalid_cqe;
 	}
+
+	if (unlikely(ret == -EAGAIN))
+		ret = 0;
 
 	return ret;
 
-
 invalid_cqe:
-	pr_emerg("Invalid CQE on handle_event() (thread=%u)", thread->idx);
-	pr_emerg("Dumping cqe...");
+	pr_emerg("Invalid CQE on handle_event()");
 	VT_HEXDUMP(cqe, sizeof(*cqe));
 	panic("Invalid CQE!");
 	__builtin_unreachable();
+}
+
+
+static int wait_for_threads_to_be_ready(struct srv_state *state, bool is_main)
+{
+	size_t tr_num = state->cfg->sys.thread;
+
+	if (tr_num == 1)
+		/* 
+		 * Don't wait, we are single threaded.
+		 */
+		return 0;
+
+
+	if (is_main) {
+
+		pr_notice("Waiting for threads to be ready...");
+		while (likely(atomic_load(&state->online_tr) < tr_num)) {
+			if (unlikely(state->stop))
+				return -EINTR;
+			usleep(50000);
+		}
+		pr_notice("Threads are all ready!");
+		pr_notice("Initialization Sequence Completed");
+		return 0;
+
+	} else {
+
+		struct srv_thread *mt = &state->threads[0];
+		while (likely(!atomic_load(&mt->is_online))) {
+			if (unlikely(state->stop))
+				return -EINTR;
+			usleep(50000);
+		}
+		return -EALREADY;
+
+	}
 }
 
 
@@ -1020,6 +1085,7 @@ static __no_inline void *run_thread(void *_thread)
 	intptr_t ret = 0;
 	struct io_uring_cqe *cqe;
 	struct srv_thread *thread = _thread;
+	struct io_uring *ring = &thread->ring;
 	struct srv_state *state = thread->state;
 
 	atomic_fetch_add(&state->online_tr, 1);
@@ -1027,8 +1093,15 @@ static __no_inline void *run_thread(void *_thread)
 	atomic_store(&thread->is_online, true);
 
 	while (likely(!state->stop)) {
+
+		ret = io_uring_submit(ring);
+		if (unlikely(ret < 0)) {
+			pr_err("io_uring_submit(): " PRERF, PREAR((int)-ret));
+			break;
+		}
+
 		cqe = NULL;
-		ret = do_uring_wait(thread, &cqe);
+		ret = do_uring_wait(ring, &cqe);
 		if (unlikely(ret == -ETIME))
 			continue;
 
@@ -1043,9 +1116,6 @@ static __no_inline void *run_thread(void *_thread)
 			break;
 	}
 
-	if (thread->idx > 0)
-		pr_notice("Thread %u is exiting...", thread->idx);
-
 	atomic_store(&thread->is_online, false);
 	atomic_fetch_sub(&state->online_tr, 1);
 	return (void *)ret;
@@ -1056,25 +1126,26 @@ static int spawn_threads(struct srv_state *state)
 {
 	size_t i;
 	unsigned en_num; /* Number of queue entries */
+	struct io_uring_sqe *sqe;
 	size_t nn = state->cfg->sys.thread;
 	int ret = 0, *tun_fds = state->tun_fds;
 	struct srv_thread *threads = state->threads;
+
 
 	/*
 	 * Distribute tun_fds to all threads. So each thread has
 	 * its own tun_fds for writing.
 	 */
-	en_num = state->cfg->sock.max_conn + (state->cfg->sys.thread * 3u);
+	en_num = state->cfg->sock.max_conn + state->cfg->sys.thread + 3u;
 	for (i = 0; i < nn; i++) {
+		struct ring_queue *rq;
 		int tun_fd = tun_fds[i];
-		struct io_uring_sqe *sqe;
-		struct srv_thread *thread;
-		struct io_uring *ring;
+		struct srv_thread *thread = &threads[i];
+		struct io_uring *ring = &thread->ring;
 
-		thread         = &threads[i];
-		ring           = &thread->ring;
-		thread->tun_fd = tun_fd;
-
+		/*
+		 * Each thread has its own io_uring instance.
+		 */
 		ret = io_uring_queue_init(en_num, ring, 0);
 		if (unlikely(ret)) {
 			pr_err("io_uring_queue_init(): " PRERF, PREAR(-ret));
@@ -1082,6 +1153,12 @@ static int spawn_threads(struct srv_state *state)
 		}
 		thread->ring_init = true;
 
+		rq = get_ring_queue(state);
+		if (unlikely(!rq)) {
+			pr_err("get_ring_queue(): " PRERF, PREAR(EAGAIN));
+			ret = -EAGAIN;
+			break;
+		}
 
 		sqe = io_uring_get_sqe(ring);
 		if (unlikely(!sqe)) {
@@ -1092,7 +1169,11 @@ static int spawn_threads(struct srv_state *state)
 
 		io_uring_prep_read(sqe, tun_fd, thread->raw_pkt,
 				   sizeof(thread->raw_pkt), 0);
-		io_uring_sqe_set_data(sqe, UPTR(RING_QUE_TUN));
+
+		rq->type = RING_QUE_TUN;
+		rq->fd   = tun_fd;
+		io_uring_sqe_set_data(sqe, rq);
+
 
 		/*
 		 * Don't spawn a thread for `i == 0`,
@@ -1101,13 +1182,6 @@ static int spawn_threads(struct srv_state *state)
 		 */
 		if (unlikely(i == 0))
 			continue;
-
-
-		ret = io_uring_submit(&thread->ring);
-		if (unlikely(ret < 0)) {
-			pr_err("io_uring_submit(): " PRERF, PREAR(-ret));
-			break;
-		}
 
 
 		ret = pthread_create(&thread->thread, NULL, run_thread, thread);
@@ -1125,22 +1199,23 @@ static int spawn_threads(struct srv_state *state)
 			break;
 		}
 	}
+
+
 	return ret;
 }
 
 
 static int run_workers(struct srv_state *state)
 {
-	int ret;
+	int ret = 0;
+	struct ring_queue *rq;
 	struct accept_data *acc;
 	struct io_uring_sqe *sqe;
 	struct srv_thread *thread;
 
-
 	ret = spawn_threads(state);
 	if (unlikely(ret))
 		goto out;
-
 
 	/*
 	 * Main thread is responsible to accept
@@ -1149,7 +1224,12 @@ static int run_workers(struct srv_state *state)
 	 */
 	acc    = &state->acc;
 	thread = &state->threads[0];
-
+	rq = get_ring_queue(state);
+	if (unlikely(!rq)) {
+		pr_err("get_ring_queue(): " PRERF, PREAR(EAGAIN));
+		ret = -EAGAIN;
+		goto out;
+	}
 
 	sqe = io_uring_get_sqe(&thread->ring);
 	if (unlikely(!sqe)) {
@@ -1163,15 +1243,10 @@ static int run_workers(struct srv_state *state)
 	memset(&acc->addr, 0, sizeof(acc->addr));
 	io_uring_prep_accept(sqe, state->tcp_fd, (struct sockaddr *)&acc->addr,
 			     &acc->addrlen, 0);
-	io_uring_sqe_set_data(sqe, UPTR(RING_QUE_TCP));
 
-
-	ret = io_uring_submit(&thread->ring);
-	if (unlikely(ret < 0)) {
-		pr_err("io_uring_submit(): " PRERF, PREAR(-ret));
-		goto out;
-	}
-
+	rq->type = RING_QUE_TCP;
+	rq->fd   = state->tcp_fd;
+	io_uring_sqe_set_data(sqe, rq);
 
 	/*
 	 * Run the main thread!
@@ -1184,60 +1259,7 @@ out:
 
 static void wait_for_threads_to_exit(struct srv_state *state)
 {
-	int sig = SIGTERM;
-	const uint32_t max_secs = 3; /* Wait for max_secs seconds. */
-	const uint32_t max_iter = max_secs * 10;
-	const uint32_t per_iter = 100000;
-	uint32_t iter = 0;
-
-	if (atomic_load(&state->online_tr) > 0)
-		pr_notice("Waiting for thread(s) to exit...");
-
-
-do_kill:
-	for (size_t i = 0; i < state->cfg->sys.thread; i++) {
-		int ret;
-
-		/*
-		 * Skip the main thread.
-		 */
-		if (unlikely(i == 0))
-			continue;
-
-		if (!atomic_load(&state->threads[i].is_online))
-			continue;
-
-		ret = pthread_kill(state->threads[i].thread, sig);
-		if (ret) {
-			pr_err("pthread_kill(threads[%zu], %s) " PRERF,
-			       i, (sig == SIGTERM) ? "SIGTERM" : "SIGKILL",
-			       PREAR(ret));
-		}
-	}
-
-
-	while (atomic_load(&state->online_tr) > 0) {
-		usleep(per_iter);
-		if (iter++ >= max_iter)
-			break;
-	}
-
-
-	/*
-	 * We have been waiting for `max_secs`, but
-	 * the threads haven't given us the offline
-	 * signal through the online thread counter.
-	 *
-	 * Let's force kill the threads!
-	 */
-	if (atomic_load(&state->online_tr) > 0) {
-		sig = SIGKILL;
-		pr_notice("Warning: %u thread(s) haven't exited after %u seconds",
-			  atomic_load(&state->online_tr), max_secs);
-		pr_emerg("Killing thread(s) forcefully with SIGKILL...");
-		atomic_store(&state->online_tr, 0);
-		goto do_kill;
-	}
+	(void)state;
 }
 
 
@@ -1278,6 +1300,7 @@ static void close_clients(struct client_slot *clients, size_t nn)
 		struct client_slot *client = &clients[i];
 		int cli_fd = client->cli_fd;
 
+		bt_mutex_destroy(&client->lock);
 		if (cli_fd == -1)
 			continue;
 
@@ -1307,6 +1330,8 @@ static void destroy_state(struct srv_state *state)
 	bt_mutex_destroy(&state->cl_stk.lock);
 	bt_mutex_destroy(&state->rq_stk.lock);
 	al64_free(state->cl_stk.arr);
+	al64_free(state->rq_stk.arr);
+	al64_free(state->ring_que);
 	al64_free(state->tun_fds);
 	al64_free(state->threads);
 	al64_free(state->clients);
