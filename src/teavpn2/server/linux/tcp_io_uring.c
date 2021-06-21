@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- *  src/teavpn2/server/linux/tcp.c
+ *  src/teavpn2/server/linux/tcp_io_uring.c
  *
  *  TeaVPN2 server core for Linux.
  *
@@ -1381,8 +1381,9 @@ static void destroy_state(struct srv_state *state)
 	al64_free(state->clients);
 }
 
+extern int teavpn2_server_tcp_io_uring(struct srv_cfg *cfg);
 
-int teavpn2_server_tcp(struct srv_cfg *cfg)
+int teavpn2_server_tcp_io_uring(struct srv_cfg *cfg)
 {
 	int ret = 0;
 	struct srv_state *state;

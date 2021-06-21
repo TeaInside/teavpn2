@@ -148,6 +148,7 @@ include $(BASE_DIR)/src/build/print.make
 OBJ_CC		:=
 OBJ_PRE_CC	:=
 OBJ_TMP_CC	:=
+OBJ_JUST_RM	:=
 SHARED_LIB	:=
 OBJ_EXTRA	:=
 #######################################
@@ -200,7 +201,7 @@ $(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC) $(FBT_CC_OBJ) $(OBJ_EXTRA)
 # Clean project and also clean bluetea framework objects.
 #
 clean: bluetea_clean
-	$(Q)$(RM) -vrf $(TARGET_BIN) $(DEP_DIRS) $(OBJ_CC) $(OBJ_PRE_CC)
+	$(Q)$(RM) -vrf $(OBJ_JUST_RM) $(TARGET_BIN) $(DEP_DIRS) $(OBJ_CC) $(OBJ_PRE_CC)
 
 
 clean_all: clean ext_clean
