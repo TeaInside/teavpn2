@@ -9,6 +9,7 @@
 
 INCLUDE_DIR += -I$(BASE_DIR)/src
 
+
+include $(BASE_DIR)/src/ext/Makefile
 include $(BASE_DIR)/src/bluetea/Makefile
 include $(BASE_DIR)/src/teavpn2/Makefile
-include $(BASE_DIR)/src/ext/Makefile

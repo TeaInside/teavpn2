@@ -18,3 +18,7 @@ OBJ_PRE_CC += $(OBJ_TMP_CC)
 $(OBJ_TMP_CC):
 	$(CC_PRINT)
 	$(Q)$(CC) $(PIC_FLAGS) $(DEPFLAGS) $(CFLAGS) -c $(O_TO_C) -o $(@)
+
+
+# Need liburing header
+$(BASE_DIR)/src/teavpn2/server/linux/tcp.o: $(LIBURING_OBJ)
