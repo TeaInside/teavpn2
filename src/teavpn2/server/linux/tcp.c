@@ -671,8 +671,8 @@ static int __register_client(struct srv_thread *thread, int32_t idx, int cli_fd,
 			     const char *src_ip, uint16_t src_port)
 {
 	int ret = 0;
-	struct io_uring_sqe *sqe;
 	struct client_slot *client;
+	struct io_uring_sqe *sqe = NULL;
 	struct srv_thread *assignee = NULL;
 	struct srv_state *state = thread->state;
 	size_t num_threads = state->cfg->sys.thread;
@@ -887,6 +887,44 @@ out_rearm:
 }
 
 
+static int handle_event_tun(struct srv_thread *thread, struct io_uring_cqe *cqe)
+{
+	int ret = 0;
+	int tun_fd = thread->tun_fd;
+	struct io_uring_sqe *sqe;
+	ssize_t read_ret = (ssize_t)cqe->res;
+
+	io_uring_cqe_seen(&thread->ring, cqe);
+
+	pr_debug("read() from tun_fd %zd bytes (fd=%d) (thread=%u)",
+		 read_ret, tun_fd, thread->idx);
+
+	goto out_rearm;
+
+out_rearm:
+	sqe = io_uring_get_sqe(&thread->ring);
+	if (unlikely(!sqe)) {
+		pr_emerg("Impossible happened!");
+		panic("io_uring run out of sqe on handle_event_tcp()");
+		__builtin_unreachable();
+	}
+
+
+	io_uring_prep_read(sqe, tun_fd, thread->spkt.raw_buf,
+			   sizeof(thread->spkt.raw_buf), 0);
+	io_uring_sqe_set_data(sqe, UPTR(RING_QUE_TUN));
+
+
+	ret = io_uring_submit(&thread->ring);
+	if (unlikely(ret < 0)) {
+		pr_err("io_uring_submit(): " PRERF " (thread=%u)", PREAR(-ret),
+		       thread->idx);
+		return ret;
+	}
+	return 0;
+}
+
+
 static void close_client_conn(struct srv_thread *thread,
 			      struct client_slot *client)
 {
@@ -909,10 +947,30 @@ static int __handle_event_client(struct srv_thread *thread,
 				 struct client_slot *client)
 {
 	int ret = 0;
+	struct io_uring_sqe *sqe;
 
 
+	goto out_rearm;
 
-	return ret;
+out_rearm:
+	sqe = io_uring_get_sqe(&thread->ring);
+	if (unlikely(!sqe)) {
+		pr_emerg("Impossible happened!");
+		panic("io_uring run out of sqe on handle_event_tcp()");
+		__builtin_unreachable();
+	}
+
+
+	io_uring_prep_recv(sqe, client->cli_fd, client->raw_pkt,
+			   sizeof(client->raw_pkt), MSG_WAITALL);
+	io_uring_sqe_set_data(sqe, client);
+
+
+	ret = io_uring_submit(&thread->ring);
+	if (unlikely(ret < 0))
+		pr_err("io_uring_submit(): " PRERF " (thread=%u)", PREAR(-ret),
+		       thread->idx);
+	return 0;
 }
 
 
@@ -921,7 +979,7 @@ static int handle_event_client(struct srv_thread *thread,
 {
 	int ret = 0;
 	struct io_uring_sqe *sqe;
-	struct client_slot *client;	
+	struct client_slot *client;
 	ssize_t recv_ret = (ssize_t)cqe->res;
 
 
@@ -931,7 +989,6 @@ static int handle_event_client(struct srv_thread *thread,
 
 	if (unlikely(recv_ret == 0)) {
 		prl_notice(0, "recv() from " PRWIU " returned 0", W_IU(client));
-		/* return 0; */
 		goto out_close;
 	}
 
@@ -939,12 +996,12 @@ static int handle_event_client(struct srv_thread *thread,
 	if (unlikely(recv_ret < 0)) {
 		prl_notice(0, "recv() from " PRWIU " error | " PRERF,
 			   W_IU(client), PREAR((int)-recv_ret));
-		/* return 0; */
 		goto out_close;
 	}
 
 
-	// pr_debug("recv() %zd bytes from " PRWIU, recv_ret, W_IU(client));
+	pr_debug("recv() %zd bytes from " PRWIU, recv_ret, W_IU(client));
+
 
 	ret = __handle_event_client(thread, client);
 	if (unlikely(ret))
@@ -984,9 +1041,14 @@ out_close:
 static int handle_event(struct srv_thread *thread, struct io_uring_cqe *cqe)
 {
 	int ret = 0;
-	uint32_t type;
+	void *fret;
+	uintptr_t type;
 
-	type = (uint32_t)(uintptr_t)io_uring_cqe_get_data(cqe);
+	/*
+	 * `fret` is just to shut the clang up!
+	 */
+	fret = io_uring_cqe_get_data(cqe);
+	type = (uintptr_t)fret;
 	switch (type) {
 	case RING_QUE_NOP:
 		pr_err("Got RING_QUE_NOP on handle_event()");
@@ -995,8 +1057,7 @@ static int handle_event(struct srv_thread *thread, struct io_uring_cqe *cqe)
 		ret = handle_event_tcp(thread, cqe);
 		break;
 	case RING_QUE_TUN:
-		pr_debug("RING_QUE_TUN");
-		io_uring_cqe_seen(&thread->ring, cqe);
+		ret = handle_event_tun(thread, cqe);
 		break;
 	default:
 		ret = handle_event_client(thread, cqe);
@@ -1008,7 +1069,7 @@ static int handle_event(struct srv_thread *thread, struct io_uring_cqe *cqe)
 
 invalid_cqe:
 	pr_emerg("Invalid CQE on handle_event() (thread=%u)", thread->idx);
-	pr_emerg("Dumping cqe...");
+	pr_emerg("Dumping CQE...");
 	VT_HEXDUMP(cqe, sizeof(*cqe));
 	panic("Invalid CQE!");
 	__builtin_unreachable();
@@ -1064,7 +1125,9 @@ static int spawn_threads(struct srv_state *state)
 	 * Distribute tun_fds to all threads. So each thread has
 	 * its own tun_fds for writing.
 	 */
-	en_num = state->cfg->sock.max_conn + (state->cfg->sys.thread * 3u);
+	en_num = (state->cfg->sock.max_conn * 10u)
+		+ (state->cfg->sys.thread * 5u)
+		+ 30u;
 	for (i = 0; i < nn; i++) {
 		int tun_fd = tun_fds[i];
 		struct io_uring_sqe *sqe;
@@ -1090,8 +1153,8 @@ static int spawn_threads(struct srv_state *state)
 			break;
 		}
 
-		io_uring_prep_read(sqe, tun_fd, thread->raw_pkt,
-				   sizeof(thread->raw_pkt), 0);
+		io_uring_prep_read(sqe, tun_fd, thread->spkt.raw_buf,
+				   sizeof(thread->spkt.raw_buf), 0);
 		io_uring_sqe_set_data(sqe, UPTR(RING_QUE_TUN));
 
 		/*
@@ -1175,8 +1238,14 @@ static int run_workers(struct srv_state *state)
 
 	/*
 	 * Run the main thread!
+	 *
+	 * `fret` is just to shut the clang up!
 	 */
-	ret = (int)((intptr_t)run_thread(thread));
+	{
+		void *fret;
+		fret = run_thread(thread);
+		ret  = (int)((intptr_t)fret);
+	}
 out:
 	return ret;
 }
@@ -1185,7 +1254,7 @@ out:
 static void wait_for_threads_to_exit(struct srv_state *state)
 {
 	int sig = SIGTERM;
-	const uint32_t max_secs = 3; /* Wait for max_secs seconds. */
+	const uint32_t max_secs = 30; /* Wait for max_secs seconds. */
 	const uint32_t max_iter = max_secs * 10;
 	const uint32_t per_iter = 100000;
 	uint32_t iter = 0;
