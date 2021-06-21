@@ -9,8 +9,13 @@
 
 DEP_DIRS += $(BASE_DEP_DIR)/src/teavpn2/server/linux
 
-OBJ_TMP_CC := \
-	$(BASE_DIR)/src/teavpn2/server/linux/tcp.o
+OBJ_TMP_CC :=
+
+ifdef IO_URING_SUPPORT
+ifneq ($(IO_URING_SUPPORT),0)
+	OBJ_TMP_CC += $(BASE_DIR)/src/teavpn2/server/linux/tcp_io_uring.o
+endif
+endif
 
 OBJ_PRE_CC += $(OBJ_TMP_CC)
 
@@ -20,5 +25,4 @@ $(OBJ_TMP_CC):
 	$(Q)$(CC) $(PIC_FLAGS) $(DEPFLAGS) $(CFLAGS) -c $(O_TO_C) -o $(@)
 
 
-# Need liburing header
-$(BASE_DIR)/src/teavpn2/server/linux/tcp.o: $(LIBURING_OBJ)
+$(BASE_DIR)/src/teavpn2/server/linux/tcp_io_uring.o: $(LIBURING_OBJ)
