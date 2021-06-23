@@ -24,6 +24,7 @@ static __always_inline void usage(const char *app)
 
 int main(int argc, char *argv[])
 {
+	char stdout_buf[4096];
 	char arena_buffer[4096];
 
 	if (argc <= 1) {
@@ -33,6 +34,7 @@ int main(int argc, char *argv[])
 
 	memset(arena_buffer, 0, sizeof(arena_buffer));
 	ar_init(arena_buffer, sizeof(arena_buffer));
+	setvbuf(stdout, stdout_buf, _IOLBF, sizeof(stdout_buf));
 
 	if (strncmp(argv[1], "client", 6) == 0) {
 		return teavpn_client_entry(argc, argv);
