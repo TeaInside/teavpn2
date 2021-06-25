@@ -66,8 +66,8 @@
 /* Macros for printing  */
 #define W_IP(CLIENT) 		((CLIENT)->src_ip), ((CLIENT)->src_port)
 #define W_UN(CLIENT) 		((CLIENT)->username)
-#define W_IU(CLIENT) 		W_IP(CLIENT), W_UN(CLIENT)
-#define PRWIU 			"%s:%d (%s)"
+#define W_IU(CLIENT) 		W_IP(CLIENT), W_UN(CLIENT), ((CLIENT)->idx)
+#define PRWIU 			"%s:%d (%s) (cli_idx=%u)"
 #define PKT_SIZE		(sizeof(struct tcli_pkt))
 
 
@@ -210,6 +210,14 @@ static inline int32_t srstk_pop(struct srv_stack *cl_stk)
 	cl_stk->sp = sp;
 	return ret;
 }
+
+
+extern int teavpn2_server_tcp_wait_threads(struct srv_state *state,
+					   bool is_main);
+
+extern int teavpn2_server_tcp_run_io_uring(struct srv_state *state);
+
+extern int teavpn2_server_tcp_socket_setup(int cli_fd, struct srv_state *state);
 
 
 #endif /* #ifndef SRC__TEAVPN2__SERVER__LINUX__TCP_COMMON_H */

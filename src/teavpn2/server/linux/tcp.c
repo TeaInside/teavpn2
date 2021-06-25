@@ -275,7 +275,8 @@ static int init_iface(struct srv_state *state)
 }
 
 
-static __no_inline int socket_setup(int cli_fd, struct srv_state *state)
+__no_inline
+int teavpn2_server_tcp_socket_setup(int cli_fd, struct srv_state *state)
 {
 	int y;
 	int err;
@@ -287,7 +288,7 @@ static __no_inline int socket_setup(int cli_fd, struct srv_state *state)
 
 	y = 1;
 	ret = setsockopt(cli_fd, IPPROTO_TCP, TCP_NODELAY, py, len);
-	if (unlikely(ret < 0)) {
+	if (unlikely(ret)) {
 		lv = "IPPROTO_TCP";
 		on = "TCP_NODELAY";
 		goto out_err;
@@ -296,7 +297,7 @@ static __no_inline int socket_setup(int cli_fd, struct srv_state *state)
 
 	y = 6;
 	ret = setsockopt(cli_fd, SOL_SOCKET, SO_PRIORITY, py, len);
-	if (unlikely(ret < 0)) {
+	if (unlikely(ret)) {
 		lv = "SOL_SOCKET";
 		on = "SO_PRIORITY";
 		goto out_err;
@@ -305,7 +306,7 @@ static __no_inline int socket_setup(int cli_fd, struct srv_state *state)
 
 	y = 1024 * 1024 * 4;
 	ret = setsockopt(cli_fd, SOL_SOCKET, SO_RCVBUFFORCE, py, len);
-	if (unlikely(ret < 0)) {
+	if (unlikely(ret)) {
 		lv = "SOL_SOCKET";
 		on = "SO_RCVBUFFORCE";
 		goto out_err;
@@ -314,7 +315,7 @@ static __no_inline int socket_setup(int cli_fd, struct srv_state *state)
 
 	y = 1024 * 1024 * 4;
 	ret = setsockopt(cli_fd, SOL_SOCKET, SO_SNDBUFFORCE, py, len);
-	if (unlikely(ret < 0)) {
+	if (unlikely(ret)) {
 		lv = "SOL_SOCKET";
 		on = "SO_SNDBUFFORCE";
 		goto out_err;
@@ -323,7 +324,7 @@ static __no_inline int socket_setup(int cli_fd, struct srv_state *state)
 
 	y = 50000;
 	ret = setsockopt(cli_fd, SOL_SOCKET, SO_BUSY_POLL, py, len);
-	if (unlikely(ret < 0)) {
+	if (unlikely(ret)) {
 		lv = "SOL_SOCKET";
 		on = "SO_BUSY_POLL";
 		goto out_err;
@@ -354,7 +355,7 @@ static int socket_setup_main_tcp(int tcp_fd, struct srv_state *state)
 
 	y = 1;
 	ret = setsockopt(tcp_fd, SOL_SOCKET, SO_REUSEADDR, py, len);
-	if (unlikely(ret < 0)) {
+	if (unlikely(ret)) {
 		lv = "SOL_SOCKET";
 		on = "SO_REUSEADDR";
 		goto out_err;
@@ -364,7 +365,7 @@ static int socket_setup_main_tcp(int tcp_fd, struct srv_state *state)
 	 * TODO: Use cfg to set some socket options.
 	 */
 	(void)cfg;
-	return socket_setup(tcp_fd, state);
+	return teavpn2_server_tcp_socket_setup(tcp_fd, state);
 out_err:
 	err = errno;
 	pr_err("setsockopt(tcp_fd, %s, %s): " PRERF, lv, on, PREAR(err));
@@ -557,10 +558,44 @@ static void destroy_state(struct srv_state *state)
 }
 
 
+int teavpn2_server_tcp_wait_threads(struct srv_state *state, bool is_main)
+{
+	size_t tr_num = state->cfg->sys.thread;
+
+	if (tr_num == 1)
+		/* 
+		 * Don't wait, we are single threaded.
+		 */
+		return 0;
+
+
+	if (is_main) {
+		pr_notice("Waiting for threads to be ready...");
+		while (likely(atomic_load(&state->online_tr) < tr_num)) {
+			if (unlikely(state->stop))
+				return -EINTR;
+			usleep(50000);
+		}
+		pr_notice("Threads are all ready!");
+		pr_notice("Initialization Sequence Completed");
+		return 0;
+	} else {
+		struct srv_thread *mt = &state->threads[0];
+		while (likely(!atomic_load(&mt->is_online))) {
+			if (unlikely(state->stop))
+				return -EINTR;
+			usleep(50000);
+		}
+		return -EALREADY;
+	}
+}
+
+
 int teavpn2_server_tcp(struct srv_cfg *cfg)
 {
 	int ret = 0;
 	struct srv_state *state;
+	const char *evt = cfg->sock.event_loop;
 
 	state = al64_malloc(sizeof(*state));
 	if (unlikely(!state)) {
@@ -585,9 +620,20 @@ int teavpn2_server_tcp(struct srv_cfg *cfg)
 	if (unlikely(ret))
 		goto out;
 
+
+	if (!evt || !strcmp(evt, "epoll")) {
+		// ret = teavpn2_server_tcp_run_epoll(state);
+	} else if (!strcmp(evt, "io_uring")) {
 #if USE_IO_URING
-	ret = teavpn2_server_tcp_run_io_uring(state);
+		ret = teavpn2_server_tcp_run_io_uring(state);
+#else
+		pr_err("io_uring is not supported in this binary");
+		ret = -EINVAL;
 #endif
+	} else {
+		pr_err("Invalid event loop \"%s\"", evt);
+		ret = -EINVAL;
+	}
 out:
 	wait_for_threads_to_exit(state);
 	destroy_state(state);
