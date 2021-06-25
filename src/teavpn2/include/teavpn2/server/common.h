@@ -30,6 +30,7 @@ struct srv_sock_cfg {
 	int			backlog;
 	char			*ssl_cert;
 	char			*ssl_priv_key;
+	char			*event_loop;
 };
 
 

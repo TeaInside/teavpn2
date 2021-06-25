@@ -80,6 +80,8 @@ static bool parse_section_socket(struct srv_sock_cfg *sock, const char *name,
 		sock->ssl_cert = ar_strndup(value, 512);
 	} else if (!strcmp(name, "ssl_priv_key")) {
 		sock->ssl_priv_key = ar_strndup(value, 512);
+	} else if (!strcmp(name, "event_loop")) {
+		sock->event_loop = ar_strndup(value, 32);
 	} else {
 		return INVALID_NAME;
 	}

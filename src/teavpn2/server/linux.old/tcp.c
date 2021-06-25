@@ -7,6 +7,7 @@
  *  Copyright (C) 2021  Ammar Faizi
  */
 
+
 #include "tcp_common.h"
 
 /*
@@ -246,6 +247,8 @@ static int init_state(struct srv_state *state)
 	pr_notice("My PID: %d", getpid());
 	return ret;
 }
+
+
 static int init_iface(struct srv_state *state)
 {
 	size_t i;
@@ -505,10 +508,8 @@ static void close_threads(struct srv_thread *threads, size_t nn)
 
 	for (size_t i = 0; i < nn; i++) {
 		struct srv_thread *thread = &threads[i];
-#if USE_IO_URING
 		if (thread->ring_init)
 			io_uring_queue_exit(&thread->ring);
-#endif
 	}
 }
 
@@ -557,6 +558,40 @@ static void destroy_state(struct srv_state *state)
 }
 
 
+int wait_for_threads_to_be_ready(struct srv_state *state,
+					       bool is_main)
+{
+	size_t tr_num = state->cfg->sys.thread;
+
+	if (tr_num == 1)
+		/* 
+		 * Don't wait, we are single threaded.
+		 */
+		return 0;
+
+
+	if (is_main) {
+		pr_notice("Waiting for threads to be ready...");
+		while (likely(atomic_load(&state->online_tr) < tr_num)) {
+			if (unlikely(state->stop))
+				return -EINTR;
+			usleep(50000);
+		}
+		pr_notice("Threads are all ready!");
+		pr_notice("Initialization Sequence Completed");
+		return 0;
+	} else {
+		struct srv_thread *mt = &state->threads[0];
+		while (likely(!atomic_load(&mt->is_online))) {
+			if (unlikely(state->stop))
+				return -EINTR;
+			usleep(50000);
+		}
+		return -EALREADY;
+	}
+}
+
+
 int teavpn2_server_tcp(struct srv_cfg *cfg)
 {
 	int ret = 0;
@@ -585,9 +620,7 @@ int teavpn2_server_tcp(struct srv_cfg *cfg)
 	if (unlikely(ret))
 		goto out;
 
-#if USE_IO_URING
 	ret = teavpn2_server_tcp_run_io_uring(state);
-#endif
 out:
 	wait_for_threads_to_exit(state);
 	destroy_state(state);
