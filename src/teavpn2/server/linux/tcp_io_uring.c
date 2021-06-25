@@ -162,7 +162,7 @@ static int register_client(struct srv_thread *thread, int cli_fd)
 	bt_mutex_unlock(&state->cl_stk.lock);
 	if (unlikely(idx == -1)) {
 		pr_err("Client slot is full, cannot accept connection from "
-		       "%s:%u", src_ip, src_port);
+		       "%s:%u (thread=%u)", src_ip, src_port, thread->idx);
 		ret = -EAGAIN;
 		goto out_close;
 	}
@@ -276,8 +276,9 @@ static int handle_event_tun(struct srv_thread *thread, struct io_uring_cqe *cqe)
 out_rearm:
 	sqe = io_uring_get_sqe(&thread->ring);
 	if (unlikely(!sqe)) {
-		pr_emerg("Impossible happened!");
-		panic("io_uring run out of sqe on handle_event_tcp()");
+		pr_emerg("Resource exhausted (thread=%u)", thread->idx);
+		panic("io_uring run out of sqe on handle_event_tun() "
+		      "(thread=%u)", thread->idx);
 		__builtin_unreachable();
 	}
 
@@ -319,7 +320,31 @@ static int __handle_event_client(struct srv_thread *thread,
 				 struct client_slot *client)
 {
 	int ret = 0;
-	return ret;
+	struct io_uring_sqe *sqe;
+
+
+	goto out_rearm;
+
+out_rearm:
+	sqe = io_uring_get_sqe(&thread->ring);
+	if (unlikely(!sqe)) {
+		pr_emerg("Resource exhausted (thread=%u)", thread->idx);
+		panic("io_uring run out of sqe on __handle_event_client() "
+		      "(thread=%u)", thread->idx);
+		__builtin_unreachable();
+	}
+
+
+	io_uring_prep_recv(sqe, client->cli_fd, client->raw_pkt,
+			   sizeof(client->raw_pkt), MSG_WAITALL);
+	io_uring_sqe_set_data(sqe, client);
+
+
+	ret = io_uring_submit(&thread->ring);
+	if (unlikely(ret < 0))
+		pr_err("io_uring_submit(): " PRERF " (thread=%u)", PREAR(-ret),
+		       thread->idx);
+	return 0;
 }
 
 
@@ -327,7 +352,6 @@ static int handle_event_client(struct srv_thread *thread,
 			       struct io_uring_cqe *cqe)
 {
 	int ret = 0;
-	struct io_uring_sqe *sqe;
 	struct client_slot *client;
 	ssize_t recv_ret = (ssize_t)cqe->res;
 
@@ -355,23 +379,6 @@ static int handle_event_client(struct srv_thread *thread,
 	if (unlikely(ret))
 		goto out_close;
 
-	sqe = io_uring_get_sqe(&thread->ring);
-	if (unlikely(!sqe)) {
-		pr_err("io_uring run out of sqe on handle_event_tcp() for "
-		       "client" PRWIU, W_IU(client));
-		goto out_close;
-	}
-
-	io_uring_prep_recv(sqe, client->cli_fd, client->raw_pkt,
-			   sizeof(client->raw_pkt), MSG_WAITALL);
-	io_uring_sqe_set_data(sqe, client);
-
-
-	ret = io_uring_submit(&thread->ring);
-	if (unlikely(ret < 0)) {
-		pr_err("io_uring_submit(): " PRERF, PREAR(-ret));
-		goto out_close;
-	}
 	return 0;
 
 out_close:
@@ -467,9 +474,9 @@ static int spawn_threads(struct srv_state *state)
 	 * Distribute tun_fds to all threads. So each thread has
 	 * its own tun_fds for writing.
 	 */
-	en_num = (state->cfg->sock.max_conn * 50u)
-		+ (state->cfg->sys.thread * 50u)
-		+ 30u;
+	en_num = (state->cfg->sock.max_conn * 100u)
+		+ (state->cfg->sys.thread * 100u)
+		+ 1000u;
 	for (i = 0; i < nn; i++) {
 		int tun_fd = tun_fds[i];
 		struct io_uring_sqe *sqe;
