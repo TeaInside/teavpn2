@@ -7,7 +7,8 @@
  *  Copyright (C) 2021  Ammar Faizi
  */
 
-#include "tcp_common.h"
+#include "./tcp_common.h"
+
 
 /*
  * For interrupt only!
@@ -33,8 +34,10 @@ static void handle_interrupt(int sig)
 }
 
 
-static int validate_cfg(struct srv_cfg *cfg)
+static int validate_cfg(struct srv_state *state)
 {
+	struct srv_cfg *cfg = state->cfg;
+
 	if (!cfg->sys.thread) {
 		pr_err("Number of thread cannot be zero");
 		return -EINVAL;
@@ -58,6 +61,27 @@ static int validate_cfg(struct srv_cfg *cfg)
 	if (!*cfg->iface.ipv4_netmask) {
 		pr_err("cfg->iface.ipv4_netmask cannot be empty");
 		return -EINVAL;
+	}
+
+
+	{
+		const char *evtl = cfg->sock.event_loop;
+
+		if (!evtl || !strcmp(evtl, "epoll")) {
+			pr_notice("Using epoll event loop");
+			state->event_loop = EVT_LOOP_EPOLL;
+		} else if (!strcmp(evtl, "io_uring")) {
+#if USE_IO_URING
+			pr_notice("Using io_uring event loop");
+			state->event_loop = EVT_LOOP_IO_URING;
+#else
+			pr_err("io_uring is not supported in this binary");
+			return -EINVAL;
+#endif
+		} else {
+			pr_err("Invalid event loop \"%s\"", evtl);
+			return -EINVAL;
+		}
 	}
 
 	return 0;
@@ -215,10 +239,10 @@ static int init_state(struct srv_state *state)
 	state->tun_fds     = NULL;
 	state->clients     = NULL;
 	state->stop        = false;
-	atomic_store(&state->tr_assign, 0);
-	atomic_store(&state->online_tr, 0);
+	atomic_store_explicit(&state->tr_assign, 0, memory_order_relaxed);
+	atomic_store_explicit(&state->online_tr, 0, memory_order_relaxed);
 
-	ret = validate_cfg(state->cfg);
+	ret = validate_cfg(state);
 	if (unlikely(ret))
 		return ret;
 
@@ -246,6 +270,8 @@ static int init_state(struct srv_state *state)
 	pr_notice("My PID: %d", getpid());
 	return ret;
 }
+
+
 static int init_iface(struct srv_state *state)
 {
 	size_t i;
@@ -330,6 +356,13 @@ int teavpn2_server_tcp_socket_setup(int cli_fd, struct srv_state *state)
 		goto out_err;
 	}
 
+
+	if (state->event_loop != EVT_LOOP_IO_URING) {
+		ret = fd_set_nonblock(cli_fd);
+		if (unlikely(ret < 0))
+			return ret;
+	}
+
 	/*
 	 * TODO: Use cfg to set some socket options.
 	 */
@@ -376,13 +409,17 @@ out_err:
 static int init_tcp_socket(struct srv_state *state)
 {
 	int ret;
+	int type;
 	int tcp_fd;
 	struct sockaddr_in addr;
 	struct srv_sock_cfg *sock = &state->cfg->sock;
 
+	type = SOCK_STREAM;
+	if (state->event_loop != EVT_LOOP_IO_URING)
+		type |= SOCK_NONBLOCK;
 
 	prl_notice(0, "Creating TCP socket...");
-	tcp_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	tcp_fd = socket(AF_INET, type, IPPROTO_TCP);
 	if (unlikely(tcp_fd < 0)) {
 		ret = errno;
 		pr_err("socket(): " PRERF, PREAR(ret));
@@ -436,6 +473,8 @@ static void wait_for_threads_to_exit(struct srv_state *state)
 	if (atomic_load(&state->online_tr) > 0)
 		pr_notice("Waiting for thread(s) to exit...");
 
+	if (!state->threads)
+		return;
 
 do_kill:
 	for (size_t i = 0; i < state->cfg->sys.thread; i++) {
@@ -550,7 +589,6 @@ static void destroy_state(struct srv_state *state)
 	close_fds(state);
 	close_threads(state->threads, state->cfg->sys.thread);
 	bt_mutex_destroy(&state->cl_stk.lock);
-	bt_mutex_destroy(&state->rq_stk.lock);
 	al64_free(state->cl_stk.arr);
 	al64_free(state->tun_fds);
 	al64_free(state->threads);
@@ -591,11 +629,27 @@ int teavpn2_server_tcp_wait_threads(struct srv_state *state, bool is_main)
 }
 
 
+static int run_event_loop(struct srv_state *state)
+{
+	switch (state->event_loop) {
+	case EVT_LOOP_EPOLL:
+		return 0;
+	case EVT_LOOP_IO_URING:
+#if USE_IO_URING
+		return teavpn2_server_tcp_run_io_uring(state);
+#else
+		pr_err("io_uring is not supported in this binary");
+		return -EINVAL;
+#endif
+	}
+	__builtin_unreachable();
+}
+
+
 int teavpn2_server_tcp(struct srv_cfg *cfg)
 {
 	int ret = 0;
 	struct srv_state *state;
-	const char *evt = cfg->sock.event_loop;
 
 	state = al64_malloc(sizeof(*state));
 	if (unlikely(!state)) {
@@ -620,20 +674,7 @@ int teavpn2_server_tcp(struct srv_cfg *cfg)
 	if (unlikely(ret))
 		goto out;
 
-
-	if (!evt || !strcmp(evt, "epoll")) {
-		// ret = teavpn2_server_tcp_run_epoll(state);
-	} else if (!strcmp(evt, "io_uring")) {
-#if USE_IO_URING
-		ret = teavpn2_server_tcp_run_io_uring(state);
-#else
-		pr_err("io_uring is not supported in this binary");
-		ret = -EINVAL;
-#endif
-	} else {
-		pr_err("Invalid event loop \"%s\"", evt);
-		ret = -EINVAL;
-	}
+	ret = run_event_loop(state);
 out:
 	wait_for_threads_to_exit(state);
 	destroy_state(state);

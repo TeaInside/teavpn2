@@ -18,7 +18,7 @@ BLUETEA_OBJ_EXTRA := \
 
 
 include $(BASE_DIR)/src/teavpn2/net/Makefile
-# include $(BASE_DIR)/src/teavpn2/client/Makefile
+include $(BASE_DIR)/src/teavpn2/client/Makefile
 include $(BASE_DIR)/src/teavpn2/server/Makefile
 
 

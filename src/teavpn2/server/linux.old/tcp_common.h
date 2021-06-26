@@ -196,6 +196,6 @@ static inline void reset_client_state(struct client_slot *client, size_t idx)
 
 
 extern int teavpn2_server_tcp_run_io_uring(struct srv_state *state);
-extern int wait_for_threads_to_be_ready(struct srv_state *state, bool is_main);
+extern int teavpn2_server_tcp_wait_threads(struct srv_state *state, bool is_main);
 
 #endif /* #ifndef SRC__TEAVPN2__SERVER__LINUX__TCP_COMMON_H */

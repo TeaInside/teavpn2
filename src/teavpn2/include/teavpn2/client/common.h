@@ -26,6 +26,7 @@ struct cli_sock_cfg {
 	sock_type		type;
 	char			*server_addr;
 	uint16_t		server_port;
+	char			*event_loop;
 };
 
 

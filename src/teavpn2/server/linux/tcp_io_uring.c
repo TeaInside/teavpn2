@@ -316,14 +316,97 @@ static void close_client_conn(struct srv_thread *thread,
 }
 
 
-static int __handle_event_client(struct srv_thread *thread,
-				 struct client_slot *client)
+static int handle_client_pkt_handshake(struct srv_thread *thread,
+				       struct client_slot *client,
+				       size_t fdata_len)
 {
 	int ret = 0;
+	struct tcli_pkt *cli_pkt = &client->cpkt;
+	struct tcli_pkt_handshake *pkt_hsc = &cli_pkt->handshake;
+	struct tsrv_pkt_handshake *pkt_hss;
+
+	/* For C string print safety. */
+	pkt_hsc->cur.extra[sizeof(pkt_hs->cur.extra) - 1] = '\0';
+
+	pr_notice("Got protocol handshake from " PRWIU
+		  " (TeaVPN2-v%hhu.%hhu.%hhu%s)",
+		  W_IU(client),
+		  pkt_hsc->cur.ver,
+		  pkt_hsc->cur.patch_lvl,
+		  pkt_hsc->cur.sub_lvl,
+		  pkt_hsc->cur.extra);
+
+
+	io_uring_prep_send();
+
+	return ret;
+}
+
+
+static int handle_client_pkt(struct srv_thread *thread,
+			     struct client_slot *client, size_t fdata_len)
+{
+	int ret = 0;
+	switch (client->cpkt.type) {
+	case TCLI_PKT_NOP:
+		break;
+	case TCLI_PKT_HANDSHAKE:
+		ret = handle_client_pkt_handshake(thread, client, fdata_len);
+		break;
+	case TCLI_PKT_IFACE_DATA:
+		break;
+	case TCLI_PKT_REQSYNC:
+		break;
+	case TCLI_PKT_CLOSE:
+		break;
+	}
+	return ret;
+}
+
+
+static int __handle_event_client(struct srv_thread *thread,
+				 struct client_slot *client, size_t recv_s)
+{
+	int ret = 0;
+	size_t fdata_len; /* Full expected data length for this packet    */
+	size_t cdata_len; /* Current received data length for this packet */
 	struct io_uring_sqe *sqe;
+	struct tcli_pkt *cli_pkt = &client->cpkt;
 
 
-	goto out_rearm;
+	client->recv_s = recv_s;
+	if (unlikely(recv_s < TCLI_PKT_MIN_READ)) {
+		/*
+		 * We haven't received mandatory information such
+		 * as packet type, padding and data length.
+		 *
+		 * Let's wait a bit longer.
+		 *
+		 * Bail out!
+		 */
+		goto out_rearm;
+	}
+
+
+	fdata_len = cli_pkt->length;
+	cdata_len = recv_s - TCLI_PKT_MIN_READ;
+	if (unlikely(cdata_len < fdata_len)) {
+		/*
+		 * We haven't received the data completely.
+		 *
+		 * Let's wait a bit longer.
+		 *
+		 * Bail out!
+		 */
+		goto out_rearm;
+	}
+
+
+	ret = handle_client_pkt(thread, client, fdata_len);
+	if (unlikely(ret))
+		return ret;
+
+	/* TODO: Handle extra tail */
 
 out_rearm:
 	sqe = io_uring_get_sqe(&thread->ring);
@@ -334,11 +417,9 @@ out_rearm:
 		__builtin_unreachable();
 	}
 
-
-	io_uring_prep_recv(sqe, client->cli_fd, client->raw_pkt,
-			   sizeof(client->raw_pkt), MSG_WAITALL);
+	io_uring_prep_recv(sqe, client->cli_fd, client->raw_pkt + recv_s,
+			   sizeof(client->raw_pkt) - recv_s, MSG_WAITALL);
 	io_uring_sqe_set_data(sqe, client);
-
 
 	ret = io_uring_submit(&thread->ring);
 	if (unlikely(ret < 0))
@@ -352,13 +433,14 @@ static int handle_event_client(struct srv_thread *thread,
 			       struct io_uring_cqe *cqe)
 {
 	int ret = 0;
+	size_t recv_s;
 	struct client_slot *client;
 	ssize_t recv_ret = (ssize_t)cqe->res;
 
 
 	client = io_uring_cqe_get_data(cqe);
 	io_uring_cqe_seen(&thread->ring, cqe);
-
+	recv_s = client->recv_s;
 
 	if (unlikely(recv_ret == 0)) {
 		prl_notice(0, "recv() from " PRWIU " returned 0", W_IU(client));
@@ -372,10 +454,11 @@ static int handle_event_client(struct srv_thread *thread,
 		goto out_close;
 	}
 
-	pr_debug("recv() %zd bytes from " PRWIU " (thread=%u)", recv_ret,
-		 W_IU(client), thread->idx);
+	recv_s += (size_t)recv_ret;
+	pr_debug("recv() %zd bytes from " PRWIU " (recv_s=%zu) (thread=%u)",
+		 recv_s, W_IU(client), recv_ret, thread->idx);
 
-	ret = __handle_event_client(thread, client);
+	ret = __handle_event_client(thread, client, recv_s);
 	if (unlikely(ret))
 		goto out_close;
 
@@ -389,7 +472,7 @@ out_close:
 
 static int handle_event(struct srv_thread *thread, struct io_uring_cqe *cqe)
 {
-	int ret = 0;
+	int ret;
 	void *fret;
 	uintptr_t type;
 
@@ -405,8 +488,8 @@ static int handle_event(struct srv_thread *thread, struct io_uring_cqe *cqe)
 	type = (uintptr_t)fret;
 	switch (type) {
 	case RING_QUE_NOP:
-		pr_err("Got RING_QUE_NOP on handle_event()");
-		goto invalid_cqe;
+		io_uring_cqe_seen(&thread->ring, cqe);
+		return 0;
 	case RING_QUE_TCP:
 		ret = handle_event_tcp(thread, cqe);
 		break;
@@ -419,14 +502,6 @@ static int handle_event(struct srv_thread *thread, struct io_uring_cqe *cqe)
 	}
 
 	return ret;
-
-
-invalid_cqe:
-	pr_emerg("Invalid CQE on handle_event() (thread=%u)", thread->idx);
-	pr_emerg("Dumping CQE...");
-	VT_HEXDUMP(cqe, sizeof(*cqe));
-	panic("Invalid CQE!");
-	__builtin_unreachable();
 }
 
 

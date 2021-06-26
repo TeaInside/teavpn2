@@ -50,11 +50,13 @@ typedef enum _sock_type {
 } sock_type;
 
 
+
+/* Make it 32 bytes in size. */
 struct teavpn2_version {
 	uint8_t		ver;
 	uint8_t		patch_lvl;
 	uint8_t		sub_lvl;
-	char		extra[5];
+	char		extra[29];
 };
 
 
@@ -70,7 +72,7 @@ static_assert(offsetof(struct teavpn2_version, sub_lvl) == 2,
 static_assert(offsetof(struct teavpn2_version, extra) == 3,
 	      "Bad offsetof(struct teavpn2_version, extra)");
 
-static_assert(sizeof(struct teavpn2_version) == 8,
+static_assert(sizeof(struct teavpn2_version) == 32,
 	      "Bad sizeof(struct teavpn2_version)");
 
 

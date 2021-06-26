@@ -558,7 +558,7 @@ static void destroy_state(struct srv_state *state)
 }
 
 
-int wait_for_threads_to_be_ready(struct srv_state *state, bool is_main)
+int teavpn2_server_tcp_wait_threads(struct srv_state *state, bool is_main)
 {
 	size_t tr_num = state->cfg->sys.thread;
 

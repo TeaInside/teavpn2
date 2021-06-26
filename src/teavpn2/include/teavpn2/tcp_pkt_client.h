@@ -63,13 +63,13 @@ static_assert(offsetof(struct tcli_pkt_handshake, __dummy_pad) == 3,
 static_assert(offsetof(struct tcli_pkt_handshake, cur) == 8,
 	      "Bad offsetof(struct tcli_pkt_handshake, cur)");
 
-static_assert(offsetof(struct tcli_pkt_handshake, min) == 16,
+static_assert(offsetof(struct tcli_pkt_handshake, min) == 8 + 32,
 	      "Bad offsetof(struct tcli_pkt_handshake, min)");
 
-static_assert(offsetof(struct tcli_pkt_handshake, max) == 24,
+static_assert(offsetof(struct tcli_pkt_handshake, max) == 8 + 32 * 2,
 	      "Bad offsetof(struct tcli_pkt_handshake, max)");
 
-static_assert(sizeof(struct tcli_pkt_handshake) == 32,
+static_assert(sizeof(struct tcli_pkt_handshake) == 8 + 32 * 3,
 	      "Bad sizeof(struct tcli_pkt_handshake)");
 
 

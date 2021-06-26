@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
 	if (!strncmp(argv[1], "server", 6)) {
 		return teavpn2_run_server(argc, argv);
 	} else if (!strncmp(argv[1], "client", 6)) {
-		// return teavpn2_run_client(argc, argv);
+		return teavpn2_run_client(argc, argv);
 	} else if (!strncmp(argv[1], "--version", 9)) {
 		printf("TeaVPN2 " TEAVPN2_VERSION "\n");
 	} else {

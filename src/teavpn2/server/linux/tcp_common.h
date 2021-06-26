@@ -85,6 +85,7 @@ struct client_slot {
 	uint16_t				idx;
 
 	uint16_t				err_count;
+	struct teavpn2_version			ver;
 
 	/* `recv_s` is the valid bytes in the below union buffer. */
 	size_t					recv_s;
@@ -94,6 +95,30 @@ struct client_slot {
 		char				raw_pkt[PKT_SIZE];
 	};
 };
+
+
+struct srv_stack {
+	struct bt_mutex				lock;
+	uint16_t				*arr;
+	uint16_t				sp;
+	uint16_t				max_sp;
+};
+
+
+#if USE_IO_URING
+
+#define IO_RING_RBUF_NUM (100u)
+
+struct srv_iou_rbuf {
+	uint32_t				idx;
+	size_t					send_len;
+	alignas(64) union {
+		struct tsrv_pkt			spkt;
+		struct tcli_pkt			cpkt;
+		char				raw_pkt[PKT_SIZE];
+	};
+};
+#endif
 
 
 struct srv_thread {
@@ -106,6 +131,8 @@ struct srv_thread {
 #if USE_IO_URING
 	struct io_uring				ring;
 	struct __kernel_timespec		ring_timeout;
+	struct srv_stack			ring_buf_stk;
+	struct srv_iou_rbuf			*ring_buf_arr;
 #endif
 	int					tun_fd;
 
@@ -123,18 +150,16 @@ struct srv_thread {
 };
 
 
-struct srv_stack {
-	struct bt_mutex				lock;
-	uint16_t				*arr;
-	uint16_t				sp;
-	uint16_t				max_sp;
-};
-
-
 struct accept_data {
 	int					acc_fd;
 	socklen_t				addrlen;
 	struct sockaddr_in			addr;
+};
+
+
+enum srv_evt_loop {
+	EVT_LOOP_EPOLL		= 0,
+	EVT_LOOP_IO_URING	= 1,
 };
 
 
@@ -157,8 +182,8 @@ struct srv_state {
 
 	struct accept_data			acc;
 	struct srv_stack			cl_stk;
-	struct srv_stack			rq_stk;
 	bool					stop;
+	enum srv_evt_loop			event_loop;
 };
 
 

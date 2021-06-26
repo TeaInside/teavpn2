@@ -452,7 +452,7 @@ static __no_inline void *run_thread(void *_thread)
 	struct srv_state *state = thread->state;
 
 	atomic_fetch_add(&state->online_tr, 1);
-	wait_for_threads_to_be_ready(state, thread->idx == 0);
+	teavpn2_server_tcp_wait_threads(state, thread->idx == 0);
 	atomic_store(&thread->is_online, true);
 
 	while (likely(!state->stop)) {

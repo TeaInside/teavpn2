@@ -70,6 +70,8 @@ static bool parse_section_socket(struct cli_sock_cfg *sock, const char *name,
 		sock->server_addr = ar_strndup(value, 32);
 	} else if (!strcmp(name, "server_port")) {
 		sock->server_port = (uint16_t)atoi(ar_strndup(value, 6));
+	} else if (!strcmp(name, "event_loop")) {
+		sock->event_loop = ar_strndup(value, 32);
 	} else {
 		return INVALID_NAME;
 	}
