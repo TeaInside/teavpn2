@@ -21,7 +21,7 @@ static int do_uring_wait(struct srv_thread *thread, struct io_uring_cqe **cqe_p)
 		return 0;
 
 	if (unlikely(ret == -ETIME)) {
-		timeout->tv_sec += 1;
+		timeout->tv_sec = 1;
 		return ret;
 	}
 
@@ -393,6 +393,11 @@ static int handle_event(struct srv_thread *thread, struct io_uring_cqe *cqe)
 	void *fret;
 	uintptr_t type;
 
+
+	if (unlikely(!cqe))
+		return 0;
+
+
 	/*
 	 * `fret` is just to shut the clang up!
 	 */
@@ -439,18 +444,15 @@ static __no_inline void *run_thread(void *_thread)
 	while (likely(!state->stop)) {
 		cqe = NULL;
 		ret = do_uring_wait(thread, &cqe);
-		if (unlikely(ret == -ETIME))
-			continue;
-
-		if (unlikely(ret))
+		if (likely(!ret)) {
+			ret = handle_event(thread, cqe);
+			if (unlikely(ret))
+				break;
+		} else {
+			if (unlikely(ret == -ETIME))
+				continue;
 			break;
-
-		if (unlikely(!cqe))
-			continue;
-
-		ret = handle_event(thread, cqe);
-		if (unlikely(ret))
-			break;
+		}
 	}
 
 	if (thread->idx > 0)
