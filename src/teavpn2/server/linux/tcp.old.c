@@ -65,9 +65,6 @@ static int validate_cfg(struct srv_state *state)
 
 
 	{
-		/*
-		 * Validate event loop.
-		 */
 		const char *evtl = cfg->sock.event_loop;
 
 		if (!evtl || !strcmp(evtl, "epoll")) {
@@ -126,6 +123,12 @@ static int init_state_client_slot_array(struct srv_state *state)
 }
 
 
+static int init_state_io_uring_buffer(struct srv_state *state)
+{
+	
+}
+
+
 static int init_state_threads(struct srv_state *state)
 {
 	struct srv_thread *threads, *thread;
@@ -177,7 +180,7 @@ static int init_state_client_stack(struct srv_state *state)
 	 * Push stack.
 	 */
 	for (size_t i = 0; i < nn; i++) {
-		ret = srv_stk_push(cl_stk, (uint16_t)i);
+		ret = srstk_push(cl_stk, (uint16_t)i);
 		__asm__ volatile("":"+r"(cl_stk)::"memory");
 		BT_ASSERT((uint16_t)ret == (uint16_t)i);
 	}
@@ -186,7 +189,7 @@ static int init_state_client_stack(struct srv_state *state)
 	 * Push full stack.
 	 */
 	for (size_t i = 0; i < 100; i++) {
-		ret = srv_stk_push(cl_stk, (uint16_t)i);
+		ret = srstk_push(cl_stk, (uint16_t)i);
 		__asm__ volatile("":"+r"(cl_stk)::"memory");
 		BT_ASSERT(ret == -1);
 	}
@@ -195,7 +198,7 @@ static int init_state_client_stack(struct srv_state *state)
 	 * Pop stack.
 	 */
 	for (size_t i = nn; i--;) {
-		ret = srv_stk_pop(cl_stk);
+		ret = srstk_pop(cl_stk);
 		__asm__ volatile("":"+r"(cl_stk)::"memory");
 		BT_ASSERT((uint16_t)ret == (uint16_t)i);
 	}
@@ -205,14 +208,14 @@ static int init_state_client_stack(struct srv_state *state)
 	 * Pop empty stack.
 	 */
 	for (size_t i = 0; i < 100; i++) {
-		ret = srv_stk_pop(cl_stk);
+		ret = srstk_pop(cl_stk);
 		__asm__ volatile("":"+r"(cl_stk)::"memory");
 		BT_ASSERT(ret == -1);
 	}
 }
 #endif
 	while (nn--)
-		srv_stk_push(cl_stk, (uint16_t)nn);
+		srstk_push(cl_stk, (uint16_t)nn);
 
 	BT_ASSERT(cl_stk->sp == 0);
 	return 0;
@@ -242,6 +245,16 @@ static int init_state(struct srv_state *state)
 	ret = init_state_client_slot_array(state);
 	if (unlikely(ret))
 		return ret;
+
+
+#if USE_IO_URING
+	if (state->event_loop == EVT_LOOP_IO_URING) {
+		ret = init_state_io_uring_buffer(state);
+		if (unlikely(ret))
+			return ret;
+	}
+
+#endif
 
 	ret = init_state_threads(state);
 	if (unlikely(ret))

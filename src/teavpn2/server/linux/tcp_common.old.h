@@ -59,6 +59,10 @@
 #endif /* #if USE_IO_URING */
 
 
+#define UPTR(X)			((void *)(uintptr_t)(X))
+#define IPTR(X)			((void *)(intptr_t)(X))
+
+
 /* Macros for printing  */
 #define W_IP(CLIENT) 		((CLIENT)->src_ip), ((CLIENT)->src_port)
 #define W_UN(CLIENT) 		((CLIENT)->username)
@@ -93,7 +97,6 @@ struct client_slot {
 };
 
 
-
 struct srv_stack {
 	struct bt_mutex				lock;
 	uint16_t				*arr;
@@ -103,11 +106,9 @@ struct srv_stack {
 
 
 #if USE_IO_URING
-#define IOU_RBUF_NUM 100u
 
-/*
- * Keep track io_uring buffer when we send data out.
- */
+#define IO_RING_RBUF_NUM (100u)
+
 struct srv_iou_rbuf {
 	uint32_t				idx;
 	size_t					send_len;
@@ -121,58 +122,24 @@ struct srv_iou_rbuf {
 
 
 struct srv_thread {
-	/*
-	 * Is this thread online?
-	 */
 	_Atomic(bool)				is_online;
-
-
 #if USE_IO_URING
-	/*
-	 * I am sure it is unsafe to call io_uring_queue_exit()
-	 * on uninitialized struct io_uring. So we keep track
-	 * the initialization with this ring_init.
-	 */
 	bool					ring_init;
 #endif
-
-	/*
-	 * Each thread must have reference to the server state.
-	 */
+	pthread_t				thread;
 	struct srv_state			*state;
-
-
 #if USE_IO_URING
 	struct io_uring				ring;
 	struct __kernel_timespec		ring_timeout;
-
-
-	/*
-	 * Keep track free io_uring ring buffer.
-	 *
-	 * By using stack, we can look up for free
-	 * buffer in O(1) time complexity.
-	 */
-	struct srv_stack			iou_rbuf_stack;
-
-
-	/*
-	 * See the comment on struct srv_iou_rbuf definition.
-	 */
-	struct srv_iou_rbuf			*iou_rbuf;
+	struct srv_stack			ring_buf_stk;
+	struct srv_iou_rbuf			*ring_buf_arr;
 #endif
-
-	pthread_t				thread;
 	int					tun_fd;
 
-	/*
-	 * `idx` is the index where it's stored in the thread array.
-	 */
+	/* `idx` is the index where it's stored in the thread array. */
 	uint16_t				idx;
 
-	/*
-	 * `read_s` is the valid bytes in the below union buffer.
-	 */
+	/* `read_s` is the valid bytes in the below union buffer. */
 	size_t					read_s;
 
 	alignas(64) union {
@@ -197,12 +164,8 @@ enum srv_evt_loop {
 
 
 struct srv_state {
-	/* Interrupt signal. */
 	int					intr_sig;
-
-	/* Main TCP file descriptor. */
 	int					tcp_fd;
-
 	_Atomic(uint32_t)			tr_assign;
 	_Atomic(uint32_t)			online_tr;
 
@@ -215,7 +178,6 @@ struct srv_state {
 	/* Thread array */
 	struct srv_thread			*threads;
 
-	/* Pointer to server config struct. */
 	struct srv_cfg				*cfg;
 
 	struct accept_data			acc;
@@ -240,12 +202,14 @@ static inline void reset_client_state(struct client_slot *client, size_t idx)
 }
 
 
-static inline int32_t srv_stk_push(struct srv_stack *cl_stk, uint16_t idx)
+static inline int32_t srstk_push(struct srv_stack *cl_stk, uint16_t idx)
 {
 	uint16_t sp = cl_stk->sp;
 
 	if (unlikely(sp == 0))
-		/* Stack is full. */
+		/*
+		 * Stack is full.
+		 */
 		return -1;
 
 	cl_stk->arr[--sp] = idx;
@@ -254,7 +218,7 @@ static inline int32_t srv_stk_push(struct srv_stack *cl_stk, uint16_t idx)
 }
 
 
-static inline int32_t srv_stk_pop(struct srv_stack *cl_stk)
+static inline int32_t srstk_pop(struct srv_stack *cl_stk)
 {
 	int32_t ret;
 	uint16_t sp = cl_stk->sp;
@@ -262,7 +226,9 @@ static inline int32_t srv_stk_pop(struct srv_stack *cl_stk)
 
 	assert(sp <= max_sp);
 	if (unlikely(sp == max_sp))
-		/* Stack is empty. */
+		/*
+		 * Stack is empty.
+		 */
 		return -1;
 
 	ret = (int32_t)cl_stk->arr[sp++];
@@ -273,7 +239,9 @@ static inline int32_t srv_stk_pop(struct srv_stack *cl_stk)
 
 static inline void *calloc_wrp(size_t nmemb, size_t size)
 {
-	void *ret = al64_calloc(nmemb, size);
+	void *ret;
+
+	ret = al64_calloc(nmemb, size);
 	if (unlikely(ret == NULL)) {
 		int err = errno;
 		pr_err("calloc(): " PRERF, PREAR(err));
@@ -283,9 +251,12 @@ static inline void *calloc_wrp(size_t nmemb, size_t size)
 }
 
 
+extern int teavpn2_server_tcp_wait_threads(struct srv_state *state,
+					   bool is_main);
+
 extern int teavpn2_server_tcp_run_io_uring(struct srv_state *state);
+
 extern int teavpn2_server_tcp_socket_setup(int cli_fd, struct srv_state *state);
-extern int teavpn2_server_tcp_wait_threads(struct srv_state *state, bool is_main);
 
 
 #endif /* #ifndef SRC__TEAVPN2__SERVER__LINUX__TCP_COMMON_H */

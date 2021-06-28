@@ -172,7 +172,7 @@ int teavpn2_server_load_config(struct srv_cfg *cfg)
 	handle = fopen(cfg_file, "rb");
 	if (!handle) {
 		ret = errno;
-		printf("Error: fopen(): \"%s\": " PRERF, cfg_file, PREAR(ret));
+		pr_err("Error: fopen(): \"%s\": " PRERF, cfg_file, PREAR(ret));
 		return -ret;
 	}
 
