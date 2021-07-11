@@ -128,4 +128,15 @@ static_assert(sizeof(struct if_info) == 16 + (IPV4_L * 4) + sizeof(uint16_t),
 #endif  /* #ifdef TEAVPN_IPV6_SUPPORT */
 
 
+#if defined(__clang__)
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Wreserved-id-macro"
+#endif
+
+#define ____cacheline_aligned_in_smp
+
+#if defined(__clang__)
+#  pragma clang diagnostic pop
+#endif
+
 #endif /* #ifndef TEAVPN2__BASE_H */

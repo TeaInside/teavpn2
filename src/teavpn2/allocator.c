@@ -19,7 +19,7 @@ __no_inline void *al64_calloc(size_t nmemb, size_t size)
 	void *user;
 	size_t real_size = 0;
 
-	if (unlikely(__builtin_umull_overflow(nmemb, size, &real_size))) {
+	if (unlikely(__builtin_mul_overflow(nmemb, size, &real_size))) {
 		errno = EOVERFLOW;
 		return NULL;
 	}

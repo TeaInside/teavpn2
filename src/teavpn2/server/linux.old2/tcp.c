@@ -7,6 +7,8 @@
  *  Copyright (C) 2021  Ammar Faizi
  */
 
+#include <stdalign.h>
+
 #include "./tcp_common.h"
 
 
@@ -36,7 +38,6 @@ static void handle_interrupt(int sig)
 
 static int validate_cfg(struct srv_state *state)
 {
-	const char *evtl;
 	struct srv_cfg *cfg = state->cfg;
 
 	if (!cfg->sys.thread) {
@@ -64,22 +65,28 @@ static int validate_cfg(struct srv_state *state)
 		return -EINVAL;
 	}
 
-	evtl = cfg->sock.event_loop;
-	/*
-	 * Default use epoll.
-	 */
-	if (!evtl || !strcmp(evtl, "epoll")) {
-		pr_notice("Using epoll event loop");
-		state->event_loop = EVT_LOOP_EPOLL;
-	} else if (!strcmp(evtl, "io_uring")) {
+
+	{
+		/*
+		 * Validate event loop.
+		 */
+		const char *evtl = cfg->sock.event_loop;
+
+		if (!evtl || !strcmp(evtl, "epoll")) {
+			pr_notice("Using epoll event loop");
+			state->event_loop = EVT_LOOP_EPOLL;
+		} else if (!strcmp(evtl, "io_uring")) {
 #if USE_IO_URING
-		pr_notice("Using io_uring event loop");
-		state->event_loop = EVT_LOOP_IO_URING;
+			pr_notice("Using io_uring event loop");
+			state->event_loop = EVT_LOOP_IO_URING;
 #else
-		return -EOPNOTSUPP;
+			pr_err("io_uring is not supported in this binary");
+			return -EINVAL;
 #endif
-	} else {
-		return -EINVAL;
+		} else {
+			pr_err("Invalid event loop \"%s\"", evtl);
+			return -EINVAL;
+		}
 	}
 
 	return 0;
@@ -90,13 +97,13 @@ static int init_state_tun_fds(struct srv_state *state)
 {
 	int *tun_fds;
 	struct srv_cfg *cfg = state->cfg;
-	size_t i, nn = cfg->sys.thread;
+	size_t nn = cfg->sys.thread;
 
 	tun_fds = calloc_wrp(nn, sizeof(*tun_fds));
 	if (unlikely(!tun_fds))
 		return -ENOMEM;
 
-	for (i = 0; i < nn; i++)
+	for (size_t i = 0; i < nn; i++)
 		tun_fds[i] = -1;
 
 	state->tun_fds = tun_fds;
@@ -104,16 +111,16 @@ static int init_state_tun_fds(struct srv_state *state)
 }
 
 
-static int init_state_clients_array(struct srv_state *state)
+static int init_state_client_slot_array(struct srv_state *state)
 {
 	struct client_slot *clients;
-	size_t i, nn = state->cfg->sock.max_conn;
+	size_t nn = state->cfg->sock.max_conn;
 
 	clients = calloc_wrp(nn, sizeof(*clients));
 	if (unlikely(!clients))
 		return -ENOMEM;
 
-	for (i = 0; i < nn; i++)
+	for (size_t i = 0; i < nn; i++)
 		reset_client_state(&clients[i], i);
 
 	state->clients = clients;
@@ -125,14 +132,14 @@ static int init_state_threads(struct srv_state *state)
 {
 	struct srv_thread *threads, *thread;
 	struct srv_cfg *cfg = state->cfg;
-	size_t i, nn = cfg->sys.thread;
+	size_t nn = cfg->sys.thread;
 
 	threads = calloc_wrp(nn, sizeof(*threads));
 	if (unlikely(!threads))
 		return -ENOMEM;
 
-	for (i = 0; i < nn; i++) {
-		thread        = &threads[i];
+	for (size_t i = 0; i < nn; i++) {
+		thread = &threads[i];
 		thread->idx   = (uint16_t)i;
 		thread->state = state;
 	}
@@ -168,12 +175,10 @@ static int init_state_client_stack(struct srv_state *state)
  * Test only.
  */
 {
-	size_t i;
-
 	/*
 	 * Push stack.
 	 */
-	for (i = 0; i < nn; i++) {
+	for (size_t i = 0; i < nn; i++) {
 		ret = srv_stk_push(cl_stk, (uint16_t)i);
 		__asm__ volatile("":"+r"(cl_stk)::"memory");
 		BT_ASSERT((uint16_t)ret == (uint16_t)i);
@@ -182,7 +187,7 @@ static int init_state_client_stack(struct srv_state *state)
 	/*
 	 * Push full stack.
 	 */
-	for (i = 0; i < 100; i++) {
+	for (size_t i = 0; i < 100; i++) {
 		ret = srv_stk_push(cl_stk, (uint16_t)i);
 		__asm__ volatile("":"+r"(cl_stk)::"memory");
 		BT_ASSERT(ret == -1);
@@ -191,7 +196,7 @@ static int init_state_client_stack(struct srv_state *state)
 	/*
 	 * Pop stack.
 	 */
-	for (i = nn; i--;) {
+	for (size_t i = nn; i--;) {
 		ret = srv_stk_pop(cl_stk);
 		__asm__ volatile("":"+r"(cl_stk)::"memory");
 		BT_ASSERT((uint16_t)ret == (uint16_t)i);
@@ -201,14 +206,13 @@ static int init_state_client_stack(struct srv_state *state)
 	/*
 	 * Pop empty stack.
 	 */
-	for (i = 0; i < 100; i++) {
+	for (size_t i = 0; i < 100; i++) {
 		ret = srv_stk_pop(cl_stk);
 		__asm__ volatile("":"+r"(cl_stk)::"memory");
 		BT_ASSERT(ret == -1);
 	}
 }
 #endif
-
 	while (nn--)
 		srv_stk_push(cl_stk, (uint16_t)nn);
 
@@ -217,9 +221,6 @@ static int init_state_client_stack(struct srv_state *state)
 }
 
 
-/*
- * Initialize every needed server struct member and validate the config.
- */
 static int init_state(struct srv_state *state)
 {
 	int ret;
@@ -240,7 +241,7 @@ static int init_state(struct srv_state *state)
 	if (unlikely(ret))
 		return ret;
 
-	ret = init_state_clients_array(state);
+	ret = init_state_client_slot_array(state);
 	if (unlikely(ret))
 		return ret;
 
@@ -347,6 +348,10 @@ int teavpn2_server_tcp_socket_setup(int cli_fd, struct srv_state *state)
 	}
 
 
+	/*
+	 * Don't make it non-block when we are working
+	 * with io_uring.
+	 */
 	if (state->event_loop != EVT_LOOP_IO_URING) {
 		ret = fd_set_nonblock(cli_fd);
 		if (unlikely(ret < 0))
@@ -362,40 +367,6 @@ out_err:
 	err = errno;
 	pr_err("setsockopt(tcp_fd, %s, %s): " PRERF, lv, on, PREAR(err));
 	return ret;
-}
-
-
-__no_inline
-int teavpn2_server_tcp_wait_threads(struct srv_state *state, bool is_main)
-{
-	size_t tr_num = state->cfg->sys.thread;
-
-	if (tr_num == 1)
-		/* 
-		 * Don't wait, we are single threaded.
-		 */
-		return 0;
-
-
-	if (is_main) {
-		pr_notice("Waiting for threads to be ready...");
-		while (likely(atomic_load(&state->online_tr) < tr_num)) {
-			if (unlikely(state->stop))
-				return -EINTR;
-			usleep(50000);
-		}
-		pr_notice("Threads are all ready!");
-		pr_notice("Initialization Sequence Completed");
-		return 0;
-	} else {
-		struct srv_thread *mt = &state->threads[0];
-		while (likely(!atomic_load(&mt->is_online))) {
-			if (unlikely(state->stop))
-				return -EINTR;
-			usleep(50000);
-		}
-		return -EALREADY;
-	}
 }
 
 
@@ -490,83 +461,25 @@ static int run_event_loop(struct srv_state *state)
 {
 	switch (state->event_loop) {
 	case EVT_LOOP_EPOLL:
-		return -1;
+		return 0;
 	case EVT_LOOP_IO_URING:
-		return teavpn2_server_tcp_event_loop_io_uring(state);
+#if USE_IO_URING
+		return teavpn2_server_tcp_run_io_uring(state);
+#else
+		pr_err("io_uring is not supported in this binary");
+		return -EINVAL;
+#endif
 	}
 	__builtin_unreachable();
 }
 
 
-__no_inline
-void teavpn2_server_tcp_wait_for_thread_to_exit(struct srv_state *state)
-{
-	size_t i;
-	int sig = SIGTERM;
-	const uint32_t max_secs = 30; /* Wait for max_secs seconds. */
-	const uint32_t max_iter = max_secs * 10;
-	const uint32_t per_iter = 100000;
-	uint32_t iter = 0;
-
-	if (atomic_load(&state->online_tr) > 0)
-		pr_notice("Waiting for thread(s) to exit...");
-
-
-do_kill:
-	for (i = 0; i < state->cfg->sys.thread; i++) {
-		int ret;
-
-		/*
-		 * Skip the main thread.
-		 */
-		if (unlikely(i == 0))
-			continue;
-
-		if (!atomic_load(&state->threads[i].is_online))
-			continue;
-
-		ret = pthread_kill(state->threads[i].thread, sig);
-		if (ret) {
-			pr_err("pthread_kill(threads[%zu], %s) " PRERF,
-			       i, (sig == SIGTERM) ? "SIGTERM" : "SIGKILL",
-			       PREAR(ret));
-		}
-	}
-
-
-	while (atomic_load(&state->online_tr) > 0) {
-		usleep(per_iter);
-		if (iter++ >= max_iter)
-			break;
-	}
-
-
-	/*
-	 * We have been waiting for `max_secs`, but
-	 * the threads haven't given us the offline
-	 * signal through the online thread counter.
-	 *
-	 * Let's force kill the threads!
-	 */
-	if (atomic_load(&state->online_tr) > 0) {
-		sig = SIGKILL;
-		pr_notice("Warning: %u thread(s) haven't exited after %u seconds",
-			  atomic_load(&state->online_tr), max_secs);
-		pr_emerg("Killing thread(s) forcefully with SIGKILL...");
-		atomic_store(&state->online_tr, 0);
-		goto do_kill;
-	}
-}
-
-
 static void close_tun_fds(int *tun_fds, size_t nn)
 {
-	size_t i;
-
 	if (!tun_fds)
 		return;
 
-	for (i = 0; i < nn; i++) {
+	for (size_t i = 0; i < nn; i++) {
 		if (tun_fds[i] == -1)
 			continue;
 
@@ -578,12 +491,10 @@ static void close_tun_fds(int *tun_fds, size_t nn)
 
 static void close_clients(struct client_slot *clients, size_t nn)
 {
-	size_t i;
-
 	if (!clients)
 		return;
 
-	for (i = 0; i < nn; i++) {
+	for (size_t i = 0; i < nn; i++) {
 		struct client_slot *client = &clients[i];
 		int cli_fd = client->cli_fd;
 
@@ -612,6 +523,7 @@ static void close_fds(struct srv_state *state)
 static void destroy_state(struct srv_state *state)
 {
 	close_fds(state);
+	close_threads(state->threads, state->cfg->sys.thread);
 	bt_mutex_destroy(&state->cl_stk.lock);
 	al64_free(state->cl_stk.arr);
 	al64_free(state->tun_fds);
@@ -623,35 +535,26 @@ static void destroy_state(struct srv_state *state)
 int teavpn2_server_tcp(struct srv_cfg *cfg)
 {
 	int ret;
-	struct srv_state *state;
+	alignas(64) struct srv_state state;
 
-	state = al64_malloc(sizeof(*state));
-	if (unlikely(!state)) {
-		ret = errno;
-		pr_err("al64_malloc(): " PRERF, PREAR(ret));
-		return -ret;
-	}
-	memset(state, 0, sizeof(*state));
+	memset(&state, 0, sizeof(state));
+	state.cfg = cfg;
+	g_state   = &state;
 
-	state->cfg = cfg;
-	g_state    = state;
-
-
-	ret = init_state(state);
+	ret = init_state(&state);
 	if (unlikely(ret))
 		goto out;
 
-	ret = init_iface(state);
+	ret = init_iface(&state);
 	if (unlikely(ret))
 		goto out;
 
-	ret = init_tcp_socket(state);
+	ret = init_tcp_socket(&state);
 	if (unlikely(ret))
 		goto out;
 
-	ret = run_event_loop(state);
+	ret = run_event_loop(&state);
 out:
-	destroy_state(state);
-	al64_free(state);
+	destroy_state(&state);
 	return ret;
 }

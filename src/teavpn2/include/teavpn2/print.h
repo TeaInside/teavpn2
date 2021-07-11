@@ -30,6 +30,10 @@ extern void __attribute__((format(printf, 1, 2)))
 __pr_debug(const char *fmt, ...);
 
 
+extern void __attribute__((format(printf, 3, 4))) __attribute__((noreturn))
+__panic(const char *file, int lineno, const char *fmt, ...);
+
+
 #ifndef NOTICE_ALWAYS_EXEC
 #  define NOTICE_ALWAYS_EXEC 0
 #endif
@@ -46,31 +50,19 @@ __pr_debug(const char *fmt, ...);
 #define PRERF "(errno=%d) %s"
 #define PREAR(NUM) NUM, strerror(NUM)
 
-#define pr_err    __pr_error
-#define pr_error  __pr_error
-#define pr_notice __pr_notice
-#define pr_emerg  __pr_emerg
-#define pr_debug  __pr_debug
-#define pr_dbg    __pr_debug
+#define pr_err		__pr_error
+#define pr_error	__pr_error
+#define pr_notice	__pr_notice
+#define pr_emerg	__pr_emerg
+#define pr_debug	__pr_debug
+#define pr_dbg		__pr_debug
+#define panic(...)	__panic(__FILE__, __LINE__, __VA_ARGS__)
+
 
 #define set_pr_notice_lv(LEVEL)			\
 	do {					\
 		__notice_level = (LEVEL);	\
 	} while (0)
-
-
-
-#define panic(...)						\
-do {								\
-	puts("====================================");		\
-	printf("Panic at %s:%d\n", __FILE__, __LINE__);		\
-	puts("Not syncing...");					\
-	printf(__VA_ARGS__);					\
-	printf("\n");						\
-	fflush(stdout);						\
-	abort();						\
-} while (0)
-
 
 
 #define prl_notice(LEVEL, ...)						\

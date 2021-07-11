@@ -102,3 +102,24 @@ void __attribute__((format(printf, 1, 2))) __pr_debug(const char *fmt, ...)
 	pthread_mutex_unlock(&print_lock);
 	va_end(vl);
 }
+
+
+void __attribute__((format(printf, 3, 4)))
+__panic(const char *file, int lineno, const char *fmt, ...)
+{
+	va_list vl;
+	puts("=======================================================");
+	printf("Emergency: Panic - Not syncing: ");
+	va_start(vl, fmt);
+	vprintf(fmt, vl);
+	va_end(vl);
+	putchar('\n');
+	printf("Panic at %s:%d\n", file, lineno);
+	#define dump_stack()
+	/* TODO: Write real dump_stack() */
+	dump_stack();
+	#undef dump_stack
+	puts("=======================================================");
+	fflush(stdout);
+	abort();
+}

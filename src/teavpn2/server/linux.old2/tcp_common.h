@@ -38,6 +38,7 @@
 #include <teavpn2/net/linux/iface.h>
 #include <teavpn2/server/linux/tcp.h>
 
+
 #if USE_IO_URING
 /*
  * See: https://github.com/axboe/liburing/issues/366
@@ -52,11 +53,9 @@
 #  if defined(__clang__)
 #    pragma clang diagnostic pop
 #  endif
-#  define RING_QUE_CQE_NOP	(1u << 0u)
-#  define RING_QUE_CQE_TUN	(1u << 1u)
-#  define RING_QUE_CQE_TCP	(1u << 2u)
-#  define RING_QUE_CQEU_RECV	(1u << 3u)
-#  define RING_QUE_CQEU_SEND	(1u << 4u)
+#  define RING_QUE_NOP		(1u << 0u)
+#  define RING_QUE_TUN		(1u << 1u)
+#  define RING_QUE_TCP		(1u << 2u)
 #endif /* #if USE_IO_URING */
 
 
@@ -65,15 +64,10 @@
 #define W_UN(CLIENT) 		((CLIENT)->username)
 #define W_IU(CLIENT) 		W_IP(CLIENT), W_UN(CLIENT), ((CLIENT)->idx)
 #define PRWIU 			"%s:%d (%s) (cli_idx=%u)"
-
-
 #define PKT_SIZE		(sizeof(struct tcli_pkt))
-#define UPTR(NUM)		((void *)((uintptr_t)(NUM)))
+
 
 struct client_slot {
-#if USE_IO_URING
-	unsigned				ident;
-#endif
 	bool					is_authenticated;
 	bool					is_encrypted;
 	int					cli_fd;
@@ -95,8 +89,9 @@ struct client_slot {
 		struct tsrv_pkt			spkt;
 		struct tcli_pkt			cpkt;
 		char				raw_pkt[PKT_SIZE];
-	} ____cacheline_aligned_in_smp;
+	};
 };
+
 
 
 struct srv_stack {
@@ -114,27 +109,21 @@ struct srv_stack {
  * Keep track io_uring buffer when we send data out.
  */
 struct srv_iou_rbuf {
-	unsigned				ident;
-	uint16_t				idx;
-	struct client_slot			*client;
+	uint32_t				idx;
 	size_t					send_len;
 	alignas(64) union {
 		struct tsrv_pkt			spkt;
 		struct tcli_pkt			cpkt;
 		char				raw_pkt[PKT_SIZE];
-	} ____cacheline_aligned_in_smp;
-};
-
-union ucqe_ring {
-	unsigned				ident;
-	struct srv_iou_rbuf			send;
-	struct client_slot			recv;
+	};
 };
 #endif
 
 
 struct srv_thread {
-	/* Is this thread online? */
+	/*
+	 * Is this thread online?
+	 */
 	_Atomic(bool)				is_online;
 
 
@@ -145,32 +134,39 @@ struct srv_thread {
 	 * the initialization with this ring_init.
 	 */
 	bool					ring_init;
-
-	/* IO uring instance. */
-	struct io_uring				ring;
-
-	/* IO uring wait timeout. */
-	struct __kernel_timespec		ring_timeout;
-
-	/* IO uring buffer array. */
-	struct srv_iou_rbuf			*ring_buf;
-	struct srv_stack			rb_stk;
 #endif
 
-	/* Each thread must have reference to the server state. */
+	/*
+	 * Each thread must have reference to the server state.
+	 */
 	struct srv_state			*state;
 
-	/* The pthread instance of this thread. */
-	pthread_t				thread;
+
+#if USE_IO_URING
+	struct io_uring				ring;
+	struct __kernel_timespec		ring_timeout;
+
 
 	/*
-	 * Each thread holds its own tun_fd for read/write operation.
+	 * Keep track free io_uring ring buffer.
+	 *
+	 * By using stack, we can look up for free
+	 * buffer in O(1) time complexity.
 	 */
+	struct srv_stack			iou_rbuf_stack;
+
+
+	/*
+	 * See the comment on struct srv_iou_rbuf definition.
+	 */
+	struct srv_iou_rbuf			*iou_rbuf;
+#endif
+
+	pthread_t				thread;
 	int					tun_fd;
 
 	/*
-	 * @idx is the index where this struct is stored in the thread
-	 * array @state->threads.
+	 * `idx` is the index where it's stored in the thread array.
 	 */
 	uint16_t				idx;
 
@@ -178,17 +174,12 @@ struct srv_thread {
 	 * `read_s` is the valid bytes in the below union buffer.
 	 */
 	size_t					read_s;
+
 	alignas(64) union {
 		struct tsrv_pkt			spkt;
 		struct tcli_pkt			cpkt;
 		char				raw_pkt[PKT_SIZE];
-	} ____cacheline_aligned_in_smp;
-};
-
-
-enum srv_evt_loop {
-	EVT_LOOP_EPOLL		= 0,
-	EVT_LOOP_IO_URING	= 1
+	};
 };
 
 
@@ -199,6 +190,12 @@ struct accept_data {
 };
 
 
+enum srv_evt_loop {
+	EVT_LOOP_EPOLL		= 0,
+	EVT_LOOP_IO_URING	= 1
+};
+
+
 struct srv_state {
 	/* Interrupt signal. */
 	int					intr_sig;
@@ -206,10 +203,7 @@ struct srv_state {
 	/* Main TCP file descriptor. */
 	int					tcp_fd;
 
-	/* Index of thread to be assigned. */
 	_Atomic(uint32_t)			tr_assign;
-
-	/* Number of online threads. */
 	_Atomic(uint32_t)			online_tr;
 
 	/* Array of tun fds */
@@ -217,7 +211,6 @@ struct srv_state {
 
 	/* Client slot array */
 	struct client_slot			*clients;
-	struct srv_stack			cl_stk;
 
 	/* Thread array */
 	struct srv_thread			*threads;
@@ -225,22 +218,15 @@ struct srv_state {
 	/* Pointer to server config struct. */
 	struct srv_cfg				*cfg;
 
-	/* accept() variables. */
 	struct accept_data			acc;
-
-	/* Event loop type. */
-	enum srv_evt_loop			event_loop;
-
-	/* Indicate event loop needs to be stopped or not. */
+	struct srv_stack			cl_stk;
 	bool					stop;
+	enum srv_evt_loop			event_loop;
 };
 
 
 static inline void reset_client_state(struct client_slot *client, size_t idx)
 {
-#if USE_IO_URING
-	client->ident             = RING_QUE_CQEU_RECV;
-#endif
 	client->is_authenticated  = false;
 	client->is_encrypted      = false;
 	client->cli_fd            = -1;
@@ -259,9 +245,7 @@ static inline int32_t srv_stk_push(struct srv_stack *cl_stk, uint16_t idx)
 	uint16_t sp = cl_stk->sp;
 
 	if (unlikely(sp == 0))
-		/*
-		 * Stack is full.
-		 */
+		/* Stack is full. */
 		return -1;
 
 	cl_stk->arr[--sp] = idx;
@@ -278,9 +262,7 @@ static inline int32_t srv_stk_pop(struct srv_stack *cl_stk)
 
 	assert(sp <= max_sp);
 	if (unlikely(sp == max_sp))
-		/*
-		 * Stack is empty.
-		 */
+		/* Stack is empty. */
 		return -1;
 
 	ret = (int32_t)cl_stk->arr[sp++];
@@ -301,10 +283,9 @@ static inline void *calloc_wrp(size_t nmemb, size_t size)
 }
 
 
+extern int teavpn2_server_tcp_run_io_uring(struct srv_state *state);
 extern int teavpn2_server_tcp_socket_setup(int cli_fd, struct srv_state *state);
-extern int teavpn2_server_tcp_event_loop_io_uring(struct srv_state *state);
-extern int teavpn2_server_tcp_wait_threads(struct srv_state *state,
-					   bool is_main);
-extern void teavpn2_server_tcp_wait_for_thread_to_exit(struct srv_state *state);
+extern int teavpn2_server_tcp_wait_threads(struct srv_state *state, bool is_main);
+
 
 #endif /* #ifndef SRC__TEAVPN2__SERVER__LINUX__TCP_COMMON_H */
