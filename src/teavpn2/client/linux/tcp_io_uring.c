@@ -242,23 +242,6 @@ static int init_threads(struct cli_state *state)
 }
 
 
-static void destroy_io_uring_context(struct cli_state *state)
-{
-	struct cli_thread *threads = state->threads;
-	size_t i, nn = state->cfg->sys.thread;
-
-	for (i = 0; i < nn; i++) {
-		struct cli_thread *thread = &threads[i];
-
-		if (thread->ring_init)
-			io_uring_queue_exit(&thread->ring);
-
-		al64_free(thread->cqe_vec);
-		tv_stack_destroy(&thread->ioucl_stk);
-	}
-}
-
-
 static int run_main_thread(struct cli_state *state)
 {
 	int ret;
@@ -284,6 +267,23 @@ static int run_main_thread(struct cli_state *state)
 	}
 out:
 	return ret;
+}
+
+
+static void destroy_io_uring_context(struct cli_state *state)
+{
+	struct cli_thread *threads = state->threads;
+	size_t i, nn = state->cfg->sys.thread;
+
+	for (i = 0; i < nn; i++) {
+		struct cli_thread *thread = &threads[i];
+
+		if (thread->ring_init)
+			io_uring_queue_exit(&thread->ring);
+
+		al64_free(thread->cqe_vec);
+		tv_stack_destroy(&thread->ioucl_stk);
+	}
 }
 
 

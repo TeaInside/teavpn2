@@ -16,7 +16,7 @@
 static struct cli_state *g_state = NULL;
 
 
-static void handle_interrupt(int sig)
+void teavpn2_client_handle_interrupt(int sig)
 {
 	struct cli_state *state = g_state;
 
@@ -146,10 +146,15 @@ static int init_state(struct cli_state *state)
 		return ret;
 
 	pr_notice("Setting up interrupt handler...");
-	signal(SIGINT, handle_interrupt);
-	signal(SIGHUP, handle_interrupt);
-	signal(SIGTERM, handle_interrupt);
-	signal(SIGPIPE, SIG_IGN);
+	sigemptyset(&state->sa.sa_mask);
+	sigaddset(&state->sa.sa_mask, SIGINT);
+	sigaddset(&state->sa.sa_mask, SIGHUP);
+	sigaddset(&state->sa.sa_mask, SIGTERM);
+	state->sa.sa_handler = teavpn2_client_handle_interrupt;
+	sigaction(SIGINT, &state->sa, NULL);
+	sigaction(SIGHUP, &state->sa, NULL);
+	sigaction(SIGTERM, &state->sa, NULL);
+	signal(SIGHUP, SIG_IGN);
 	pr_notice("My PID: %d", getpid());
 	return ret;
 }

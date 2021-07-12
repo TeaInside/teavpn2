@@ -157,9 +157,12 @@ struct cli_state {
 
 	/* Indicate event loop needs to be stopped or not. */
 	bool					stop;
+
+	struct sigaction			sa;
 };
 
 
+extern void teavpn2_client_handle_interrupt(int sig);
 extern int teavpn2_client_tcp_event_loop_io_uring(struct cli_state *state);
 extern void teavpn2_client_tcp_wait_for_thread_to_exit(struct cli_state *state,
 						       bool interrupt_only);
