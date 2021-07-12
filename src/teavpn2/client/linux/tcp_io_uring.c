@@ -23,10 +23,132 @@ static int init_iou_cqe_vec(struct iou_cqe_vec **cqe_vec_p)
 }
 
 
+static int handle_event(struct cli_thread *thread, struct io_uring_cqe *cqe)
+{
+	void *fret;
+	int ret = 0;
+	uintptr_t type;
+
+	if (unlikely(!cqe))
+		return 0;
+
+	/*
+	 * `fret` is just to shut the clang up!
+	 */
+	fret = io_uring_cqe_get_data(cqe);
+	type = (uintptr_t)fret;
+	switch (type) {
+	case IOU_CQE_DRC_NOP:
+		pr_notice("Got IOU_CQE_DRC_NOP");
+		break;
+	case IOU_CQE_DRC_TUN_READ:
+		pr_notice("TUN read %d bytes (thread=%u)", cqe->res, thread->idx);
+		break;
+	case IOU_CQE_DRC_TCP_ACCEPT:
+		// ret = handle_event_tcp(thread, cqe);
+		break;
+	default:
+		pr_notice("Unknown event (%zu) %" PRIxPTR, type, type);
+		break;
+	}
+
+	return ret;
+
+}
+
+
+static int do_uring_wait(struct cli_thread *thread, struct io_uring_cqe **cqe_p)
+{
+	int ret;
+	struct io_uring *ring = &thread->ring;
+	struct __kernel_timespec *ts = &thread->ring_timeout;
+
+	ret = io_uring_wait_cqes(ring, cqe_p, 1, ts, NULL);
+	if (likely(!ret))
+		return 0;
+
+	if (unlikely(ret == -ETIME))
+		return ret;
+
+	if (unlikely(ret == -EINTR)) {
+		pr_notice("Interrupted (thread=%u)", thread->idx);
+		return -EINTR;
+	}
+
+	pr_err("io_uring_wait_cqe(): " PRERF, PREAR(-ret));
+	return -ret;
+}
+
+
+static int handle_io_uring_cqes(struct cli_thread *thread,
+				struct io_uring_cqe *cqe)
+{
+	int ret = 0;
+	unsigned head, count = 0;
+	struct io_uring *ring = &thread->ring;
+	pr_notice("test");
+	io_uring_for_each_cqe(ring, head, cqe) {
+		count++;
+		ret = handle_event(thread, cqe);
+		if (unlikely(ret))
+			break;
+	}
+	io_uring_cq_advance(ring, count);
+	return ret;
+}
+
+
+static int do_io_uring_event_loop(struct cli_thread *thread)
+{
+	int ret;
+	struct io_uring_cqe *cqe = NULL;
+
+	ret = do_uring_wait(thread, &cqe);
+	if (likely(ret == 0))
+		return handle_io_uring_cqes(thread, cqe);
+	
+
+	if (unlikely(ret == -ETIME)) {
+		/* io_uring reached its timeout. */
+		return 0;
+	}
+
+	if (unlikely(ret == -EINTR)) {
+		struct cli_state *state = thread->state;
+		if (state->intr_sig == -1) {
+			pr_notice("Ummm... are we traced? (thread=%u)",
+				  thread->idx);
+			return 0;
+		}
+		teavpn2_client_tcp_wait_for_thread_to_exit(state, true);
+		return -EINTR;
+	}
+	return ret;
+}
+
+
 static void *run_thread(void *thread_p)
 {
+	int ret = 0;
 	struct cli_thread *thread = thread_p;
-	return NULL;
+	struct cli_state *state = thread->state;
+
+	atomic_fetch_add(&state->online_tr, 1);
+	teavpn2_client_tcp_wait_threads(state, thread->idx == 0);
+	atomic_store(&thread->is_online, true);
+
+	while (likely(!state->stop)) {
+		ret = do_io_uring_event_loop(thread);
+		if (unlikely(ret))
+			break;
+	}
+
+	atomic_store(&thread->is_online, false);
+	atomic_fetch_sub(&state->online_tr, 1);
+	pr_notice("Thread %u is exiting (stop=%hhu)", thread->idx, state->stop);
+
+	return (void *)(intptr_t)ret;
+
 }
 
 
@@ -49,19 +171,26 @@ static int init_threads(struct cli_state *state)
 		unsigned int tun_buf_size = sizeof(thread->cpkt.raw_buf);
 
 		ret = tv_stack_init(&thread->ioucl_stk, IOUCL_VEC_NUM);
-		if (unlikely(ret))
+		if (unlikely(ret)) {
+			pr_err("tv_stack_init(): " PRERF, PREAR(-ret));
 			break;
+		}
 
 		ret = init_iou_cqe_vec(&thread->cqe_vec);
-		if (unlikely(ret))
+		if (unlikely(ret)) {
+			pr_err("init_iou_cqe_vec(): " PRERF, PREAR(-ret));
 			break;
+		}
 
 		memset(&ring_params, 0, sizeof(ring_params));
 		ring_params.flags = ring_flags;
 
-		ret = io_uring_queue_init_params(1u << 20u, ring, &ring_params);
-		if (unlikely(ret))
+		ret = io_uring_queue_init_params(IOUCL_VEC_NUM, ring, &ring_params);
+		if (unlikely(ret)) {
+			pr_err("io_uring_queue_init_params(): " PRERF,
+			       PREAR(-ret));
 			break;
+		}
 
 		thread->ring_init = true;
 		thread->tun_fd = tun_fd;
@@ -113,6 +242,51 @@ static int init_threads(struct cli_state *state)
 }
 
 
+static void destroy_io_uring_context(struct cli_state *state)
+{
+	struct cli_thread *threads = state->threads;
+	size_t i, nn = state->cfg->sys.thread;
+
+	for (i = 0; i < nn; i++) {
+		struct cli_thread *thread = &threads[i];
+
+		if (thread->ring_init)
+			io_uring_queue_exit(&thread->ring);
+
+		al64_free(thread->cqe_vec);
+		tv_stack_destroy(&thread->ioucl_stk);
+	}
+}
+
+
+static int run_main_thread(struct cli_state *state)
+{
+	int ret;
+	struct cli_thread *thread;
+
+
+	thread = &state->threads[0];
+	ret = io_uring_submit(&thread->ring);
+	if (unlikely(ret < 0)) {
+		pr_err("io_uring_submit(): " PRERF, PREAR(-ret));
+		goto out;
+	}
+
+	/*
+	 * Run the main thread!
+	 *
+	 * `fret` is just to shut the clang up!
+	 */
+	{
+		void *fret;
+		fret = run_thread(thread);
+		ret  = (int)((intptr_t)fret);
+	}
+out:
+	return ret;
+}
+
+
 int teavpn2_client_tcp_event_loop_io_uring(struct cli_state *state)
 {
 	int ret = 0;
@@ -123,7 +297,9 @@ int teavpn2_client_tcp_event_loop_io_uring(struct cli_state *state)
 		goto out;
 	}
 
-
+	ret = run_main_thread(state);
 out:
+	teavpn2_client_tcp_wait_for_thread_to_exit(state, false);
+	destroy_io_uring_context(state);
 	return ret;
 }

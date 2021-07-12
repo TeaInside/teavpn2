@@ -431,6 +431,106 @@ static int run_event_loop(struct cli_state *state)
 }
 
 
+__no_inline
+int teavpn2_client_tcp_wait_threads(struct cli_state *state, bool is_main)
+{
+	size_t tr_num = state->cfg->sys.thread;
+
+	if (tr_num == 1)
+		/* 
+		 * Don't wait, we are single threaded.
+		 */
+		return 0;
+
+
+	if (is_main) {
+		pr_notice("Waiting for threads to be ready...");
+		while (likely(atomic_load(&state->online_tr) < tr_num)) {
+			if (unlikely(state->stop))
+				return -EINTR;
+			usleep(50000);
+		}
+		pr_notice("Threads are all ready!");
+		pr_notice("Initialization Sequence Completed");
+		return 0;
+	} else {
+		struct cli_thread *mt = &state->threads[0];
+		while (likely(!atomic_load(&mt->is_online))) {
+			if (unlikely(state->stop))
+				return -EINTR;
+			usleep(50000);
+		}
+		return -EALREADY;
+	}
+}
+
+
+__no_inline
+void teavpn2_client_tcp_wait_for_thread_to_exit(struct cli_state *state,
+						bool interrupt_only)
+{
+	size_t i;
+	int sig = SIGTERM;
+	const uint32_t max_secs = 30; /* Wait for max_secs seconds. */
+	const uint32_t max_iter = max_secs * 10;
+	const uint32_t per_iter = 100000;
+	uint32_t iter = 0;
+
+	if ((!interrupt_only) && (atomic_load(&state->online_tr) > 0))
+		pr_notice("Waiting for thread(s) to exit...");
+
+
+do_kill:
+	for (i = 0; i < state->cfg->sys.thread; i++) {
+		int ret;
+
+		/*
+		 * Skip the main thread.
+		 */
+		if (unlikely(i == 0))
+			continue;
+
+		if (!atomic_load(&state->threads[i].is_online))
+			continue;
+
+		ret = pthread_kill(state->threads[i].thread, sig);
+		if (ret) {
+			pr_err("pthread_kill(threads[%zu], %s) " PRERF,
+			       i, (sig == SIGTERM) ? "SIGTERM" : "SIGKILL",
+			       PREAR(ret));
+		}
+	}
+
+
+	if (interrupt_only)
+		return;
+
+
+	while (atomic_load(&state->online_tr) > 0) {
+		usleep(per_iter);
+		if (iter++ >= max_iter)
+			break;
+	}
+
+
+	/*
+	 * We have been waiting for `max_secs`, but
+	 * the threads haven't given us the offline
+	 * signal through the online thread counter.
+	 *
+	 * Let's force kill the threads!
+	 */
+	if (atomic_load(&state->online_tr) > 0) {
+		sig = SIGKILL;
+		pr_notice("Warning: %u thread(s) haven't exited after %u seconds",
+			  atomic_load(&state->online_tr), max_secs);
+		pr_emerg("Killing thread(s) forcefully with SIGKILL...");
+		atomic_store(&state->online_tr, 0);
+		goto do_kill;
+	}
+}
+
+
 static void close_tun_fds(int *tun_fds, size_t nn)
 {
 	if (!tun_fds)

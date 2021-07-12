@@ -389,19 +389,26 @@ static int init_threads(struct srv_state *state)
 		unsigned int tun_buf_size = sizeof(thread->spkt.raw_buf);
 
 		ret = tv_stack_init(&thread->ioucl_stk, IOUCL_VEC_NUM);
-		if (unlikely(ret))
+		if (unlikely(ret)) {
+			pr_err("tv_stack_init(): " PRERF, PREAR(-ret));
 			break;
+		}
 
 		ret = init_iou_cqe_vec(&thread->cqe_vec);
-		if (unlikely(ret))
+		if (unlikely(ret)) {
+			pr_err("init_iou_cqe_vec(): " PRERF, PREAR(-ret));
 			break;
+		}
 
 		memset(&ring_params, 0, sizeof(ring_params));
 		ring_params.flags = ring_flags;
 
 		ret = io_uring_queue_init_params(1u << 20u, ring, &ring_params);
-		if (unlikely(ret))
+		if (unlikely(ret)) {
+			pr_err("io_uring_queue_init_params(): " PRERF,
+			       PREAR(-ret));
 			break;
+		}
 
 		thread->ring_init = true;
 		thread->tun_fd = tun_fd;
