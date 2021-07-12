@@ -7,7 +7,6 @@
  *  Copyright (C) 2021  Ammar Faizi
  */
 
-#include <poll.h>
 #include "./tcp_common.h"
 
 /*
@@ -24,19 +23,18 @@ static void handle_interrupt(int sig)
 		return;
 
 	printf("\nInterrupt caught: %d\n", sig);
-
 	if (state) {
 		state->stop = true;
 		state->intr_sig = sig;
 		return;
 	}
-	panic("handle_interrupt is called when g_state is NULL");
+
+	panic("Bug: handle_interrupt is called when g_state is NULL\n");
 }
 
 
 static int validate_cfg(struct cli_state *state)
 {
-	const char *evtl;
 	struct cli_cfg *cfg = state->cfg;
 
 	if (!cfg->sys.thread) {
@@ -60,44 +58,42 @@ static int validate_cfg(struct cli_state *state)
 	}
 
 
-	evtl = cfg->sock.event_loop;
-	/*
-	 * Default use epoll.
-	 */
-	if (!evtl || !strcmp(evtl, "epoll")) {
-		pr_notice("Using epoll event loop");
-		state->event_loop = EVT_LOOP_EPOLL;
-	} else if (!strcmp(evtl, "io_uring")) {
+	{
+		const char *evtl = cfg->sock.event_loop;
+
+		if (!evtl || !strcmp(evtl, "epoll")) {
+			pr_notice("Using epoll event loop");
+			state->event_loop = EVT_LOOP_EPOLL;
+		} else if (!strcmp(evtl, "io_uring")) {
 #if USE_IO_URING
-		pr_notice("Using io_uring event loop");
-		state->event_loop = EVT_LOOP_IO_URING;
+			pr_notice("Using io_uring event loop");
+			state->event_loop = EVT_LOOP_IO_URING;
 #else
-		pr_notice("io_uring is not supported in this binary");
-		return -EOPNOTSUPP;
+			pr_err("io_uring is not supported in this binary");
+			return -EINVAL;
 #endif
-	} else {
-		return -EINVAL;
+		} else {
+			pr_err("Invalid event loop \"%s\"", evtl);
+			return -EINVAL;
+		}
 	}
+
 
 	return 0;
 }
 
 
-static int init_state_tun_fds(struct cli_state *state)
+static void *calloc_wrp(size_t nmemb, size_t size)
 {
-	int *tun_fds;
-	struct cli_cfg *cfg = state->cfg;
-	size_t nn = cfg->sys.thread;
+	void *ret;
 
-	tun_fds = al64_calloc_wrp(nn, sizeof(*tun_fds));
-	if (unlikely(!tun_fds))
-		return -ENOMEM;
-
-	for (size_t i = 0; i < nn; i++)
-		tun_fds[i] = -1;
-
-	state->tun_fds = tun_fds;
-	return 0;
+	ret = al64_calloc(nmemb, size);
+	if (unlikely(ret == NULL)) {
+		int err = errno;
+		pr_err("calloc(): " PRERF, PREAR(err));
+		return NULL;
+	}
+	return ret;
 }
 
 
@@ -107,7 +103,7 @@ static int init_state_threads(struct cli_state *state)
 	struct cli_cfg *cfg = state->cfg;
 	size_t nn = cfg->sys.thread;
 
-	threads = al64_calloc_wrp(nn, sizeof(*threads));
+	threads = calloc_wrp(nn, sizeof(*threads));
 	if (unlikely(!threads))
 		return -ENOMEM;
 
@@ -122,6 +118,24 @@ static int init_state_threads(struct cli_state *state)
 }
 
 
+static int init_state_tun_fds(struct cli_state *state)
+{
+	int *tun_fds;
+	struct cli_cfg *cfg = state->cfg;
+	size_t nn = cfg->sys.thread;
+
+	tun_fds = calloc_wrp(nn, sizeof(*tun_fds));
+	if (unlikely(!tun_fds))
+		return -ENOMEM;
+
+	for (size_t i = 0; i < nn; i++)
+		tun_fds[i] = -1;
+
+	state->tun_fds = tun_fds;
+	return 0;
+}
+
+
 static int init_state(struct cli_state *state)
 {
 	int ret;
@@ -129,8 +143,9 @@ static int init_state(struct cli_state *state)
 	state->intr_sig    = -1;
 	state->tcp_fd      = -1;
 	state->tun_fds     = NULL;
-	state->threads     = NULL;
+	state->clients     = NULL;
 	state->stop        = false;
+	atomic_store_explicit(&state->tr_assign, 0, memory_order_relaxed);
 	atomic_store_explicit(&state->online_tr, 0, memory_order_relaxed);
 
 	ret = validate_cfg(state);
@@ -419,18 +434,6 @@ out_err:
 }
 
 
-static int run_event_loop(struct cli_state *state)
-{
-	switch (state->event_loop) {
-	case EVT_LOOP_EPOLL:
-		return -1;
-	case EVT_LOOP_IO_URING:
-		return teavpn2_client_tcp_event_loop_io_uring(state);
-	}
-	__builtin_unreachable();
-}
-
-
 static void close_tun_fds(int *tun_fds, size_t nn)
 {
 	if (!tun_fds)
@@ -448,29 +451,43 @@ static void close_tun_fds(int *tun_fds, size_t nn)
 
 static void destroy_state(struct cli_state *state)
 {
-	int tcp_fd = state->tcp_fd;
-
-	if (tcp_fd != -1) {
-		prl_notice(3, "Closing state->tcp_fd (%d)...", tcp_fd);
-		close(tcp_fd);
-	}
+	close(state->tcp_fd);
 	close_tun_fds(state->tun_fds, state->cfg->sys.thread);
 	al64_free(state->tun_fds);
 	al64_free(state->threads);
+	al64_free(state->clients);
+}
+
+
+static int run_event_loop(struct cli_state *state)
+{
+	switch (state->event_loop) {
+	case EVT_LOOP_EPOLL:
+		return 0;
+	case EVT_LOOP_IO_URING:
+#if USE_IO_URING
+		return teavpn2_client_tcp_run_io_uring(state);
+#else
+		pr_err("io_uring is not supported in this binary");
+		return -EINVAL;
+#endif
+	}
+	__builtin_unreachable();
 }
 
 
 int teavpn2_client_tcp(struct cli_cfg *cfg)
 {
-	int ret;
+	int ret = 0;
 	struct cli_state *state;
 
-	state = al64_calloc(1, sizeof(*state));
+	state = al64_malloc(sizeof(*state));
 	if (unlikely(!state)) {
 		ret = errno;
-		pr_err("al64_calloc(): " PRERF, PREAR(ret));
+		pr_err("malloc(): " PRERF, PREAR(ret));
 		return -ret;
 	}
+	memset(state, 0, sizeof(*state));
 
 	state->cfg = cfg;
 	g_state    = state;

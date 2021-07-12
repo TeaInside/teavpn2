@@ -133,7 +133,7 @@ static_assert(sizeof(struct if_info) == 16 + (IPV4_L * 4) + sizeof(uint16_t),
 #  pragma clang diagnostic ignored "-Wreserved-id-macro"
 #endif
 
-#define ____cacheline_aligned_in_smp
+#define ____cacheline_aligned_in_smp __attribute__((__aligned__(64)))
 
 #if defined(__clang__)
 #  pragma clang diagnostic pop

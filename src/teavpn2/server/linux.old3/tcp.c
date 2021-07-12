@@ -16,7 +16,7 @@
 static struct srv_state *g_state = NULL;
 
 
-void teavpn2_server_handle_interrupt(int sig)
+static void handle_interrupt(int sig)
 {
 	struct srv_state *state = g_state;
 
@@ -93,7 +93,7 @@ static int init_state_tun_fds(struct srv_state *state)
 	struct srv_cfg *cfg = state->cfg;
 	size_t i, nn = cfg->sys.thread;
 
-	tun_fds = al64_calloc_wrp(nn, sizeof(*tun_fds));
+	tun_fds = calloc_wrp(nn, sizeof(*tun_fds));
 	if (unlikely(!tun_fds))
 		return -ENOMEM;
 
@@ -110,7 +110,7 @@ static int init_state_clients_array(struct srv_state *state)
 	struct client_slot *clients;
 	size_t i, nn = state->cfg->sock.max_conn;
 
-	clients = al64_calloc_wrp(nn, sizeof(*clients));
+	clients = calloc_wrp(nn, sizeof(*clients));
 	if (unlikely(!clients))
 		return -ENOMEM;
 
@@ -128,7 +128,7 @@ static int init_state_threads(struct srv_state *state)
 	struct srv_cfg *cfg = state->cfg;
 	size_t i, nn = cfg->sys.thread;
 
-	threads = al64_calloc_wrp(nn, sizeof(*threads));
+	threads = calloc_wrp(nn, sizeof(*threads));
 	if (unlikely(!threads))
 		return -ENOMEM;
 
@@ -139,6 +139,81 @@ static int init_state_threads(struct srv_state *state)
 	}
 
 	state->threads = threads;
+	return 0;
+}
+
+
+static int init_state_client_stack(struct srv_state *state)
+{
+	int32_t ret;
+	uint16_t *arr;
+	size_t nn = state->cfg->sock.max_conn;
+	struct srv_stack *cl_stk = &state->cl_stk;
+
+	arr = calloc_wrp(nn, sizeof(*arr));
+	if (unlikely(!arr))
+		return -ENOMEM;
+
+	ret = bt_mutex_init(&cl_stk->lock, NULL);
+	if (unlikely(ret)) {
+		pr_err("mutex_init(&cl_stk->lock, NULL): " PRERF, PREAR(ret));
+		return -ret;
+	}
+
+	cl_stk->sp = (uint16_t)nn;
+	cl_stk->max_sp = (uint16_t)nn;
+	cl_stk->arr = arr;
+
+#ifndef NDEBUG
+/*
+ * Test only.
+ */
+{
+	size_t i;
+
+	/*
+	 * Push stack.
+	 */
+	for (i = 0; i < nn; i++) {
+		ret = srv_stk_push(cl_stk, (uint16_t)i);
+		__asm__ volatile("":"+r"(cl_stk)::"memory");
+		BT_ASSERT((uint16_t)ret == (uint16_t)i);
+	}
+
+	/*
+	 * Push full stack.
+	 */
+	for (i = 0; i < 100; i++) {
+		ret = srv_stk_push(cl_stk, (uint16_t)i);
+		__asm__ volatile("":"+r"(cl_stk)::"memory");
+		BT_ASSERT(ret == -1);
+	}
+
+	/*
+	 * Pop stack.
+	 */
+	for (i = nn; i--;) {
+		ret = srv_stk_pop(cl_stk);
+		__asm__ volatile("":"+r"(cl_stk)::"memory");
+		BT_ASSERT((uint16_t)ret == (uint16_t)i);
+	}
+
+
+	/*
+	 * Pop empty stack.
+	 */
+	for (i = 0; i < 100; i++) {
+		ret = srv_stk_pop(cl_stk);
+		__asm__ volatile("":"+r"(cl_stk)::"memory");
+		BT_ASSERT(ret == -1);
+	}
+}
+#endif
+
+	while (nn--)
+		srv_stk_push(cl_stk, (uint16_t)nn);
+
+	BT_ASSERT(cl_stk->sp == 0);
 	return 0;
 }
 
@@ -174,20 +249,15 @@ static int init_state(struct srv_state *state)
 	if (unlikely(ret))
 		return ret;
 
-	ret = tv_stack_init(&state->cl_stk, state->cfg->sock.max_conn);
+	ret = init_state_client_stack(state);
 	if (unlikely(ret))
 		return ret;
 
 	pr_notice("Setting up interrupt handler...");
-	sigemptyset(&state->sa.sa_mask);
-	sigaddset(&state->sa.sa_mask, SIGINT);
-	sigaddset(&state->sa.sa_mask, SIGHUP);
-	sigaddset(&state->sa.sa_mask, SIGTERM);
-	state->sa.sa_handler = teavpn2_server_handle_interrupt;
-	sigaction(SIGINT, &state->sa, NULL);
-	sigaction(SIGHUP, &state->sa, NULL);
-	sigaction(SIGTERM, &state->sa, NULL);
-	signal(SIGHUP, SIG_IGN);
+	signal(SIGINT, handle_interrupt);
+	signal(SIGHUP, handle_interrupt);
+	signal(SIGTERM, handle_interrupt);
+	signal(SIGPIPE, SIG_IGN);
 	pr_notice("My PID: %d", getpid());
 	return ret;
 }
@@ -430,8 +500,7 @@ static int run_event_loop(struct srv_state *state)
 
 
 __no_inline
-void teavpn2_server_tcp_wait_for_thread_to_exit(struct srv_state *state,
-						bool interrupt_only)
+void teavpn2_server_tcp_wait_for_thread_to_exit(struct srv_state *state)
 {
 	size_t i;
 	int sig = SIGTERM;
@@ -440,7 +509,7 @@ void teavpn2_server_tcp_wait_for_thread_to_exit(struct srv_state *state,
 	const uint32_t per_iter = 100000;
 	uint32_t iter = 0;
 
-	if ((!interrupt_only) && (atomic_load(&state->online_tr) > 0))
+	if (atomic_load(&state->online_tr) > 0)
 		pr_notice("Waiting for thread(s) to exit...");
 
 
@@ -464,10 +533,6 @@ do_kill:
 			       PREAR(ret));
 		}
 	}
-
-
-	if (interrupt_only)
-		return;
 
 
 	while (atomic_load(&state->online_tr) > 0) {
@@ -561,15 +626,17 @@ int teavpn2_server_tcp(struct srv_cfg *cfg)
 	int ret;
 	struct srv_state *state;
 
-	state = al64_calloc(1, sizeof(*state));
+	state = al64_malloc(sizeof(*state));
 	if (unlikely(!state)) {
 		ret = errno;
-		pr_err("al64_calloc(): " PRERF, PREAR(ret));
+		pr_err("al64_malloc(): " PRERF, PREAR(ret));
 		return -ret;
 	}
+	memset(state, 0, sizeof(*state));
 
 	state->cfg = cfg;
 	g_state    = state;
+
 
 	ret = init_state(state);
 	if (unlikely(ret))
