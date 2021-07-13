@@ -135,6 +135,7 @@ static bool do_auth(const char *data_dir, const char *user, const char *pass,
 		goto out;
 	}
 
+	ret = true;
 	auth_res->is_ok = 1;
 	iff = &auth_res->iff;
 	memset(iff, 0, sizeof(*iff));
@@ -174,7 +175,6 @@ bool teavpn2_server_auth(const struct srv_cfg *cfg,
 			 struct tcli_pkt_auth *auth,
 			 struct tsrv_pkt_auth_res *auth_res)
 {
-	bool ret = false;
 	size_t ulen, plen;
 	const char *data_dir;
 
@@ -188,17 +188,18 @@ bool teavpn2_server_auth(const struct srv_cfg *cfg,
 	ulen = strlen(auth->username);
 	plen = strlen(auth->password);
 
-	if (ulen != (size_t)auth->ulen || plen != (size_t)auth->plen)
-		goto out;
+	if (ulen != (size_t)auth->ulen || plen != (size_t)auth->plen) {
+		pr_notice("Got invalid authentication data length");
+		return false;
+	}
 
 	data_dir = cfg->sys.data_dir;
-	if (!do_auth(data_dir, auth->username, auth->password, auth_res))
+	if (!do_auth(data_dir, auth->username, auth->password, auth_res)) {
+		pr_notice("Got invalid authentication user data");
 		auth_res->is_ok = 0;
+		return false;
+	}
 
-	ret = true;
-out:
-	/* Clean the sensitive data up! */
-	memset(auth->username, 0, sizeof(auth->username));
-	memset(auth->password, 0, sizeof(auth->password));
-	return ret;
+	auth_res->is_ok = 1;
+	return true;
 }

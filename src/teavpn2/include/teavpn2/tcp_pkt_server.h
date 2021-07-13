@@ -20,18 +20,16 @@
 
 #define TSRV_PKT_NOP		(1u << 0u)
 #define TSRV_PKT_HANDSHAKE	(1u << 1u)
-#define TSRV_PKT_AUTH_OK	(1u << 2u)
-#define TSRV_PKT_AUTH_REJECT	(1u << 3u)
-#define TSRV_PKT_IFACE_DATA	(1u << 4u)
-#define TSRV_PKT_REQSYNC	(1u << 5u)
-#define TSRV_PKT_CLOSE		(1u << 6u)
+#define TSRV_PKT_AUTH_RES	(1u << 2u)
+#define TSRV_PKT_IFACE_DATA	(1u << 3u)
+#define TSRV_PKT_REQSYNC	(1u << 4u)
+#define TSRV_PKT_CLOSE		(1u << 5u)
 
 #define TSRV_PKT_ALL_BITS 		\
 (					\
 	TSRV_PKT_NOP		|	\
 	TSRV_PKT_HANDSHAKE	|	\
-	TSRV_PKT_AUTH_OK	|	\
-	TSRV_PKT_AUTH_REJECT	|	\
+	TSRV_PKT_AUTH_RES	|	\
 	TSRV_PKT_IFACE_DATA	|	\
 	TSRV_PKT_REQSYNC	|	\
 	TSRV_PKT_CLOSE			\

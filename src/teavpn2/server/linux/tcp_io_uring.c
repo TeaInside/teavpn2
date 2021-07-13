@@ -38,7 +38,30 @@ static int do_iou_send(struct srv_thread *thread, int fd,
 	if (unlikely(!sqe))
 		return -EAGAIN;
 
-	io_uring_prep_send(sqe, fd, cqev->raw_pkt, cqev->len, flags);
+	io_uring_prep_send(sqe, fd, cqev->raw_pkt, (unsigned)cqev->len, flags);
+	io_uring_sqe_set_data(sqe, cqev);
+
+	ret = io_uring_submit(ring);
+	if (unlikely(ret < 0)) {
+		pr_err("io_uring_submit(): " PRERF, PREAR(-ret));
+		return ret;
+	}
+	return 0;
+}
+
+
+static int do_iou_write(struct srv_thread *thread, int fd,
+			struct iou_cqe_vec *cqev)
+{
+	int ret;
+	struct io_uring_sqe *sqe;
+	struct io_uring *ring = &thread->ring;
+
+	sqe = io_uring_get_sqe(ring);
+	if (unlikely(!sqe))
+		return -EAGAIN;
+
+	io_uring_prep_write(sqe, fd, cqev->raw_pkt, (unsigned)cqev->len, 0);
 	io_uring_sqe_set_data(sqe, cqev);
 
 	ret = io_uring_submit(ring);
@@ -413,7 +436,7 @@ static int handle_clpkt_auth(struct srv_thread *thread,
 			  " (expected = %zu; actual = %zu) (thread=%u)",
 			  W_IU(client), sizeof(*auth), fdata_len, thread->idx);
 		ret = -EBADMSG;
-		goto out;
+		goto out_cred_clean;
 	}
 
 	cqev = get_iou_cqe_vec(thread);
@@ -421,7 +444,7 @@ static int handle_clpkt_auth(struct srv_thread *thread,
 		pr_notice("Running out of cqes when handling auth from " PRWIU
 			  " (thread=%u)", W_IU(client), thread->idx);
 		ret = -EAGAIN;
-		goto out;
+		goto out_cred_clean;
 	}
 
 	srv_pkt  = &cqev->spkt;
@@ -437,9 +460,11 @@ static int handle_clpkt_auth(struct srv_thread *thread,
 			  W_IU(client), thread->idx);
 		auth_res->is_ok  = 1;
 		client->is_authenticated = true;
+		sane_strncpy(client->username, auth->username,
+			     sizeof(client->username));
 	}
 
-	srv_pkt->type    = TSRV_PKT_IFACE_DATA;
+	srv_pkt->type    = TSRV_PKT_AUTH_RES;
 	srv_pkt->pad_len = 0u;
 	srv_pkt->length  = sizeof(*auth_res);
 	cqev->vec_type   = IOU_CQE_VEC_NOP;
@@ -450,13 +475,41 @@ static int handle_clpkt_auth(struct srv_thread *thread,
 		 * return value.
 		 */
 		ret = 0;
-		goto out;
+		goto out_cred_clean;
 	} else {
 		ret = send_ret;
 	}
+
+out_cred_clean:
+	/* Clean the sensitive data up! */
+	memset(auth->username, 0, sizeof(auth->username));
+	memset(auth->password, 0, sizeof(auth->password));
 out:
 	bt_mutex_unlock(&client->lock);
 	return ret;
+}
+
+
+static int handle_clpkt_iface_data(struct srv_thread *thread,
+				   struct client_slot *client, size_t fdata_len)
+{
+	struct iou_cqe_vec *cqev;
+	struct tcli_pkt *cli_pkt = &thread->cpkt;
+
+	cqev = get_iou_cqe_vec(thread);
+	if (unlikely(!cqev)) {
+		pr_err("Run out of CQE vector on send_handshake_response "
+		       "when responding to " PRWIU " (thread=%u)", W_IU(client),
+		       thread->idx);
+		return -EAGAIN;
+	}
+
+	cqev->vec_type = IOU_CQE_VEC_TUN_WRITE;
+	cqev->len      = fdata_len;
+	memcpy(&cqev->raw_pkt, &cli_pkt->iface_data, fdata_len);
+	return do_iou_write(thread, thread->tun_fd, cqev);
+
+	/* TODO: Broadcast packet to clients, or send route it. */
 }
 
 
@@ -474,6 +527,7 @@ static int ____handle_client_data(struct srv_thread *thread,
 		ret = handle_clpkt_auth(thread, client, fdata_len);
 		break;
 	case TCLI_PKT_IFACE_DATA:
+		ret = handle_clpkt_iface_data(thread, client, fdata_len);
 		break;
 	case TCLI_PKT_REQSYNC:
 		break;
@@ -565,8 +619,8 @@ static int rearm_io_uring_recv_for_client(struct srv_thread *thread,
 
 	sqe = io_uring_get_sqe(&thread->ring);
 	if (unlikely(!sqe)) {
-		pr_err("Running out of SQE to recv from " PRWIU
-		       " (thread=%u)", W_IU(client), thread->idx);
+		pr_err("Running out of SQE to recv from " PRWIU " (thread=%u)",
+		       W_IU(client), thread->idx);
 		return -EAGAIN;
 	}
 
@@ -857,7 +911,7 @@ static int init_threads(struct srv_state *state)
 			/*
 			 * We only have 1 CPU, don't use SQPOLL!
 			 */
-			(void)1;
+			ring_flags &= ~IORING_SETUP_SQPOLL;
 		}
 	}
 	

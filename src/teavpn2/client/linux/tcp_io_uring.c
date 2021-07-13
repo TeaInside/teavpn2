@@ -24,6 +24,129 @@ static int init_iou_cqe_vec(struct iou_cqe_vec **cqe_vec_p)
 }
 
 
+static int do_iou_send(struct cli_thread *thread, int fd,
+		       struct iou_cqe_vec *cqev, int flags)
+{
+	int ret;
+	struct io_uring_sqe *sqe;
+	struct io_uring *ring = &thread->ring;
+
+	sqe = io_uring_get_sqe(ring);
+	if (unlikely(!sqe))
+		return -EAGAIN;
+
+	io_uring_prep_send(sqe, fd, cqev->raw_pkt, cqev->len, flags);
+	io_uring_sqe_set_data(sqe, cqev);
+
+	ret = io_uring_submit(ring);
+	if (unlikely(ret < 0)) {
+		pr_err("io_uring_submit(): " PRERF, PREAR(-ret));
+		return ret;
+	}
+	return 0;
+}
+
+
+static struct iou_cqe_vec *get_iou_cqe_vec(struct cli_thread *thread)
+{
+	int32_t idx;
+	struct iou_cqe_vec *cqev;
+	struct tv_stack	*ioucl_stk = &thread->ioucl_stk;
+
+	bt_mutex_lock(&ioucl_stk->lock);
+	idx = tv_stack_pop(ioucl_stk);
+	bt_mutex_unlock(&ioucl_stk->lock);
+	if (unlikely(idx == -1))
+		return NULL;
+
+	cqev = &thread->cqe_vec[idx];
+	cqev->idx = (uint16_t)idx;
+	cqev->vec_type = IOU_CQE_VEC_NOP;
+	return cqev;
+}
+
+
+static void put_iou_cqe_vec(struct cli_thread *thread, struct iou_cqe_vec *cqev)
+{
+	int32_t idx;
+	struct tv_stack	*ioucl_stk = &thread->ioucl_stk;
+
+	bt_mutex_lock(&ioucl_stk->lock);
+	idx = tv_stack_push(ioucl_stk, cqev->idx);
+	bt_mutex_unlock(&ioucl_stk->lock);
+	if (likely(idx != -1))
+		return;
+
+	panic("Wrong logic: Attempted to push to ioucl_stk when it is full "
+	      "(thread=%u)", thread->idx);
+}
+
+
+static int handle_tun_read(struct cli_thread *thread, struct io_uring_cqe *cqe)
+{
+	int ret;
+	struct iou_cqe_vec *cqev;
+	ssize_t read_ret = (ssize_t)cqe->res;
+	struct tcli_pkt *cli_pkt, *cli_pkt0 = &thread->cpkt;
+
+	if (unlikely(read_ret < 0)) {
+		pr_err("read() from tun_fd " PRERF, PREAR((int)-read_ret));
+		return (int)read_ret;
+	}
+
+	cqev = get_iou_cqe_vec(thread);
+	if (unlikely(!cqev))
+		return -EAGAIN;
+
+	cli_pkt          = &cqev->cpkt;
+	cli_pkt->type    = TCLI_PKT_IFACE_DATA;
+	cli_pkt->pad_len = 0u;
+	cli_pkt->length  = (uint16_t)((size_t)read_ret);
+	cqev->vec_type   = IOU_CQE_VEC_TCP_SEND;
+	cqev->len        = TCLI_PKT_MIN_READ + (size_t)read_ret;
+	memcpy(&cli_pkt->iface_data, &cli_pkt0->iface_data, (size_t)read_ret);
+
+	ret = do_iou_send(thread, thread->state->tcp_fd, cqev, 0);
+	if (unlikely(ret < 0))
+		return ret;
+
+	pr_debug("TUN read %d bytes (thread=%u)", cqe->res, thread->idx);
+	return 0;
+}
+
+
+static int handle_iou_cqe_vec(struct cli_thread *thread,
+			      struct io_uring_cqe *cqe, void *fret)
+{
+	int ret = 0;
+	union uni_iou_cqe_vec *vcqe = fret;
+
+	switch (vcqe->vec_type) {
+	case IOU_CQE_VEC_NOP:
+		pr_notice("Got IOU_CQE_VEC_NOP");
+		put_iou_cqe_vec(thread, fret);
+		break;
+	case IOU_CQE_VEC_TUN_WRITE:
+		pr_notice("Got IOU_CQE_VEC_TUN_WRITE");
+		put_iou_cqe_vec(thread, fret);
+		break;
+	case IOU_CQE_VEC_TCP_SEND:
+		pr_notice("Got IOU_CQE_VEC_TCP_SEND");
+		put_iou_cqe_vec(thread, fret);
+		break;
+	case IOU_CQE_VEC_TCP_RECV:
+		/* Don't put, it is not iou_cqe_vec! */
+		break;
+	default:
+		VT_HEXDUMP(vcqe, 2048);
+		panic("Got invalid vcqe on handle_iou_cqe_vec() (%u)",
+		      vcqe->vec_type);
+	}
+
+	return ret;
+}
+
+
 static int handle_event(struct cli_thread *thread, struct io_uring_cqe *cqe)
 {
 	void *fret;
@@ -43,13 +166,10 @@ static int handle_event(struct cli_thread *thread, struct io_uring_cqe *cqe)
 		pr_notice("Got IOU_CQE_DRC_NOP");
 		break;
 	case IOU_CQE_DRC_TUN_READ:
-		pr_notice("TUN read %d bytes (thread=%u)", cqe->res, thread->idx);
-		break;
-	case IOU_CQE_DRC_TCP_ACCEPT:
-		// ret = handle_event_tcp(thread, cqe);
+		ret = handle_tun_read(thread, cqe);
 		break;
 	default:
-		pr_notice("Unknown event (%zu) %" PRIxPTR, type, type);
+		ret = handle_iou_cqe_vec(thread, cqe, fret);
 		break;
 	}
 
@@ -167,8 +287,8 @@ static int init_threads(struct cli_state *state)
 		int tun_fd = state->tun_fds[i];
 		struct cli_thread *thread = &threads[i];
 		struct io_uring *ring = &thread->ring;
-		void *tun_buf = thread->cpkt.raw_buf;
-		unsigned int tun_buf_size = sizeof(thread->cpkt.raw_buf);
+		void *tun_buf = &thread->cpkt.iface_data;
+		unsigned int tun_buf_size = sizeof(thread->cpkt.iface_data);
 
 		ret = tv_stack_init(&thread->ioucl_stk, IOUCL_VEC_NUM);
 		if (unlikely(ret)) {
