@@ -837,7 +837,7 @@ static int handle_event(struct srv_thread *thread, struct io_uring_cqe *cqe)
 		pr_notice("Got IOU_CQE_DRC_NOP");
 		break;
 	case IOU_CQE_DRC_TUN_READ:
-		pr_notice("TUN read %d bytes (thread=%u)", cqe->res, thread->idx);
+		ret = handle_tun_read(thread, cqe);
 		break;
 	case IOU_CQE_DRC_TCP_ACCEPT:
 		ret = handle_event_tcp(thread, cqe);
