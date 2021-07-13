@@ -38,6 +38,7 @@
 #include <teavpn2/stack.h>
 #include <teavpn2/tcp_pkt.h>
 #include <teavpn2/allocator.h>
+#include <teavpn2/server/auth.h>
 #include <teavpn2/net/linux/iface.h>
 #include <teavpn2/server/linux/tcp.h>
 

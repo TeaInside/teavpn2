@@ -93,6 +93,21 @@ static enum perr_jmp parse_section_iface(struct cli_iface_cfg *iface,
 }
 
 
+static enum perr_jmp parse_section_auth(struct cli_auth_cfg *auth,
+					const char *name, const char *value,
+					int __maybe_unused lineno)
+{
+	if (!strcmp(name, "username")) {
+		sane_strncpy(auth->username, value, sizeof(auth->username));
+	} else if (!strcmp(name, "password")) {
+		sane_strncpy(auth->password, value, sizeof(auth->password));
+	} else {
+		return INVALID_NAME;
+	}
+	return NO_JMP;
+}
+
+
 static int parser_handler(void *user, const char *section, const char *name,
 			  const char *value, int lineno)
 {
@@ -102,6 +117,7 @@ static int parser_handler(void *user, const char *section, const char *name,
 	struct cli_sys_cfg   *sys    = &cfg->sys;
 	struct cli_sock_cfg  *sock   = &cfg->sock;
 	struct cli_iface_cfg *iface  = &cfg->iface;
+	struct cli_auth_cfg  *auth   = &cfg->auth;
 
 	if (!strcmp(section, "sys")) {
 		jmp = parse_section_sys(sys, name, value, lineno);
@@ -109,6 +125,8 @@ static int parser_handler(void *user, const char *section, const char *name,
 		jmp = parse_section_socket(sock, name, value, lineno);
 	} else if (!strcmp(section, "iface")) {
 		jmp = parse_section_iface(iface, name, value, lineno);
+	} else if (!strcmp(section, "auth")) {
+		jmp = parse_section_auth(auth, name, value, lineno);
 	} else {
 		pr_error("Invalid config section \"%s\" on line %d", section,
 			 lineno);

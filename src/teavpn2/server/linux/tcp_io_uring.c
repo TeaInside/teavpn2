@@ -364,6 +364,53 @@ static int handle_clpkt_handshake(struct srv_thread *thread,
 }
 
 
+static int handle_clpkt_auth(struct srv_thread *thread,
+			     struct client_slot *client, size_t fdata_len)
+{
+	int ret = 0;
+	int send_ret;
+	struct iou_cqe_vec *cqev;
+	struct tsrv_pkt *srv_pkt;
+	struct tsrv_pkt_auth_res *auth_res;
+	struct tcli_pkt *cli_pkt = &client->cpkt;
+	struct tcli_pkt_auth *auth = &cli_pkt->auth;
+
+	if (unlikely(fdata_len != sizeof(*auth))) {
+		pr_notice("Invalid auth packet length from " PRWIU
+			  " (expected = %zu; actual = %zu) (thread=%u)",
+			  W_IU(client), sizeof(*auth), fdata_len, thread->idx);
+		return -EBADMSG;
+	}
+
+	cqev = get_iou_cqe_vec(thread);
+	if (unlikely(cqev))
+		return -EAGAIN;
+
+	srv_pkt  = &cqev->spkt;
+	auth_res = &srv_pkt->auth_res;
+	if (!teavpn2_server_auth(auth, auth_res)) {
+		pr_notice("Wrong username or password from " PRWIU
+			  " (thread=%u)", W_IU(client), thread->idx);
+		ret = -EACCES;
+		auth_res->is_ok = 0;
+	}
+
+	srv_pkt->type    = TSRV_PKT_IFACE_DATA;
+	srv_pkt->pad_len = 0u;
+	srv_pkt->length  = sizeof(*auth_res);
+	cqev->vec_type   = IOU_CQE_VEC_NOP;
+	send_ret = do_iou_send(thread, client->cli_fd, cqev, 0);
+	if (ret)
+		/*
+		 * If the auth fails, we don't care about the do_iou_send()
+		 * return value.
+		 */
+		return ret;
+
+	return send_ret;
+}
+
+
 static int ____handle_client_data(struct srv_thread *thread,
 				  struct client_slot *client, size_t fdata_len)
 {
@@ -373,6 +420,9 @@ static int ____handle_client_data(struct srv_thread *thread,
 		break;
 	case TCLI_PKT_HANDSHAKE:
 		ret = handle_clpkt_handshake(thread, client, fdata_len);
+		break;
+	case TCLI_PKT_AUTH:
+		ret = handle_clpkt_auth(thread, client, fdata_len);
 		break;
 	case TCLI_PKT_IFACE_DATA:
 		break;
@@ -522,11 +572,11 @@ static int handle_client_data(struct srv_thread *thread,
 	if (unlikely(ret))
 		goto out_close;
 
-	return ret;
+	return 0;
 
 out_close:
 	close_client_conn(thread, client);
-	return ret;
+	return 0;
 }
 
 
@@ -689,7 +739,12 @@ static int init_threads(struct srv_state *state)
 	struct srv_thread *threads;
 	size_t i, nn = state->cfg->sys.thread;
 	struct io_uring_params ring_params;
-	const unsigned ring_flags = IORING_SETUP_CLAMP | IORING_SETUP_SQPOLL;
+	unsigned ring_flags;
+
+
+	ring_flags = (
+		IORING_SETUP_CLAMP | IORING_SETUP_SQPOLL | IORING_SETUP_SQ_AFF
+	);
 
 	threads = state->threads;
 
@@ -713,8 +768,10 @@ static int init_threads(struct srv_state *state)
 			break;
 		}
 
+		pr_notice("Initializing io_uring context... (thread=%zu)", i);
 		memset(&ring_params, 0, sizeof(ring_params));
 		ring_params.flags = ring_flags;
+		ring_params.sq_thread_cpu = (__u32)i;
 
 		ret = io_uring_queue_init_params(1u << 20u, ring, &ring_params);
 		if (unlikely(ret)) {
@@ -776,6 +833,7 @@ static int init_threads(struct srv_state *state)
 static int run_main_thread(struct srv_state *state)
 {
 	int ret;
+	void *fret;
 	struct accept_data *acc;
 	struct io_uring_sqe *sqe;
 	struct srv_thread *thread;
@@ -810,17 +868,8 @@ static int run_main_thread(struct srv_state *state)
 		goto out;
 	}
 
-
-	/*
-	 * Run the main thread!
-	 *
-	 * `fret` is just to shut the clang up!
-	 */
-	{
-		void *fret;
-		fret = run_thread(thread);
-		ret  = (int)((intptr_t)fret);
-	}
+	fret = run_thread(thread);
+	ret  = (int)((intptr_t)fret);
 out:
 	return ret;
 }
@@ -835,8 +884,11 @@ static void destroy_io_uring_context(struct srv_state *state)
 	for (i = 0; i < nn; i++) {
 		struct srv_thread *thread = &threads[i];
 
-		if (thread->ring_init)
+		if (thread->ring_init) {
+			pr_notice("Destroying io_uring context... (thread=%zu)",
+				  i);
 			io_uring_queue_exit(&thread->ring);
+		}
 
 		al64_free(thread->cqe_vec);
 		tv_stack_destroy(&thread->ioucl_stk);

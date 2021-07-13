@@ -77,15 +77,19 @@ static_assert(sizeof(struct tsrv_pkt_handshake) == 8 + 32 * 3,
 	      "Bad sizeof(struct tsrv_pkt_handshake)");
 
 
-struct tsrv_pkt_auth_ok {
+struct tsrv_pkt_auth_res {
+	uint8_t						is_ok;
+	uint8_t						pad;
 	struct if_info					iff;
 };
 
+static_assert(offsetof(struct tsrv_pkt_auth_res, is_ok) == 0,
+	      "Bad offsetof(struct tsrv_pkt_auth_res, is_ok)");
 
-static_assert(offsetof(struct tsrv_pkt_auth_ok, iff) == 0,
-	      "Bad offsetof(struct tsrv_pkt_handshake, iff)");
+static_assert(offsetof(struct tsrv_pkt_auth_res, iff) == 2,
+	      "Bad offsetof(struct tsrv_pkt_auth_res, iff)");
 
-static_assert(sizeof(struct tsrv_pkt_auth_ok) == sizeof(struct if_info),
+static_assert(sizeof(struct tsrv_pkt_auth_res) == sizeof(struct if_info) + 2u,
 	      "Bad sizeof(struct tsrv_pkt_auth_ok)");
 
 
@@ -113,7 +117,7 @@ struct tsrv_pkt {
 	union {
 		union {
 			struct tsrv_pkt_handshake	handshake;
-			struct tsrv_pkt_auth_ok		auth_ok;
+			struct tsrv_pkt_auth_res	auth_res;
 			struct tsrv_pkt_iface_data	iface_data;
 		};
 		char					raw_buf[0x2000u];
@@ -134,8 +138,8 @@ static_assert(offsetof(struct tsrv_pkt, length) == 2,
 static_assert(offsetof(struct tsrv_pkt, handshake) == 4,
 	      "Bad offsetof(struct tsrv_pkt, handshake)");
 
-static_assert(offsetof(struct tsrv_pkt, auth_ok) == 4,
-	      "Bad offsetof(struct tsrv_pkt, auth_ok)");
+static_assert(offsetof(struct tsrv_pkt, auth_res) == 4,
+	      "Bad offsetof(struct tsrv_pkt, auth_res)");
 
 static_assert(offsetof(struct tsrv_pkt, iface_data) == 4,
 	      "Bad offsetof(struct tsrv_pkt, iface_data)");
