@@ -207,6 +207,7 @@ static int ____handle_server_data(struct cli_thread *thread, size_t recv_s)
 	case TSRV_PKT_AUTH_RES:
 		break;
 	case TSRV_PKT_IFACE_DATA:
+		pr_notice("Got TSRV_PKT_IFACE_DATA");
 		break;
 	case TSRV_PKT_REQSYNC:
 		break;

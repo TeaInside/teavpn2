@@ -178,7 +178,7 @@ out_reg:
 
 	client = &state->clients[idx];
 	recv_len = sizeof(client->raw_pkt);
-	io_uring_prep_recv(sqe, cli_fd, client->raw_pkt, recv_len, 0);
+	io_uring_prep_recv(sqe, cli_fd, client->raw_pkt, recv_len, MSG_WAITALL);
 	io_uring_sqe_set_data(sqe, client);
 
 
@@ -643,7 +643,7 @@ static int rearm_io_uring_recv_for_client(struct srv_thread *thread,
 	recv_buf = client->raw_pkt + recv_s;
 	recv_len = sizeof(client->raw_pkt) - recv_s;
 
-	io_uring_prep_recv(sqe, cli_fd, recv_buf, recv_len, 0);
+	io_uring_prep_recv(sqe, cli_fd, recv_buf, recv_len, MSG_WAITALL);
 	io_uring_sqe_set_data(sqe, client);
 	assert(client->__iou_cqe_vec_type == IOU_CQE_VEC_TCP_RECV);
 
@@ -754,6 +754,7 @@ static int handle_tun_read(struct srv_thread *thread, struct io_uring_cqe *cqe)
 		memcpy(&cli_pkt->iface_data, &cli_pkt0->iface_data,
 		       (size_t)read_ret);
 
+		pr_notice("Send out data!");
 		ret = do_iou_send(thread, client->cli_fd, cqev, 0);
 		if (unlikely(ret < 0))
 			return ret;
@@ -1006,7 +1007,7 @@ static int init_threads(struct srv_state *state)
 				  i, core_num);
 		}
 
-		ret = io_uring_queue_init_params(1u << 16u, ring, &ring_params);
+		ret = io_uring_queue_init_params(255, ring, &ring_params);
 		if (unlikely(ret)) {
 			pr_err("io_uring_queue_init_params(): " PRERF,
 			       PREAR(-ret));
