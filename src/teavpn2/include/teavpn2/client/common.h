@@ -32,6 +32,12 @@ struct cli_sock_cfg {
 
 struct cli_iface_cfg {
 	char			dev[IFACENAMESIZ];
+
+	/*
+	 * Only used when net down and reconnect
+	 * (this is filled by the server)
+	 */
+	struct if_info		iff;
 };
 
 

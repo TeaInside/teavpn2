@@ -131,6 +131,7 @@ static int init_state(struct cli_state *state)
 	state->tun_fds     = NULL;
 	state->threads     = NULL;
 	state->stop        = false;
+	state->has_iff     = false;
 	atomic_store_explicit(&state->online_tr, 0, memory_order_relaxed);
 
 	ret = validate_cfg(state);
@@ -628,7 +629,14 @@ static int recv_auth(struct cli_state *state)
 	iff = &auth_res->iff;
 	sane_strncpy(iff->dev, dev, sizeof(iff->dev));
 	sane_strncpy(iff->ipv4_pub, srv_ip, sizeof(iff->ipv4_pub));
-	if (unlikely(!teavpn_iface_up(&auth_res->iff))) {
+
+	/*
+	 * Save the network configuration to bring the network
+	 * down (and reconnect if needed).
+	 */
+	state->cfg->iface.iff = *iff;
+	state->has_iff = true;
+	if (unlikely(!teavpn_iface_up(iff))) {
 		pr_err("Cannot bring virtual network interface up");
 		return -ENETDOWN;
 	}
@@ -802,10 +810,16 @@ do_kill:
 }
 
 
-static void close_tun_fds(int *tun_fds, size_t nn)
+static void close_tun_fds(struct cli_state *state, size_t nn)
 {
+	int *tun_fds = state->tun_fds;
 	if (!tun_fds)
 		return;
+
+	if (state->has_iff) {
+		pr_notice("Removing virtual network interface configuration...");
+		teavpn_iface_down(&state->cfg->iface.iff);
+	}
 
 	for (size_t i = 0; i < nn; i++) {
 		if (tun_fds[i] == -1)
@@ -825,7 +839,7 @@ static void destroy_state(struct cli_state *state)
 		prl_notice(3, "Closing state->tcp_fd (%d)...", tcp_fd);
 		close(tcp_fd);
 	}
-	close_tun_fds(state->tun_fds, state->cfg->sys.thread);
+	close_tun_fds(state, state->cfg->sys.thread);
 	al64_free(state->tun_fds);
 	al64_free(state->threads);
 }

@@ -158,10 +158,15 @@ out_err:
 
 #define EXEC_CMD(OUT, BUF, IP, CMD, ...)				\
 do {									\
-	char __cbuf[sizeof((BUF)) * 2];					\
+	int p = 0;							\
+	char __cbuf[sizeof((BUF)) * 3];					\
 	snprintf((BUF), sizeof((BUF)), (CMD), __VA_ARGS__);		\
-	snprintf((__cbuf), sizeof(__cbuf), "%s %s", IP, ((BUF)));	\
+	p = snprintf((__cbuf), sizeof(__cbuf), "%s %s", IP, ((BUF)));	\
 	pr_notice("Executing: %s", (__cbuf));				\
+	if (suppress_err)						\
+		p += snprintf((__cbuf) + p,				\
+			      sizeof(__cbuf) - (unsigned)p,		\
+			      " >> /dev/null 2>&1");			\
 	*(OUT) = system((__cbuf));					\
 } while (0)
 
@@ -197,22 +202,24 @@ static __always_inline const char *find_ip_cmd(void)
 	return NULL;
 }
 
-static __no_inline bool teavpn_iface_toggle(struct if_info *iface, bool up);
+static __no_inline bool teavpn_iface_toggle(struct if_info *iface, bool up,
+					    bool suppress_err);
 
 
 bool teavpn_iface_up(struct if_info *iface)
 {
-	return teavpn_iface_toggle(iface, true);
+	return teavpn_iface_toggle(iface, true, false);
 }
 
 
 bool teavpn_iface_down(struct if_info *iface)
 {
-	return teavpn_iface_toggle(iface, false);
+	return teavpn_iface_toggle(iface, false, true);
 }
 
 
-static __no_inline bool teavpn_iface_toggle(struct if_info *iface, bool up)
+static __no_inline bool teavpn_iface_toggle(struct if_info *iface, bool up,
+					    bool suppress_err)
 {
 #ifdef TEAVPN_IPV6_SUPPORT
 	static_assert(0, "Fixme: Handle IPv6 assignment.");

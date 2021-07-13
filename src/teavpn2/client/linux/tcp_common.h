@@ -158,6 +158,9 @@ struct cli_state {
 	/* Indicate event loop needs to be stopped or not. */
 	bool					stop;
 
+	/* Did we get the network configuration? */
+	bool					has_iff;
+
 	struct sigaction			sa;
 };
 
