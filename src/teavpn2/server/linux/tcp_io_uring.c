@@ -443,7 +443,7 @@ static int __handle_client_data(struct srv_thread *thread,
 	size_t cdata_len; /* Current received data length for this packet */
 	struct tcli_pkt *cli_pkt = &client->cpkt;
 
-
+check_again:
 	if (unlikely(recv_s < TCLI_PKT_MIN_READ)) {
 		/*
 		 * We haven't received mandatory information such
@@ -477,7 +477,27 @@ static int __handle_client_data(struct srv_thread *thread,
 		goto out;
 	}
 
-	/* TODO: Handle extra tail */
+
+	if (recv_s > (TCLI_PKT_MIN_READ + fdata_len)) {
+		/*
+		 * We have extra bytes on the tail.
+		 *
+		 * Must memmove() to the front before
+		 * we run out of buffer!
+		 */
+		char *head  = (char *)cli_pkt;
+		char *tail  = head + recv_s;
+		recv_s     -= TCLI_PKT_MIN_READ + fdata_len;
+		memmove(head, tail, recv_s);
+		pr_debug("Got extra bytes, memmove() (recv_s = %zu)", recv_s);
+		goto check_again;
+	}
+
+
+	/*
+	 * We are done, reset the buffer offset to zero.
+	 */
+	recv_s = 0;
 out:
 	client->recv_s = recv_s;
 	return ret;
@@ -506,7 +526,7 @@ static int rearm_io_uring_recv_for_client(struct srv_thread *thread,
 	recv_buf = client->raw_pkt + recv_s;
 	recv_len = sizeof(client->raw_pkt) - recv_s;
 
-	io_uring_prep_recv(sqe, cli_fd, recv_buf, recv_len, MSG_WAITALL);
+	io_uring_prep_recv(sqe, cli_fd, recv_buf, recv_len, 0);
 	io_uring_sqe_set_data(sqe, client);
 	assert(client->__iou_cqe_vec_type == IOU_CQE_VEC_TCP_RECV);
 

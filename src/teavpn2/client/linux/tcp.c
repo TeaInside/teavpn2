@@ -469,7 +469,7 @@ do_recv:
 
 	if (recv_s < recv_len) {
 		int ret;
-		/* 
+		/*
 		 * We haven't completely received the packet.
 		 *
 		 * Do recv() more, but wait until the fd is
