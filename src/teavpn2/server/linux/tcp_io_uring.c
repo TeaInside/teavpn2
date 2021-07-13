@@ -23,6 +23,47 @@ static int init_iou_cqe_vec(struct iou_cqe_vec **cqe_vec_p)
 }
 
 
+static int do_iou_send(struct srv_thread *thread, int fd,
+		       struct iou_cqe_vec *cqev, int flags)
+{
+	int ret;
+	struct io_uring_sqe *sqe;
+	struct io_uring *ring = &thread->ring;
+
+	sqe = io_uring_get_sqe(ring);
+	if (unlikely(!sqe))
+		return -EAGAIN;
+
+	io_uring_prep_send(sqe, fd, cqev->raw_pkt, cqev->len, flags);
+	io_uring_sqe_set_data(sqe, cqev);
+
+	ret = io_uring_submit(ring);
+	if (unlikely(ret < 0)) {
+		pr_err("io_uring_submit(): " PRERF, PREAR(-ret));
+		return ret;
+	}
+	return 0;
+}
+
+
+static struct iou_cqe_vec *get_iou_cqe_vec(struct srv_thread *thread)
+{
+	int32_t idx;
+	struct iou_cqe_vec *cqev;
+	struct tv_stack	*ioucl_stk = &thread->ioucl_stk;
+
+	bt_mutex_lock(&ioucl_stk->lock);
+	idx = tv_stack_pop(ioucl_stk);
+	bt_mutex_unlock(&ioucl_stk->lock);
+	if (unlikely(idx == -1))
+		return NULL;
+
+	cqev = &thread->cqe_vec[idx];
+	cqev->vec_type = IOU_CQE_VEC_NOP;
+	return cqev;
+}
+
+
 static int __register_client(struct srv_thread *thread, int32_t idx, int cli_fd,
 			     const char *src_ip, uint16_t src_port)
 {
@@ -31,11 +72,11 @@ static int __register_client(struct srv_thread *thread, int32_t idx, int cli_fd,
 	struct io_uring_sqe *sqe = NULL;
 	struct srv_thread *assignee = NULL;
 	struct srv_state *state = thread->state;
-	size_t i, num_threads = state->cfg->sys.thread;
+	size_t i, recv_len, num_threads = state->cfg->sys.thread;
 	uint16_t th_idx = 0; /* Thread index (the assignee). */
 
 
-	if (unlikely(num_threads <= 1)) {
+	if (num_threads <= 1) {
 		/*
 		 * We are single threaded.
 		 */
@@ -92,8 +133,8 @@ out_reg:
 		goto out;
 
 	client = &state->clients[idx];
-	io_uring_prep_recv(sqe, cli_fd, client->raw_pkt,
-			   sizeof(client->raw_pkt), MSG_WAITALL);
+	recv_len = sizeof(client->raw_pkt);
+	io_uring_prep_recv(sqe, cli_fd, client->raw_pkt, recv_len, 0);
 	io_uring_sqe_set_data(sqe, client);
 
 
@@ -243,6 +284,281 @@ out_err:
 }
 
 
+static int send_handshake_response(struct srv_thread *thread,
+				   struct client_slot *client)
+{
+	int ret = 0;
+	size_t verlen;
+	size_t send_len;
+	struct iou_cqe_vec *cqev;
+	struct tsrv_pkt *srv_pkt;
+	struct tsrv_pkt_handshake *pkt_hss;
+
+	cqev = get_iou_cqe_vec(thread);
+	if (unlikely(!cqev)) {
+		pr_err("Run out of CQE vector on send_handshake_response "
+		       "when responding to " PRWIU " (thread=%u)", W_IU(client),
+		       thread->idx);
+		return -EAGAIN;
+	}
+
+	srv_pkt = &cqev->spkt;
+	pkt_hss = &srv_pkt->handshake;
+	pkt_hss->need_encryption = false;
+	pkt_hss->has_min = false;
+	pkt_hss->has_max = false;
+	pkt_hss->cur.ver = VERSION;
+	pkt_hss->cur.patch_lvl = PATCHLEVEL;
+	pkt_hss->cur.sub_lvl = SUBLEVEL;
+	verlen = sizeof(pkt_hss->cur.extra);
+	sane_strncpy(pkt_hss->cur.extra, EXTRAVERSION, verlen);
+
+	srv_pkt->type = TSRV_PKT_HANDSHAKE;
+	srv_pkt->pad_len = 0u;
+	srv_pkt->length = sizeof(*pkt_hss);
+	send_len = TCLI_PKT_MIN_READ + sizeof(*pkt_hss);
+	cqev->len = send_len;
+
+	cqev->udata = client;
+	cqev->vec_type = IOU_CQE_VEC_TCP_SEND;
+	ret = do_iou_send(thread, client->cli_fd, cqev, 0);
+	if (unlikely(ret < 0))
+		return ret;
+
+	return -EINPROGRESS;
+}
+
+
+static int handle_clpkt_handshake(struct srv_thread *thread,
+				  struct client_slot *client, size_t fdata_len)
+{
+	int ret = 0;
+	struct tcli_pkt *cli_pkt = &client->cpkt;
+	struct tcli_pkt_handshake *pkt_hsc = &cli_pkt->handshake;
+
+	if (client->is_authenticated)
+		return 0;
+
+	if (fdata_len != sizeof(*pkt_hsc)) {
+		pr_notice("Got mismatch handshake length from "  PRWIU
+			  " (expected length = %zu; actual length = %zu) "
+			  " (thread=%u)",
+			  W_IU(client), sizeof(*pkt_hsc), fdata_len,
+			  thread->idx);
+		return -EBADMSG;
+	}
+
+	/* For C string print safety. */
+	pkt_hsc->cur.extra[sizeof(pkt_hsc->cur.extra) - 1] = '\0';
+	pr_notice("Got protocol handshake from " PRWIU
+		  " (TeaVPN2-v%hhu.%hhu.%hhu%s) (thread=%u)",
+		  W_IU(client),
+		  pkt_hsc->cur.ver,
+		  pkt_hsc->cur.patch_lvl,
+		  pkt_hsc->cur.sub_lvl,
+		  pkt_hsc->cur.extra,
+		  thread->idx);
+
+	ret = send_handshake_response(thread, client);
+	return ret;
+}
+
+
+static int ____handle_client_data(struct srv_thread *thread,
+				  struct client_slot *client, size_t fdata_len)
+{
+	int ret = 0;
+	switch (client->cpkt.type) {
+	case TCLI_PKT_NOP:
+		break;
+	case TCLI_PKT_HANDSHAKE:
+		ret = handle_clpkt_handshake(thread, client, fdata_len);
+		break;
+	case TCLI_PKT_IFACE_DATA:
+		break;
+	case TCLI_PKT_REQSYNC:
+		break;
+	case TCLI_PKT_CLOSE:
+		break;
+	}
+	return ret;
+}
+
+
+static int __handle_client_data(struct srv_thread *thread,
+				struct client_slot *client, size_t recv_s)
+{
+	int ret = 0;
+	size_t fdata_len; /* Full expected data length for this packet    */
+	size_t cdata_len; /* Current received data length for this packet */
+	struct tcli_pkt *cli_pkt = &client->cpkt;
+
+
+	if (unlikely(recv_s < TCLI_PKT_MIN_READ)) {
+		/*
+		 * We haven't received mandatory information such
+		 * as packet type, padding and data length.
+		 *
+		 * Let's wait a bit longer.
+		 *
+		 * Bail out!
+		 */
+		goto out;
+	}
+
+
+	fdata_len = cli_pkt->length;
+	cdata_len = recv_s - TCLI_PKT_MIN_READ;
+	if (unlikely(cdata_len < fdata_len)) {
+		/*
+		 * We haven't completely received the data.
+		 *
+		 * Let's wait a bit longer.
+		 *
+		 * Bail out!
+		 */
+		goto out;
+	}
+
+
+	ret = ____handle_client_data(thread, client, fdata_len);
+	if (unlikely(ret)) {
+		recv_s = 0;
+		goto out;
+	}
+
+	/* TODO: Handle extra tail */
+out:
+	client->recv_s = recv_s;
+	return ret;
+}
+
+
+static int rearm_io_uring_recv_for_client(struct srv_thread *thread,
+					  struct client_slot *client)
+{
+	int ret;
+	int cli_fd;
+	size_t recv_s;
+	char *recv_buf;
+	size_t recv_len;
+	struct io_uring_sqe *sqe;
+
+	sqe = io_uring_get_sqe(&thread->ring);
+	if (unlikely(!sqe)) {
+		pr_err("Running out of SQE to recv from " PRWIU
+		       " (thread=%u)", W_IU(client), thread->idx);
+		return -EAGAIN;
+	}
+
+	cli_fd   = client->cli_fd;
+	recv_s   = client->recv_s;
+	recv_buf = client->raw_pkt + recv_s;
+	recv_len = sizeof(client->raw_pkt) - recv_s;
+
+	io_uring_prep_recv(sqe, cli_fd, recv_buf, recv_len, MSG_WAITALL);
+	io_uring_sqe_set_data(sqe, client);
+	assert(client->__iou_cqe_vec_type == IOU_CQE_VEC_TCP_RECV);
+
+	ret = io_uring_submit(&thread->ring);
+	if (unlikely(ret < 0)) {
+		pr_err("io_uring_submit(): " PRERF " | " PRWIU " (thread=%u)",
+		       PREAR(-ret), W_IU(client), thread->idx);
+		return ret;
+	}
+
+	return 0;
+}
+
+
+static void close_client_conn(struct srv_thread *thread,
+			      struct client_slot *client)
+{
+	uint16_t cli_idx = client->idx;
+	struct srv_state *state = thread->state;
+
+	pr_notice("Closing connection from " PRWIU " (fd=%d) (thread=%u)...",
+		  W_IU(client), client->cli_fd, thread->idx);
+
+	close(client->cli_fd);
+	reset_client_state(client, cli_idx);
+
+	bt_mutex_lock(&state->cl_stk.lock);
+	tv_stack_push(&state->cl_stk, cli_idx);
+	bt_mutex_unlock(&state->cl_stk.lock);
+}
+
+
+static int handle_client_data(struct srv_thread *thread,
+			      struct io_uring_cqe *cqe,
+			      struct client_slot *client)
+{
+	int ret = 0;
+	size_t recv_s;
+	ssize_t recv_ret = (ssize_t)cqe->res;
+
+	recv_s = client->recv_s;
+	if (unlikely(recv_ret == 0)) {
+		pr_notice("recv() from " PRWIU " returned 0", W_IU(client));
+		goto out_close;
+	}
+
+	if (unlikely(recv_ret < 0)) {
+		pr_notice("recv() from " PRWIU " error | " PRERF, W_IU(client),
+			  PREAR((int)-recv_ret));
+		goto out_close;
+	}
+
+	recv_s += (size_t)recv_ret;
+	pr_debug("recv() %zd bytes from " PRWIU " (recv_s=%zu) (thread=%u)",
+		 recv_ret, W_IU(client), recv_s, thread->idx);
+
+
+	ret = __handle_client_data(thread, client, recv_s);
+	if (unlikely(ret && (ret != -EINPROGRESS)))
+		goto out_close;
+
+	ret = rearm_io_uring_recv_for_client(thread, client);
+	if (unlikely(ret))
+		goto out_close;
+
+	return ret;
+
+out_close:
+	close_client_conn(thread, client);
+	return ret;
+}
+
+
+static int handle_iou_cqe_vec(struct srv_thread *thread,
+			      struct io_uring_cqe *cqe, void *fret)
+{
+	int ret = 0;
+	union uni_iou_cqe_vec *vcqe = fret;
+
+	switch (vcqe->vec_type) {
+	case IOU_CQE_VEC_NOP:
+		pr_notice("Got IOU_CQE_VEC_NOP");
+		break;
+	case IOU_CQE_VEC_TUN_WRITE:
+		pr_notice("Got IOU_CQE_VEC_TUN_WRITE");
+		break;
+	case IOU_CQE_VEC_TCP_SEND:
+		pr_notice("Got IOU_CQE_VEC_TCP_SEND");
+		break;
+	case IOU_CQE_VEC_TCP_RECV:
+		ret = handle_client_data(thread, cqe, fret);
+		break;
+	default:
+		VT_HEXDUMP(vcqe, 2048);
+		panic("Got invalid vcqe on handle_iou_cqe_vec() (%u)",
+		      vcqe->vec_type);
+	}
+
+	return ret;
+}
+
+
 static int handle_event(struct srv_thread *thread, struct io_uring_cqe *cqe)
 {
 	void *fret;
@@ -252,9 +568,6 @@ static int handle_event(struct srv_thread *thread, struct io_uring_cqe *cqe)
 	if (unlikely(!cqe))
 		return 0;
 
-	/*
-	 * `fret` is just to shut the clang up!
-	 */
 	fret = io_uring_cqe_get_data(cqe);
 	type = (uintptr_t)fret;
 	switch (type) {
@@ -268,7 +581,7 @@ static int handle_event(struct srv_thread *thread, struct io_uring_cqe *cqe)
 		ret = handle_event_tcp(thread, cqe);
 		break;
 	default:
-		pr_notice("Unknown event (%zu) %" PRIxPTR, type, type);
+		ret = handle_iou_cqe_vec(thread, cqe, fret);
 		break;
 	}
 
@@ -305,7 +618,7 @@ static int handle_io_uring_cqes(struct srv_thread *thread,
 	int ret = 0;
 	unsigned head, count = 0;
 	struct io_uring *ring = &thread->ring;
-	pr_notice("test");
+
 	io_uring_for_each_cqe(ring, head, cqe) {
 		count++;
 		ret = handle_event(thread, cqe);

@@ -35,10 +35,17 @@ struct cli_iface_cfg {
 };
 
 
+struct cli_auth_cfg {
+	char			username[0x100];
+	char			password[0x100];
+};
+
+
 struct cli_cfg {
 	struct cli_sys_cfg	sys;
 	struct cli_sock_cfg	sock;
 	struct cli_iface_cfg	iface;
+	struct cli_auth_cfg	auth;
 };
 
 

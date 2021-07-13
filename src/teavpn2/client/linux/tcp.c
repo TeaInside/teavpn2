@@ -424,6 +424,237 @@ out_err:
 }
 
 
+static int wait_for_fd_be_readable(int fd, int timeout)
+{
+	int poll_ret;
+	struct pollfd fds[1];
+
+	fds[0].fd = fd;
+	fds[0].events = POLLIN;
+	poll_ret = poll(fds, 1u, timeout);
+
+	if (poll_ret < 0)
+		return -errno;
+
+	if (!poll_ret)
+		return -ETIMEDOUT;
+
+	return 0;
+}
+
+
+static ssize_t do_recv_poll(int fd, void *buf_p, size_t recv_len, int try_count)
+{
+	ssize_t recv_ret;
+	size_t recv_s = 0;
+	char *recv_buf = buf_p;
+	const int poll_timeout = 5000; /* In milliseconds */
+
+do_recv:
+	recv_ret = recv(fd, recv_buf + recv_s, recv_len - recv_s, 0);
+	if (unlikely(recv_ret < 0)) {
+		int err = errno;
+		if (err != EAGAIN)
+			pr_err("recv(): " PRERF, PREAR(err));
+		return (ssize_t)-err;
+	}
+
+	if (unlikely(recv_ret == 0)) {
+		pr_notice("Server has closed its connection");
+		return -ECONNRESET;
+	}
+
+	recv_s += (size_t)recv_ret;
+	pr_debug("recv_poll() rec %zd bytes (recv_s=%zu)", recv_ret, recv_s);
+
+	if (recv_s < recv_len) {
+		int ret;
+		/* 
+		 * We haven't completely received the packet.
+		 *
+		 * Do recv() more, but wait until the fd is
+		 * ready for it.
+		 */
+do_poll:
+		ret = wait_for_fd_be_readable(fd, poll_timeout);
+		if (ret < 0) {
+			if ((ret == -ETIMEDOUT) && (try_count-- > 0))
+				goto do_poll;
+			return ret;
+		}
+		goto do_recv;
+	}
+
+	return (ssize_t)recv_s;
+}
+
+
+static int send_init_handshake(struct cli_state *state)
+{
+	size_t send_len;
+	ssize_t send_ret;
+	struct tcli_pkt *cli_pkt = &state->threads[0].cpkt;
+	struct tcli_pkt_handshake *pkt_hs = &cli_pkt->handshake;
+
+	pkt_hs->need_encryption = false;
+	pkt_hs->has_min = false;
+	pkt_hs->has_max = false;
+	pkt_hs->cur.ver = VERSION;
+	pkt_hs->cur.patch_lvl = PATCHLEVEL;
+	pkt_hs->cur.sub_lvl = SUBLEVEL;
+	sane_strncpy(pkt_hs->cur.extra, EXTRAVERSION, sizeof(pkt_hs->cur.extra));
+
+	cli_pkt->type = TCLI_PKT_HANDSHAKE;
+	cli_pkt->pad_len = 0u;
+	cli_pkt->length = sizeof(*pkt_hs);
+	send_len = TCLI_PKT_MIN_READ + sizeof(*pkt_hs);
+
+	send_ret = send(state->tcp_fd, cli_pkt, send_len, 0);
+	if (unlikely(send_ret < 0)) {
+		int err = errno;
+		pr_err("send(): " PRERF, PREAR(err));
+		return -err;
+	}
+
+	if (unlikely(((size_t)send_ret) != send_len)) {
+		pr_err("send_ret != send_len");
+		pr_err("send_ret = %zd", send_ret);
+		pr_err("send_len = %zu", send_len);
+		pr_err("Cannot initialize handshake with server");
+		return -EAGAIN;
+	}
+
+	pr_notice("Handshake packet sent! (%zd bytes)", send_ret);
+	return 0;
+}
+
+
+
+static int recv_init_handshake(struct cli_state *state)
+{
+	int try_count;
+	size_t recv_len;
+	ssize_t recv_ret;
+	int tcp_fd = state->tcp_fd;
+	struct tsrv_pkt *srv_pkt = &state->threads[0].spkt;
+	struct tsrv_pkt_handshake *pkt_hss = &srv_pkt->handshake;
+
+	try_count = 5;
+	recv_len  = TCLI_PKT_MIN_READ + sizeof(*pkt_hss);
+	recv_ret  = do_recv_poll(tcp_fd, srv_pkt, recv_len, try_count);
+	if (unlikely(recv_ret < 0)) {
+		pr_err("do_recv_poll(): " PRERF, PREAR((int)recv_ret));
+		return (int)-recv_ret;
+	}
+
+	pkt_hss = &srv_pkt->handshake;
+	/* For C string print safety. */
+	pkt_hss->cur.extra[sizeof(pkt_hss->cur.extra) - 1] = '\0';
+	pr_notice("Got protocol handshake from the server"
+		  " (server version: TeaVPN2-v%hhu.%hhu.%hhu%s)",
+		  pkt_hss->cur.ver,
+		  pkt_hss->cur.patch_lvl,
+		  pkt_hss->cur.sub_lvl,
+		  pkt_hss->cur.extra);
+
+	return 0;
+}
+
+
+static int send_auth(struct cli_state *state)
+{
+	size_t send_len;
+	ssize_t send_ret;
+	struct cli_cfg *cfg = state->cfg;
+	struct tcli_pkt *cli_pkt = &state->threads[0].cpkt;
+	struct tcli_pkt_auth *auth = &cli_pkt->auth;
+
+	auth->ulen = (uint8_t)strlen(cfg->auth.username);
+	auth->plen = (uint8_t)strlen(cfg->auth.password);
+	sane_strncpy(auth->username, cfg->auth.username, sizeof(auth->username));
+	sane_strncpy(auth->password, cfg->auth.password, sizeof(auth->password));
+
+	cli_pkt->length  = sizeof(*auth);
+	cli_pkt->pad_len = 0u;
+	cli_pkt->type    = TCLI_PKT_AUTH;
+	send_len         = TCLI_PKT_MIN_READ + sizeof(*auth);
+
+	send_ret = send(state->tcp_fd, cli_pkt, send_len, 0);
+	if (unlikely(send_ret < 0))
+		return -errno;
+
+	if (unlikely(((size_t)send_ret) != send_len)) {
+		pr_err("send_ret != send_len");
+		pr_err("send_ret = %zd", send_ret);
+		pr_err("send_len = %zu", send_len);
+		pr_err("Cannot send auth packet to server");
+		return -EAGAIN;
+	}
+
+	pr_notice("Auth packet sent! (%zd bytes)", send_ret);
+	return 0;
+}
+
+
+static int recv_auth(struct cli_state *state)
+{
+}
+
+
+static int do_handshake(struct cli_state *state)
+{
+	int ret;
+	uint8_t try_count = 0;
+	const uint8_t max_try_count = 5;
+
+	pr_notice("Initializing protocol handshake...");
+
+send_handshake:
+	ret = send_init_handshake(state);
+	if (unlikely(ret))
+		return ret;
+
+	pr_notice("Waiting for handshake response...");
+	ret = wait_for_fd_be_readable(state->tcp_fd, 5000);
+	if (ret < 0) {
+		if ((ret == -ETIMEDOUT) && (++try_count < max_try_count)) {
+			pr_notice("Resending handshake packet...");
+			goto send_handshake;
+		}
+		return ret;
+	}
+
+	return recv_init_handshake(state);
+}
+
+
+static int do_auth(struct cli_state *state)
+{
+	int ret;
+	uint8_t try_count = 0;
+	const uint8_t max_try_count = 5;
+
+	pr_notice("Authenticating...");
+
+send_auth:
+	ret = send_auth(state);
+	if (unlikely(ret))
+		return ret;
+
+	pr_notice("Waiting for auth response...");
+	ret = wait_for_fd_be_readable(state->tcp_fd, 5000);
+	if (ret < 0) {
+		if ((ret == -ETIMEDOUT) && (++try_count < max_try_count)) {
+			pr_notice("Resending auth packet...");
+			goto send_auth;
+		}
+		return ret;
+	}
+
+	return recv_auth(state);
+}
+
+
 static int run_event_loop(struct cli_state *state)
 {
 	switch (state->event_loop) {
@@ -591,6 +822,18 @@ int teavpn2_client_tcp(struct cli_cfg *cfg)
 	ret = init_tcp_socket(state);
 	if (unlikely(ret))
 		goto out;
+
+	ret = do_handshake(state);
+	if (unlikely(ret)) {
+		pr_err("do_handshake(): " PRERF, PREAR(-ret));
+		goto out;
+	}
+
+	ret = do_auth(state);
+	if (unlikely(ret)) {
+		pr_err("do_auth(): " PRERF, PREAR(-ret));
+		goto out;
+	}
 
 	ret = run_event_loop(state);
 out:

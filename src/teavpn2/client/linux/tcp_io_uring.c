@@ -7,6 +7,7 @@
  *  Copyright (C) 2021  Ammar Faizi
  */
 
+#include <poll.h>
 #include "./tcp_common.h"
 
 
@@ -86,7 +87,6 @@ static int handle_io_uring_cqes(struct cli_thread *thread,
 	int ret = 0;
 	unsigned head, count = 0;
 	struct io_uring *ring = &thread->ring;
-	pr_notice("test");
 	io_uring_for_each_cqe(ring, head, cqe) {
 		count++;
 		ret = handle_event(thread, cqe);
@@ -185,7 +185,7 @@ static int init_threads(struct cli_state *state)
 		memset(&ring_params, 0, sizeof(ring_params));
 		ring_params.flags = ring_flags;
 
-		ret = io_uring_queue_init_params(IOUCL_VEC_NUM, ring, &ring_params);
+		ret = io_uring_queue_init_params(1u << 20u, ring, &ring_params);
 		if (unlikely(ret)) {
 			pr_err("io_uring_queue_init_params(): " PRERF,
 			       PREAR(-ret));
@@ -245,8 +245,8 @@ static int init_threads(struct cli_state *state)
 static int run_main_thread(struct cli_state *state)
 {
 	int ret;
+	void *fret;
 	struct cli_thread *thread;
-
 
 	thread = &state->threads[0];
 	ret = io_uring_submit(&thread->ring);
@@ -255,16 +255,8 @@ static int run_main_thread(struct cli_state *state)
 		goto out;
 	}
 
-	/*
-	 * Run the main thread!
-	 *
-	 * `fret` is just to shut the clang up!
-	 */
-	{
-		void *fret;
-		fret = run_thread(thread);
-		ret  = (int)((intptr_t)fret);
-	}
+	fret = run_thread(thread);
+	ret  = (int)((intptr_t)fret);
 out:
 	return ret;
 }

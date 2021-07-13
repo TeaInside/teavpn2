@@ -56,6 +56,55 @@ static inline int32_t tv_stack_pop(struct tv_stack *stack)
 }
 
 
+static inline void __assert_tv_stack(struct tv_stack *stack, uint16_t capacity)
+{
+#ifndef NDEBUG
+	int ret;
+	size_t i;
+
+	/*
+	 * Push stack.
+	 */
+	for (i = 0; i < capacity; i++) {
+		ret = tv_stack_push(stack, (uint16_t)i);
+		__asm__ volatile("":"+m"(stack)::"memory");
+		BT_ASSERT((uint16_t)ret == (uint16_t)i);
+	}
+
+	/*
+	 * Push full stack.
+	 */
+	for (i = 0; i < 100; i++) {
+		ret = tv_stack_push(stack, (uint16_t)i);
+		__asm__ volatile("":"+m"(stack)::"memory");
+		BT_ASSERT(ret == -1);
+	}
+
+	/*
+	 * Pop stack.
+	 */
+	for (i = capacity; i--;) {
+		ret = tv_stack_pop(stack);
+		__asm__ volatile("":"+m"(stack)::"memory");
+		BT_ASSERT((uint16_t)ret == (uint16_t)i);
+	}
+
+
+	/*
+	 * Pop empty stack.
+	 */
+	for (i = 0; i < 100; i++) {
+		ret = tv_stack_pop(stack);
+		__asm__ volatile("":"+m"(stack)::"memory");
+		BT_ASSERT(ret == -1);
+	}
+#else
+	(void)stack;
+	(void)capacity;
+#endif
+}
+
+
 static inline int tv_stack_init(struct tv_stack *stack, uint16_t capacity)
 {
 	int ret;
@@ -76,51 +125,7 @@ static inline int tv_stack_init(struct tv_stack *stack, uint16_t capacity)
 	stack->max_sp = capacity;
 	stack->arr = arr;
 
-#ifndef NDEBUG
-/*
- * Test only.
- */
-{
-	size_t i;
-
-	/*
-	 * Push stack.
-	 */
-	for (i = 0; i < capacity; i++) {
-		ret = tv_stack_push(stack, (uint16_t)i);
-		__asm__ volatile("":"+r"(stack)::"memory");
-		BT_ASSERT((uint16_t)ret == (uint16_t)i);
-	}
-
-	/*
-	 * Push full stack.
-	 */
-	for (i = 0; i < 100; i++) {
-		ret = tv_stack_push(stack, (uint16_t)i);
-		__asm__ volatile("":"+r"(stack)::"memory");
-		BT_ASSERT(ret == -1);
-	}
-
-	/*
-	 * Pop stack.
-	 */
-	for (i = capacity; i--;) {
-		ret = tv_stack_pop(stack);
-		__asm__ volatile("":"+r"(stack)::"memory");
-		BT_ASSERT((uint16_t)ret == (uint16_t)i);
-	}
-
-
-	/*
-	 * Pop empty stack.
-	 */
-	for (i = 0; i < 100; i++) {
-		ret = tv_stack_pop(stack);
-		__asm__ volatile("":"+r"(stack)::"memory");
-		BT_ASSERT(ret == -1);
-	}
-}
-#endif
+	__assert_tv_stack(stack, capacity);
 
 	while (capacity--)
 		tv_stack_push(stack, (uint16_t)capacity);

@@ -20,14 +20,16 @@
 
 #define TCLI_PKT_NOP		(1u << 0u)
 #define TCLI_PKT_HANDSHAKE	(1u << 1u)
-#define TCLI_PKT_IFACE_DATA	(1u << 2u)
-#define TCLI_PKT_REQSYNC	(1u << 3u)
-#define TCLI_PKT_CLOSE		(1u << 4u)
+#define TCLI_PKT_AUTH		(1u << 2u)
+#define TCLI_PKT_IFACE_DATA	(1u << 3u)
+#define TCLI_PKT_REQSYNC	(1u << 4u)
+#define TCLI_PKT_CLOSE		(1u << 5u)
 
 #define TCLI_PKT_ALL_BITS 		\
 (					\
 	TCLI_PKT_NOP		|	\
 	TCLI_PKT_HANDSHAKE	|	\
+	TCLI_PKT_AUTH		|	\
 	TCLI_PKT_IFACE_DATA	|	\
 	TCLI_PKT_REQSYNC	|	\
 	TCLI_PKT_CLOSE			\
@@ -73,6 +75,27 @@ static_assert(sizeof(struct tcli_pkt_handshake) == 8 + 32 * 3,
 	      "Bad sizeof(struct tcli_pkt_handshake)");
 
 
+struct tcli_pkt_auth {
+	uint8_t						ulen;
+	uint8_t						plen;
+	char						username[0x100];
+	char						password[0x100];
+};
+
+
+static_assert(offsetof(struct tcli_pkt_auth, ulen) == 0,
+	      "Bad offsetof(struct tcli_pkt_auth, ulen)");
+
+static_assert(offsetof(struct tcli_pkt_auth, plen) == 1,
+	      "Bad offsetof(struct tcli_pkt_auth, plen)");
+
+static_assert(offsetof(struct tcli_pkt_auth, username) == 2,
+	      "Bad offsetof(struct tcli_pkt_auth, username)");
+
+static_assert(offsetof(struct tcli_pkt_auth, password) == 2 + 0x100,
+	      "Bad offsetof(struct tcli_pkt_auth, password)");
+
+
 struct tcli_pkt_iface_data {
 	struct iphdr					hdr;
 	char						data[TUN_READ_SIZE];
@@ -97,6 +120,7 @@ struct tcli_pkt {
 	union {
 		union {
 			struct tcli_pkt_handshake	handshake;
+			struct tcli_pkt_auth		auth;
 			struct tcli_pkt_iface_data	iface_data;
 		};
 		char					raw_buf[0x2000u];
