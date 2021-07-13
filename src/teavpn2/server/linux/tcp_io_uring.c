@@ -719,6 +719,29 @@ out_close:
 }
 
 
+static int rearm_io_uring_read_tun(struct srv_thread *thread)
+{
+	int ret;
+	struct io_uring_sqe *sqe;
+	void *tun_buf = &thread->spkt.iface_data;
+	unsigned int tun_buf_size = sizeof(thread->spkt.iface_data);
+
+	sqe = io_uring_get_sqe(&thread->ring);
+	if (unlikely(!sqe))
+		panic("Run out of SQE when reading from TUN fd (thread=%u)",
+		      thread->idx);
+
+	io_uring_prep_read(sqe, thread->tun_fd, tun_buf, tun_buf_size, 0);
+	io_uring_sqe_set_data(sqe, UPTR(IOU_CQE_DRC_TUN_READ));
+	ret = io_uring_submit(&thread->ring);
+	if (unlikely(ret < 0))
+		panic("io_uring_submit() when reading from TUN fd: " PRERF
+		      " (thread=%u)", PREAR(-ret), thread->idx);
+
+	return 0;
+}
+
+
 static int handle_tun_read(struct srv_thread *thread, struct io_uring_cqe *cqe)
 {
 	int ret;
@@ -760,6 +783,7 @@ static int handle_tun_read(struct srv_thread *thread, struct io_uring_cqe *cqe)
 			return ret;
 	}
 	pr_debug("TUN read %d bytes (thread=%u)", cqe->res, thread->idx);
+	rearm_io_uring_read_tun(thread);
 	return 0;
 }
 
