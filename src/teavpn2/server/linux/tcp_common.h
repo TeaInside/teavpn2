@@ -113,6 +113,7 @@ struct client_slot {
 
 	uint16_t				err_count;
 	struct teavpn2_version			ver;
+	struct bt_mutex				lock;
 
 	/* `recv_s` is the valid bytes in the below union buffer. */
 	size_t					recv_s;

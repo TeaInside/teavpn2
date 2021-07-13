@@ -107,6 +107,7 @@ static int init_state_tun_fds(struct srv_state *state)
 
 static int init_state_clients_array(struct srv_state *state)
 {
+	int ret = 0;
 	struct client_slot *clients;
 	size_t i, nn = state->cfg->sock.max_conn;
 
@@ -114,11 +115,19 @@ static int init_state_clients_array(struct srv_state *state)
 	if (unlikely(!clients))
 		return -ENOMEM;
 
-	for (i = 0; i < nn; i++)
+	for (i = 0; i < nn; i++) {
 		reset_client_state(&clients[i], i);
+		ret = bt_mutex_init(&clients[i].lock, NULL);
+		if (unlikely(ret)) {
+			pr_err("bt_mutex_init(&clients[i].lock, NULL)" PRERF,
+			       PREAR(ret));
+			ret = -ret;
+			/* Don't free, let the caller do it! */
+		}
+	}
 
 	state->clients = clients;
-	return 0;
+	return ret;
 }
 
 
@@ -545,10 +554,21 @@ static void close_fds(struct srv_state *state)
 }
 
 
+static void destroy_clients(struct client_slot *clients, size_t num)
+{
+	if (!clients)
+		return;
+
+	while (num--)
+		bt_mutex_destroy(&clients[num].lock);
+}
+
+
 static void destroy_state(struct srv_state *state)
 {
 	close_fds(state);
 	bt_mutex_destroy(&state->cl_stk.lock);
+	destroy_clients(state->clients, state->cfg->sock.max_conn);
 	al64_free(state->cl_stk.arr);
 	al64_free(state->tun_fds);
 	al64_free(state->threads);

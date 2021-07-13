@@ -336,8 +336,11 @@ static int handle_clpkt_handshake(struct srv_thread *thread,
 	struct tcli_pkt *cli_pkt = &client->cpkt;
 	struct tcli_pkt_handshake *pkt_hsc = &cli_pkt->handshake;
 
-	if (client->is_authenticated)
-		return 0;
+	bt_mutex_lock(&client->lock);
+	if (unlikely(client->is_authenticated)) {
+		ret = 0;
+		goto out;
+	}
 
 	if (fdata_len != sizeof(*pkt_hsc)) {
 		pr_notice("Got mismatch handshake length from "  PRWIU
@@ -345,7 +348,8 @@ static int handle_clpkt_handshake(struct srv_thread *thread,
 			  " (thread=%u)",
 			  W_IU(client), sizeof(*pkt_hsc), fdata_len,
 			  thread->idx);
-		return -EBADMSG;
+		ret = -EBADMSG;
+		goto out;
 	}
 
 	/* For C string print safety. */
@@ -360,6 +364,8 @@ static int handle_clpkt_handshake(struct srv_thread *thread,
 		  thread->idx);
 
 	ret = send_handshake_response(thread, client);
+out:
+	bt_mutex_unlock(&client->lock);
 	return ret;
 }
 
@@ -375,24 +381,41 @@ static int handle_clpkt_auth(struct srv_thread *thread,
 	struct tcli_pkt *cli_pkt = &client->cpkt;
 	struct tcli_pkt_auth *auth = &cli_pkt->auth;
 
+	bt_mutex_lock(&client->lock);
+	if (unlikely(client->is_authenticated)) {
+		ret = 0;
+		goto out;
+	}
+
 	if (unlikely(fdata_len != sizeof(*auth))) {
 		pr_notice("Invalid auth packet length from " PRWIU
 			  " (expected = %zu; actual = %zu) (thread=%u)",
 			  W_IU(client), sizeof(*auth), fdata_len, thread->idx);
-		return -EBADMSG;
+		ret = -EBADMSG;
+		goto out;
 	}
 
 	cqev = get_iou_cqe_vec(thread);
-	if (unlikely(cqev))
-		return -EAGAIN;
+	if (unlikely(!cqev)) {
+		pr_notice("Running out of cqes when handling auth from " PRWIU
+			  " (thread=%u)", W_IU(client), thread->idx);
+		ret = -EAGAIN;
+		goto out;
+	}
 
 	srv_pkt  = &cqev->spkt;
 	auth_res = &srv_pkt->auth_res;
-	if (!teavpn2_server_auth(auth, auth_res)) {
-		pr_notice("Wrong username or password from " PRWIU
-			  " (thread=%u)", W_IU(client), thread->idx);
+	memset(auth_res, 0, sizeof(*auth_res));
+	if (!teavpn2_server_auth(thread->state->cfg, auth, auth_res)) {
+		pr_notice("Authentication failed from " PRWIU " (thread=%u)",
+			  W_IU(client), thread->idx);
 		ret = -EACCES;
 		auth_res->is_ok = 0;
+	} else {
+		pr_notice("Authentication success from " PRWIU " (thread=%u)",
+			  W_IU(client), thread->idx);
+		auth_res->is_ok  = 1;
+		client->is_authenticated = true;
 	}
 
 	srv_pkt->type    = TSRV_PKT_IFACE_DATA;
@@ -400,14 +423,19 @@ static int handle_clpkt_auth(struct srv_thread *thread,
 	srv_pkt->length  = sizeof(*auth_res);
 	cqev->vec_type   = IOU_CQE_VEC_NOP;
 	send_ret = do_iou_send(thread, client->cli_fd, cqev, 0);
-	if (ret)
+	if (ret) {
 		/*
 		 * If the auth fails, we don't care about the do_iou_send()
 		 * return value.
 		 */
-		return ret;
-
-	return send_ret;
+		ret = 0;
+		goto out;
+	} else {
+		ret = send_ret;
+	}
+out:
+	bt_mutex_unlock(&client->lock);
+	return ret;
 }
 
 
@@ -585,8 +613,10 @@ static int handle_client_data(struct srv_thread *thread,
 
 
 	ret = __handle_client_data(thread, client, recv_s);
-	if (unlikely(ret && (ret != -EINPROGRESS)))
+	if (unlikely(ret && (ret != -EINPROGRESS))) {
+		pr_debug("____handle_client_data returned " PRERF, PREAR(-ret));
 		goto out_close;
+	}
 
 	ret = rearm_io_uring_recv_for_client(thread, client);
 	if (unlikely(ret))

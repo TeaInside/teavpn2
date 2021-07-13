@@ -11,8 +11,11 @@
 #define TEAVPN2__SERVER__AUTH_H
 
 #include <teavpn2/tcp_pkt.h>
+#include <teavpn2/server/common.h>
 
-extern bool teavpn2_server_auth(const struct tcli_pkt_auth *auth,
+
+extern bool teavpn2_server_auth(const struct srv_cfg *cfg,
+				struct tcli_pkt_auth *auth,
 				struct tsrv_pkt_auth_res *auth_res);
 
 
