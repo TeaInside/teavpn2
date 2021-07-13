@@ -223,6 +223,9 @@ struct srv_state {
 	/* Indicate event loop needs to be stopped or not. */
 	bool					stop;
 
+	/* Do we need to delete virtual network interface ip config? */
+	bool					need_ifd;
+
 	struct sigaction			sa;
 };
 

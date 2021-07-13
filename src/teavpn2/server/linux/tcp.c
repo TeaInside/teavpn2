@@ -164,6 +164,7 @@ static int init_state(struct srv_state *state)
 	state->tun_fds     = NULL;
 	state->clients     = NULL;
 	state->stop        = false;
+	state->need_ifd    = false;
 	atomic_store_explicit(&state->tr_assign, 0, memory_order_relaxed);
 	atomic_store_explicit(&state->online_tr, 0, memory_order_relaxed);
 
@@ -222,6 +223,7 @@ static int init_iface(struct srv_state *state)
 		tun_fds[i] = tmp_fd;
 	}
 
+	state->need_ifd = true;
 	if (unlikely(!teavpn_iface_up(iff))) {
 		pr_err("Cannot bring virtual network interface up");
 		return -ENETDOWN;
@@ -504,12 +506,18 @@ do_kill:
 }
 
 
-static void close_tun_fds(int *tun_fds, size_t nn)
+static void close_tun_fds(struct srv_state *state, size_t nn)
 {
 	size_t i;
+	int *tun_fds = state->tun_fds;
 
 	if (!tun_fds)
 		return;
+
+	if (state->need_ifd) {
+		pr_notice("Removing virtual network interface configuration...");
+		teavpn_iface_down(&state->cfg->iface);
+	}
 
 	for (i = 0; i < nn; i++) {
 		if (tun_fds[i] == -1)
@@ -545,7 +553,7 @@ static void close_fds(struct srv_state *state)
 {
 	int tcp_fd = state->tcp_fd;
 
-	close_tun_fds(state->tun_fds, state->cfg->sys.thread);
+	close_tun_fds(state, state->cfg->sys.thread);
 	if (tcp_fd != -1) {
 		prl_notice(3, "Closing state->tcp_fd (%d)...", tcp_fd);
 		close(tcp_fd);
