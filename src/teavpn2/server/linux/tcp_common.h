@@ -63,10 +63,10 @@
 #  define IOU_CQE_DRC_TCP_ACCEPT	(1U << 2u)
 
 /* Vector pending CQE */
-#  define IOU_CQE_VEC_NOP		(1u << 0u)
-#  define IOU_CQE_VEC_TUN_WRITE		(1u << 1u)
-#  define IOU_CQE_VEC_TCP_SEND		(1u << 2u)
-#  define IOU_CQE_VEC_TCP_RECV		(1u << 3u)
+#  define IOU_CQE_VEC_NOP		(1u << 3u)
+#  define IOU_CQE_VEC_TUN_WRITE		(1u << 4u)
+#  define IOU_CQE_VEC_TCP_SEND		(1u << 5u)
+#  define IOU_CQE_VEC_TCP_RECV		(1u << 6u)
 #endif /* #if USE_IO_URING */
 
 /* Macros for printing  */

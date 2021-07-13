@@ -59,12 +59,13 @@
 /* Direct CQE (use the value as user_data directly (no deref)). */
 #  define IOU_CQE_DRC_NOP		(1u << 0u)
 #  define IOU_CQE_DRC_TUN_READ		(1u << 1u)
+#  define IOU_CQE_DRC_TUN_RECV		(1u << 2u)
 
 /* Vector pending CQE */
-#  define IOU_CQE_VEC_NOP		(1u << 0u)
-#  define IOU_CQE_VEC_TUN_WRITE		(1u << 1u)
-#  define IOU_CQE_VEC_TCP_SEND		(1u << 2u)
-#  define IOU_CQE_VEC_TCP_RECV		(1u << 3u)
+#  define IOU_CQE_VEC_NOP		(1u << 3u)
+#  define IOU_CQE_VEC_TUN_WRITE		(1u << 4u)
+#  define IOU_CQE_VEC_TCP_SEND		(1u << 5u)
+#  define IOU_CQE_VEC_TCP_RECV		(1u << 6u)
 #endif /* #if USE_IO_URING */
 
 #define PKT_SIZE		(sizeof(struct tsrv_pkt))
@@ -168,6 +169,14 @@ struct cli_state {
 	bool					has_iff;
 
 	struct sigaction			sa;
+
+	/* `recv_s` is the valid bytes in the below union buffer. */
+	size_t					recv_s;
+	union {
+		struct tsrv_pkt			spkt;
+		struct tcli_pkt			cpkt;
+		char				raw_pkt[PKT_SIZE];
+	} ____cacheline_aligned_in_smp;
 };
 
 

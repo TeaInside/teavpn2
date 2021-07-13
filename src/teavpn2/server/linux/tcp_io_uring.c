@@ -468,6 +468,7 @@ static int handle_clpkt_auth(struct srv_thread *thread,
 	srv_pkt->pad_len = 0u;
 	srv_pkt->length  = sizeof(*auth_res);
 	cqev->vec_type   = IOU_CQE_VEC_NOP;
+	cqev->len        = TSRV_PKT_MIN_READ + sizeof(*auth_res);
 	send_ret = do_iou_send(thread, client->cli_fd, cqev, 0);
 	if (ret) {
 		/*
@@ -494,7 +495,7 @@ static int handle_clpkt_iface_data(struct srv_thread *thread,
 				   struct client_slot *client, size_t fdata_len)
 {
 	struct iou_cqe_vec *cqev;
-	struct tcli_pkt *cli_pkt = &thread->cpkt;
+	struct tcli_pkt *cli_pkt = &client->cpkt;
 
 	cqev = get_iou_cqe_vec(thread);
 	if (unlikely(!cqev)) {
@@ -562,6 +563,7 @@ check_again:
 
 	fdata_len = cli_pkt->length;
 	cdata_len = recv_s - TCLI_PKT_MIN_READ;
+	pr_debug("Got fdata_len = %zu", fdata_len);
 	if (unlikely(cdata_len < fdata_len)) {
 		/*
 		 * We haven't completely received the data.
@@ -570,6 +572,16 @@ check_again:
 		 *
 		 * Bail out!
 		 */
+		goto out;
+	}
+
+
+	if (unlikely(fdata_len > sizeof(*cli_pkt))) {
+		/*
+		 * Packet is too long. This is wrong!
+		 */
+		ret = -EBADMSG;
+		recv_s = 0;
 		goto out;
 	}
 
@@ -588,11 +600,13 @@ check_again:
 		 * Must memmove() to the front before
 		 * we run out of buffer!
 		 */
-		char *head  = (char *)cli_pkt;
-		char *tail  = head + recv_s;
-		recv_s     -= TCLI_PKT_MIN_READ + fdata_len;
+		size_t  crln  = TCLI_PKT_MIN_READ + fdata_len;
+		char   *head  = (char *)cli_pkt;
+		char   *tail  = head + crln;
+		recv_s       -= crln;
 		memmove(head, tail, recv_s);
-		pr_debug("Got extra bytes, memmove() (recv_s = %zu)", recv_s);
+		pr_debug("Got extra bytes, memmove() (recv_s=%zu) "
+			 "(fdata_len=%zu)", recv_s, fdata_len);
 		goto check_again;
 	}
 
@@ -683,7 +697,7 @@ static int handle_client_data(struct srv_thread *thread,
 	}
 
 	recv_s += (size_t)recv_ret;
-	pr_debug("recv() %zd bytes from " PRWIU " (recv_s=%zu) (thread=%u)",
+	pr_debug("recv() %*zd bytes from " PRWIU " (recv_s=%zu) (thread=%u)", 5,
 		 recv_ret, W_IU(client), recv_s, thread->idx);
 
 
@@ -705,6 +719,50 @@ out_close:
 }
 
 
+static int handle_tun_read(struct srv_thread *thread, struct io_uring_cqe *cqe)
+{
+	int ret;
+	size_t i;
+	size_t num_of_clients;
+	ssize_t read_ret = (ssize_t)cqe->res;
+	struct tcli_pkt *cli_pkt, *cli_pkt0 = &thread->cpkt;
+	struct client_slot *clients = thread->state->clients;
+
+	if (unlikely(read_ret < 0)) {
+		pr_err("read() from tun_fd " PRERF, PREAR((int)-read_ret));
+		return (int)read_ret;
+	}
+
+	num_of_clients = thread->state->cfg->sock.max_conn;
+	for (i = 0; i < num_of_clients; i++) {
+		struct iou_cqe_vec *cqev;
+		struct client_slot *client = &clients[i];
+
+		if (!client->is_authenticated)
+			continue;
+
+		cqev = get_iou_cqe_vec(thread);
+		if (unlikely(!cqev))
+			return -EAGAIN;
+
+		cli_pkt          = &cqev->cpkt;
+		cli_pkt->type    = TCLI_PKT_IFACE_DATA;
+		cli_pkt->pad_len = 0u;
+		cli_pkt->length  = (uint16_t)((size_t)read_ret);
+		cqev->vec_type   = IOU_CQE_VEC_TCP_SEND;
+		cqev->len        = TCLI_PKT_MIN_READ + (size_t)read_ret;
+		memcpy(&cli_pkt->iface_data, &cli_pkt0->iface_data,
+		       (size_t)read_ret);
+
+		ret = do_iou_send(thread, client->cli_fd, cqev, 0);
+		if (unlikely(ret < 0))
+			return ret;
+	}
+	pr_debug("TUN read %d bytes (thread=%u)", cqe->res, thread->idx);
+	return 0;
+}
+
+
 static int handle_iou_cqe_vec(struct srv_thread *thread,
 			      struct io_uring_cqe *cqe, void *fret)
 {
@@ -713,15 +771,15 @@ static int handle_iou_cqe_vec(struct srv_thread *thread,
 
 	switch (vcqe->vec_type) {
 	case IOU_CQE_VEC_NOP:
-		pr_notice("Got IOU_CQE_VEC_NOP");
+		pr_notice("Got IOU_CQE_VEC_NOP %d", cqe->res);
 		put_iou_cqe_vec(thread, fret);
 		break;
 	case IOU_CQE_VEC_TUN_WRITE:
-		pr_notice("Got IOU_CQE_VEC_TUN_WRITE");
+		pr_notice("Got IOU_CQE_VEC_TUN_WRITE %d", cqe->res);
 		put_iou_cqe_vec(thread, fret);
 		break;
 	case IOU_CQE_VEC_TCP_SEND:
-		pr_notice("Got IOU_CQE_VEC_TCP_SEND");
+		pr_notice("Got IOU_CQE_VEC_TCP_SEND %d", cqe->res);
 		put_iou_cqe_vec(thread, fret);
 		break;
 	case IOU_CQE_VEC_TCP_RECV:
@@ -885,10 +943,7 @@ static int init_threads(struct srv_state *state)
 	struct io_uring_params ring_params;
 	size_t i, nn = state->cfg->sys.thread;
 
-	ring_flags = (
-		IORING_SETUP_CLAMP | IORING_SETUP_SQPOLL
-	);
-
+	ring_flags = IORING_SETUP_CLAMP; // may add SQPOLL later.
 
 	if (ring_flags & IORING_SETUP_SQPOLL) {
 		/*
@@ -951,7 +1006,7 @@ static int init_threads(struct srv_state *state)
 				  i, core_num);
 		}
 
-		ret = io_uring_queue_init_params(4096, ring, &ring_params);
+		ret = io_uring_queue_init_params(1u << 16u, ring, &ring_params);
 		if (unlikely(ret)) {
 			pr_err("io_uring_queue_init_params(): " PRERF,
 			       PREAR(-ret));
