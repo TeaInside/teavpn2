@@ -7,6 +7,10 @@
  *  Copyright (C) 2021  Ammar Faizi
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#include <sched.h>
 #include "./tcp_common.h"
 
 
@@ -59,8 +63,25 @@ static struct iou_cqe_vec *get_iou_cqe_vec(struct srv_thread *thread)
 		return NULL;
 
 	cqev = &thread->cqe_vec[idx];
+	cqev->idx = (uint16_t)idx;
 	cqev->vec_type = IOU_CQE_VEC_NOP;
 	return cqev;
+}
+
+
+static void put_iou_cqe_vec(struct srv_thread *thread, struct iou_cqe_vec *cqev)
+{
+	int32_t idx;
+	struct tv_stack	*ioucl_stk = &thread->ioucl_stk;
+
+	bt_mutex_lock(&ioucl_stk->lock);
+	idx = tv_stack_push(ioucl_stk, cqev->idx);
+	bt_mutex_unlock(&ioucl_stk->lock);
+	if (likely(idx != -1))
+		return;
+
+	panic("Wrong logic: Attempted to push to ioucl_stk when it is full "
+	      "(thread=%u)", thread->idx);
 }
 
 
@@ -639,15 +660,19 @@ static int handle_iou_cqe_vec(struct srv_thread *thread,
 	switch (vcqe->vec_type) {
 	case IOU_CQE_VEC_NOP:
 		pr_notice("Got IOU_CQE_VEC_NOP");
+		put_iou_cqe_vec(thread, fret);
 		break;
 	case IOU_CQE_VEC_TUN_WRITE:
 		pr_notice("Got IOU_CQE_VEC_TUN_WRITE");
+		put_iou_cqe_vec(thread, fret);
 		break;
 	case IOU_CQE_VEC_TCP_SEND:
 		pr_notice("Got IOU_CQE_VEC_TCP_SEND");
+		put_iou_cqe_vec(thread, fret);
 		break;
 	case IOU_CQE_VEC_TCP_RECV:
 		ret = handle_client_data(thread, cqe, fret);
+		/* Don't put, it is not iou_cqe_vec! */
 		break;
 	default:
 		VT_HEXDUMP(vcqe, 2048);
@@ -783,21 +808,61 @@ __no_inline static void *run_thread(void *thread_p)
 }
 
 
+static __u32 cpu_bind_ydyd(cpu_set_t *cpus, unsigned *bc)
+{
+	int i, c = CPU_COUNT(cpus);
+
+	while (1) {
+		i = (int)((*bc)++);
+		i = i % c;
+		if (CPU_ISSET(i, cpus))
+			return (__u32)i;
+	}
+}
+
+
 static int init_threads(struct srv_state *state)
 {
 	int ret = 0;
-	struct srv_thread *threads;
-	size_t i, nn = state->cfg->sys.thread;
-	struct io_uring_params ring_params;
+	unsigned bc = 0;
 	unsigned ring_flags;
-
+	struct srv_thread *threads;
+	cpu_set_t __maybe_unused cpus;
+	struct io_uring_params ring_params;
+	size_t i, nn = state->cfg->sys.thread;
 
 	ring_flags = (
-		IORING_SETUP_CLAMP | IORING_SETUP_SQPOLL | IORING_SETUP_SQ_AFF
+		IORING_SETUP_CLAMP | IORING_SETUP_SQPOLL
 	);
 
-	threads = state->threads;
 
+	if (ring_flags & IORING_SETUP_SQPOLL) {
+		/*
+		 * Can we bind our io_uring context to SMP core?
+		 */
+		CPU_ZERO(&cpus);
+		ret = sched_getaffinity(0, sizeof(cpus), &cpus);
+		if (unlikely(ret < 0)) {
+			ret = errno;
+			pr_err("sched_getaffinity() " PRERF, PREAR(ret));
+			ret = 0;
+		} else if (CPU_COUNT(&cpus) < 2) {
+			/*
+			 * Bind the io_uring context to specific core to
+			 * reduce CPU cache pollution and CPU migration!
+			 */
+			ring_flags |= IORING_SETUP_SQ_AFF;
+			pr_notice("We have %d available CPU(s)", CPU_COUNT(&cpus));
+		} else {
+			/*
+			 * We only have 1 CPU, don't use SQPOLL!
+			 */
+			(void)1;
+		}
+	}
+	
+
+	threads = state->threads;
 	for (i = 0; i < nn; i++) {
 		struct io_uring_sqe *sqe;
 		int tun_fd = state->tun_fds[i];
@@ -821,9 +886,18 @@ static int init_threads(struct srv_state *state)
 		pr_notice("Initializing io_uring context... (thread=%zu)", i);
 		memset(&ring_params, 0, sizeof(ring_params));
 		ring_params.flags = ring_flags;
-		ring_params.sq_thread_cpu = (__u32)i;
 
-		ret = io_uring_queue_init_params(1u << 20u, ring, &ring_params);
+		if (ring_flags & IORING_SETUP_SQPOLL)
+			ring_params.sq_thread_idle = 1000;
+
+		if (ring_flags & (IORING_SETUP_SQPOLL | IORING_SETUP_SQ_AFF)) {
+			__u32 core_num = cpu_bind_ydyd(&cpus, &bc);
+			ring_params.sq_thread_cpu = core_num;
+			pr_notice("Binding io_uring SQThread %zu to CPU %u...",
+				  i, core_num);
+		}
+
+		ret = io_uring_queue_init_params(4096, ring, &ring_params);
 		if (unlikely(ret)) {
 			pr_err("io_uring_queue_init_params(): " PRERF,
 			       PREAR(-ret));

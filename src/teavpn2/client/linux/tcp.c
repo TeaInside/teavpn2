@@ -583,6 +583,8 @@ static int send_auth(struct cli_state *state)
 	if (unlikely(send_ret < 0))
 		return -errno;
 
+	memset(auth->username, 0, sizeof(auth->username));
+	memset(auth->password, 0, sizeof(auth->password));
 	if (unlikely(((size_t)send_ret) != send_len)) {
 		pr_err("send_ret != send_len");
 		pr_err("send_ret = %zd", send_ret);
@@ -598,6 +600,39 @@ static int send_auth(struct cli_state *state)
 
 static int recv_auth(struct cli_state *state)
 {
+	int try_count;
+	size_t recv_len;
+	ssize_t recv_ret;
+	struct if_info *iff;
+	int tcp_fd = state->tcp_fd;
+	const char *dev = state->cfg->iface.dev;
+	const char *srv_ip = state->cfg->sock.server_addr;
+	struct tsrv_pkt *srv_pkt = &state->threads[0].spkt;
+	struct tsrv_pkt_auth_res *auth_res = &srv_pkt->auth_res;
+
+	try_count = 5;
+	recv_len  = TCLI_PKT_MIN_READ + sizeof(*auth_res);
+	recv_ret  = do_recv_poll(tcp_fd, srv_pkt, recv_len, try_count);
+	if (unlikely(recv_ret < 0)) {
+		pr_err("do_recv_poll(): " PRERF, PREAR((int)recv_ret));
+		return (int)-recv_ret;
+	}
+
+	if (!auth_res->is_ok) {
+		pr_notice("Authentication failed!");
+		return -EBADMSG;
+	}
+
+	pr_notice("Authentication success!");
+
+	iff = &auth_res->iff;
+	sane_strncpy(iff->dev, dev, sizeof(iff->dev));
+	sane_strncpy(iff->ipv4_pub, srv_ip, sizeof(iff->ipv4_pub));
+	if (unlikely(!teavpn_iface_up(&auth_res->iff))) {
+		pr_err("Cannot bring virtual network interface up");
+		return -ENETDOWN;
+	}
+	return 0;
 }
 
 
