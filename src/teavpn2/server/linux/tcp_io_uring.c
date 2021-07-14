@@ -360,7 +360,7 @@ static int send_handshake_response(struct srv_thread *thread,
 	srv_pkt->type = TSRV_PKT_HANDSHAKE;
 	srv_pkt->pad_len = 0u;
 	srv_pkt->length = sizeof(*pkt_hss);
-	send_len = TCLI_PKT_MIN_READ + sizeof(*pkt_hss);
+	send_len = TSRV_PKT_MIN_READ + sizeof(*pkt_hss);
 	cqev->len = send_len;
 
 	cqev->udata = client;
@@ -499,8 +499,8 @@ static int handle_clpkt_iface_data(struct srv_thread *thread,
 
 	cqev = get_iou_cqe_vec(thread);
 	if (unlikely(!cqev)) {
-		pr_err("Run out of CQE vector on send_handshake_response "
-		       "when responding to " PRWIU " (thread=%u)", W_IU(client),
+		pr_err("Run out of CQE vector on handle_clpkt_iface_data "
+		       "when receiving from " PRWIU " (thread=%u)", W_IU(client),
 		       thread->idx);
 		return -EAGAIN;
 	}
@@ -748,7 +748,7 @@ static int handle_tun_read(struct srv_thread *thread, struct io_uring_cqe *cqe)
 	size_t i;
 	size_t num_of_clients;
 	ssize_t read_ret = (ssize_t)cqe->res;
-	struct tcli_pkt *cli_pkt, *cli_pkt0 = &thread->cpkt;
+	struct tsrv_pkt *srv_pkt, *srv_pkt0 = &thread->spkt;
 	struct client_slot *clients = thread->state->clients;
 
 	if (unlikely(read_ret < 0)) {
@@ -768,16 +768,17 @@ static int handle_tun_read(struct srv_thread *thread, struct io_uring_cqe *cqe)
 		if (unlikely(!cqev))
 			return -EAGAIN;
 
-		cli_pkt          = &cqev->cpkt;
-		cli_pkt->type    = TCLI_PKT_IFACE_DATA;
-		cli_pkt->pad_len = 0u;
-		cli_pkt->length  = (uint16_t)((size_t)read_ret);
+		srv_pkt          = &cqev->spkt;
+		srv_pkt->type    = TCLI_PKT_IFACE_DATA;
+		srv_pkt->pad_len = 0u;
+		srv_pkt->length  = (uint16_t)((size_t)read_ret);
 		cqev->vec_type   = IOU_CQE_VEC_TCP_SEND;
 		cqev->len        = TCLI_PKT_MIN_READ + (size_t)read_ret;
-		memcpy(&cli_pkt->iface_data, &cli_pkt0->iface_data,
+		memcpy(&srv_pkt->iface_data, &srv_pkt0->iface_data,
 		       (size_t)read_ret);
+		cqev->udata = UPTR(TCLI_PKT_MIN_READ + (size_t)read_ret);
 
-		pr_notice("Send out data!");
+		VT_HEXDUMP(srv_pkt, cqev->len);
 		ret = do_iou_send(thread, client->cli_fd, cqev, 0);
 		if (unlikely(ret < 0))
 			return ret;
@@ -804,7 +805,10 @@ static int handle_iou_cqe_vec(struct srv_thread *thread,
 		put_iou_cqe_vec(thread, fret);
 		break;
 	case IOU_CQE_VEC_TCP_SEND:
-		pr_notice("Got IOU_CQE_VEC_TCP_SEND %d", cqe->res);
+		pr_notice("Got IOU_CQE_VEC_TCP_SEND (%d %zu) (len = %zu) (fdata_len = %zu)",
+			  cqe->res, (size_t)vcqe->send.udata,
+			  (size_t)vcqe->send.len,
+			  (size_t)vcqe->send.spkt.length);
 		put_iou_cqe_vec(thread, fret);
 		break;
 	case IOU_CQE_VEC_TCP_RECV:
@@ -1002,8 +1006,8 @@ static int init_threads(struct srv_state *state)
 		int tun_fd = state->tun_fds[i];
 		struct srv_thread *thread = &threads[i];
 		struct io_uring *ring = &thread->ring;
-		void *tun_buf = thread->spkt.raw_buf;
-		unsigned int tun_buf_size = sizeof(thread->spkt.raw_buf);
+		void *tun_buf = &thread->spkt.iface_data;
+		unsigned int tun_buf_size = sizeof(thread->spkt.iface_data);
 
 		ret = tv_stack_init(&thread->ioucl_stk, IOUCL_VEC_NUM);
 		if (unlikely(ret)) {

@@ -25,7 +25,7 @@ static int init_iou_cqe_vec(struct iou_cqe_vec **cqe_vec_p)
 
 
 static int do_iou_write(struct cli_thread *thread, int fd,
-			struct iou_cqe_vec *cqev, int flags)
+			struct iou_cqe_vec *cqev)
 {
 	int ret;
 	struct io_uring_sqe *sqe;
@@ -35,7 +35,7 @@ static int do_iou_write(struct cli_thread *thread, int fd,
 	if (unlikely(!sqe))
 		return -EAGAIN;
 
-	io_uring_prep_write(sqe, fd, cqev->raw_pkt, (unsigned)cqev->len, flags);
+	io_uring_prep_write(sqe, fd, cqev->raw_pkt, (unsigned)cqev->len, 0);
 	io_uring_sqe_set_data(sqe, cqev);
 
 	ret = io_uring_submit(ring);
@@ -183,7 +183,7 @@ static int rearm_io_uring_recv(struct cli_thread *thread)
 	recv_len = sizeof(state->raw_pkt) - recv_s;
 
 	io_uring_prep_recv(sqe, tcp_fd, recv_buf, recv_len, 0);
-	io_uring_sqe_set_data(sqe, UPTR(IOU_CQE_VEC_TCP_RECV));
+	io_uring_sqe_set_data(sqe, UPTR(IOU_CQE_DRC_TCP_RECV));
 	ret = io_uring_submit(&thread->ring);
 	if (unlikely(ret < 0))
 		panic("io_uring_submit(): " PRERF " (thread=%u)", PREAR(-ret),
@@ -193,7 +193,27 @@ static int rearm_io_uring_recv(struct cli_thread *thread)
 }
 
 
-static int ____handle_server_data(struct cli_thread *thread, size_t recv_s)
+static int handle_srpkt_iface_data(struct cli_thread *thread, size_t fdata_len)
+{
+	struct iou_cqe_vec *cqev;
+	struct cli_state *state = thread->state;
+	struct tsrv_pkt *srv_pkt = &state->spkt;
+
+	cqev = get_iou_cqe_vec(thread);
+	if (unlikely(!cqev)) {
+		pr_err("Run out of CQE vector on handle_clpkt_iface_data "
+		       "when receiving from server (thread=%u)", thread->idx);
+		return -EAGAIN;
+	}
+
+	cqev->vec_type = IOU_CQE_VEC_TUN_WRITE;
+	cqev->len      = fdata_len;
+	memcpy(&cqev->raw_pkt, &srv_pkt->iface_data, fdata_len);
+	return do_iou_write(thread, thread->tun_fd, cqev);
+}
+
+
+static int ____handle_server_data(struct cli_thread *thread, size_t fdata_len)
 {
 	int ret = 0;
 	struct cli_state *state = thread->state;
@@ -207,7 +227,8 @@ static int ____handle_server_data(struct cli_thread *thread, size_t recv_s)
 	case TSRV_PKT_AUTH_RES:
 		break;
 	case TSRV_PKT_IFACE_DATA:
-		pr_notice("Got TSRV_PKT_IFACE_DATA");
+		pr_notice("Got TSRV_PKT_IFACE_DATA %zu", fdata_len);
+		ret = handle_srpkt_iface_data(thread, fdata_len);
 		break;
 	case TSRV_PKT_REQSYNC:
 		break;
@@ -242,6 +263,7 @@ check_again:
 
 	fdata_len = srv_pkt->length;
 	cdata_len = recv_s - TSRV_PKT_MIN_READ;
+	pr_debug("Got fdata_len = %zu", fdata_len);
 	if (unlikely(cdata_len < fdata_len)) {
 		/*
 		 * We haven't completely received the data.
@@ -268,11 +290,13 @@ check_again:
 		 * Must memmove() to the front before
 		 * we run out of buffer!
 		 */
-		char *head  = (char *)srv_pkt;
-		char *tail  = head + recv_s;
-		recv_s     -= TSRV_PKT_MIN_READ + fdata_len;
+		size_t  crln  = TSRV_PKT_MIN_READ + fdata_len;
+		char   *head  = (char *)srv_pkt;
+		char   *tail  = head + crln;
+		recv_s       -= crln;
 		memmove(head, tail, recv_s);
-		pr_debug("Got extra bytes, memmove() (recv_s = %zu)", recv_s);
+		pr_debug("Got extra bytes, memmove() (recv_s=%zu) "
+			 "(fdata_len=%zu)", recv_s, fdata_len);
 		goto check_again;
 	}
 
@@ -333,19 +357,16 @@ static int handle_iou_cqe_vec(struct cli_thread *thread,
 	(void)cqe;
 	switch (vcqe->vec_type) {
 	case IOU_CQE_VEC_NOP:
-		pr_notice("Got IOU_CQE_VEC_NOP");
+		pr_notice("Got IOU_CQE_VEC_NOP %d", cqe->res);
 		put_iou_cqe_vec(thread, fret);
 		break;
 	case IOU_CQE_VEC_TUN_WRITE:
-		pr_notice("Got IOU_CQE_VEC_TUN_WRITE");
+		pr_notice("Got IOU_CQE_VEC_TUN_WRITE %d", cqe->res);
 		put_iou_cqe_vec(thread, fret);
 		break;
 	case IOU_CQE_VEC_TCP_SEND:
-		pr_notice("Got IOU_CQE_VEC_TCP_SEND");
+		pr_notice("Got IOU_CQE_VEC_TCP_SEND %d", cqe->res);
 		put_iou_cqe_vec(thread, fret);
-		break;
-	case IOU_CQE_VEC_TCP_RECV:
-		/* Don't put, it is not iou_cqe_vec! */
 		break;
 	default:
 		VT_HEXDUMP(vcqe, 2048);
@@ -378,7 +399,7 @@ static int handle_event(struct cli_thread *thread, struct io_uring_cqe *cqe)
 	case IOU_CQE_DRC_TUN_READ:
 		ret = handle_tun_read(thread, cqe);
 		break;
-	case IOU_CQE_DRC_TUN_RECV:
+	case IOU_CQE_DRC_TCP_RECV:
 		ret = handle_server_data(thread, cqe);
 		break;
 	default:
@@ -588,8 +609,8 @@ static int run_main_thread(struct cli_state *state)
 	if (unlikely(!sqe))
 		panic("Cannot get SQE for initialization");
 
-	io_uring_prep_recv(sqe, tcp_fd, &thread->cpkt, sizeof(thread->cpkt), 0);
-	io_uring_sqe_set_data(sqe, UPTR(IOU_CQE_DRC_TUN_RECV));
+	io_uring_prep_recv(sqe, tcp_fd, &state->spkt, sizeof(state->spkt), 0);
+	io_uring_sqe_set_data(sqe, UPTR(IOU_CQE_DRC_TCP_RECV));
 	ret = io_uring_submit(&thread->ring);
 	if (unlikely(ret < 0)) {
 		pr_err("io_uring_submit(): " PRERF, PREAR(-ret));

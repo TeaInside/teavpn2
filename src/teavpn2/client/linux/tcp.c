@@ -541,7 +541,8 @@ static int recv_init_handshake(struct cli_state *state)
 	struct tsrv_pkt_handshake *pkt_hss = &srv_pkt->handshake;
 
 	try_count = 5;
-	recv_len  = TCLI_PKT_MIN_READ + sizeof(*pkt_hss);
+	recv_len  = TSRV_PKT_MIN_READ + sizeof(*pkt_hss);
+	pr_notice("recv_len = %zu", recv_len);
 	recv_ret  = do_recv_poll(tcp_fd, srv_pkt, recv_len, try_count);
 	if (unlikely(recv_ret < 0)) {
 		pr_err("do_recv_poll(): " PRERF, PREAR((int)recv_ret));
@@ -612,7 +613,7 @@ static int recv_auth(struct cli_state *state)
 	struct tsrv_pkt_auth_res *auth_res = &srv_pkt->auth_res;
 
 	try_count = 5;
-	recv_len  = TCLI_PKT_MIN_READ + sizeof(*auth_res);
+	recv_len  = TSRV_PKT_MIN_READ + sizeof(*auth_res);
 	recv_ret  = do_recv_poll(tcp_fd, srv_pkt, recv_len, try_count);
 	if (unlikely(recv_ret < 0)) {
 		pr_err("do_recv_poll(): " PRERF, PREAR((int)recv_ret));
