@@ -778,7 +778,6 @@ static int handle_tun_read(struct srv_thread *thread, struct io_uring_cqe *cqe)
 		       (size_t)read_ret);
 		cqev->udata = UPTR(TCLI_PKT_MIN_READ + (size_t)read_ret);
 
-		VT_HEXDUMP(srv_pkt, cqev->len);
 		ret = do_iou_send(thread, client->cli_fd, cqev, 0);
 		if (unlikely(ret < 0))
 			return ret;
@@ -797,15 +796,15 @@ static int handle_iou_cqe_vec(struct srv_thread *thread,
 
 	switch (vcqe->vec_type) {
 	case IOU_CQE_VEC_NOP:
-		pr_notice("Got IOU_CQE_VEC_NOP %d", cqe->res);
+		pr_debug("Got IOU_CQE_VEC_NOP %d", cqe->res);
 		put_iou_cqe_vec(thread, fret);
 		break;
 	case IOU_CQE_VEC_TUN_WRITE:
-		pr_notice("Got IOU_CQE_VEC_TUN_WRITE %d", cqe->res);
+		pr_debug("Got IOU_CQE_VEC_TUN_WRITE %d", cqe->res);
 		put_iou_cqe_vec(thread, fret);
 		break;
 	case IOU_CQE_VEC_TCP_SEND:
-		pr_notice("Got IOU_CQE_VEC_TCP_SEND (%d %zu) (len = %zu) (fdata_len = %zu)",
+		pr_debug("Got IOU_CQE_VEC_TCP_SEND (%d %zu) (len = %zu) (fdata_len = %zu)",
 			  cqe->res, (size_t)vcqe->send.udata,
 			  (size_t)vcqe->send.len,
 			  (size_t)vcqe->send.spkt.length);
@@ -838,7 +837,7 @@ static int handle_event(struct srv_thread *thread, struct io_uring_cqe *cqe)
 	type = (uintptr_t)fret;
 	switch (type) {
 	case IOU_CQE_DRC_NOP:
-		pr_notice("Got IOU_CQE_DRC_NOP");
+		pr_debug("Got IOU_CQE_DRC_NOP");
 		break;
 	case IOU_CQE_DRC_TUN_READ:
 		ret = handle_tun_read(thread, cqe);
