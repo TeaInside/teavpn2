@@ -54,10 +54,16 @@ __panic(const char *file, int lineno, const char *fmt, ...);
 #define pr_error	__pr_error
 #define pr_notice	__pr_notice
 #define pr_emerg	__pr_emerg
-#define pr_debug	__pr_debug
 #define pr_dbg		__pr_debug
 #define panic(...)	__panic(__FILE__, __LINE__, __VA_ARGS__)
 
+#ifdef NDEBUG
+/* No debug */
+#define pr_debug(...)
+#else
+/* Yes, do debug */
+#define pr_debug	__pr_debug
+#endif
 
 #define set_pr_notice_lv(LEVEL)			\
 	do {					\

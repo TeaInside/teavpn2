@@ -227,7 +227,7 @@ static int ____handle_server_data(struct cli_thread *thread, size_t fdata_len)
 	case TSRV_PKT_AUTH_RES:
 		break;
 	case TSRV_PKT_IFACE_DATA:
-		pr_notice("Got TSRV_PKT_IFACE_DATA %zu", fdata_len);
+		pr_debug("Got TSRV_PKT_IFACE_DATA %zu", fdata_len);
 		ret = handle_srpkt_iface_data(thread, fdata_len);
 		break;
 	case TSRV_PKT_REQSYNC:
@@ -357,15 +357,15 @@ static int handle_iou_cqe_vec(struct cli_thread *thread,
 	(void)cqe;
 	switch (vcqe->vec_type) {
 	case IOU_CQE_VEC_NOP:
-		pr_notice("Got IOU_CQE_VEC_NOP %d", cqe->res);
+		pr_debug("Got IOU_CQE_VEC_NOP %d", cqe->res);
 		put_iou_cqe_vec(thread, fret);
 		break;
 	case IOU_CQE_VEC_TUN_WRITE:
-		pr_notice("Got IOU_CQE_VEC_TUN_WRITE %d", cqe->res);
+		pr_debug("Got IOU_CQE_VEC_TUN_WRITE %d", cqe->res);
 		put_iou_cqe_vec(thread, fret);
 		break;
 	case IOU_CQE_VEC_TCP_SEND:
-		pr_notice("Got IOU_CQE_VEC_TCP_SEND %d", cqe->res);
+		pr_debug("Got IOU_CQE_VEC_TCP_SEND %d", cqe->res);
 		put_iou_cqe_vec(thread, fret);
 		break;
 	default:
@@ -394,7 +394,7 @@ static int handle_event(struct cli_thread *thread, struct io_uring_cqe *cqe)
 	type = (uintptr_t)fret;
 	switch (type) {
 	case IOU_CQE_DRC_NOP:
-		pr_notice("Got IOU_CQE_DRC_NOP");
+		pr_debug("Got IOU_CQE_DRC_NOP");
 		break;
 	case IOU_CQE_DRC_TUN_READ:
 		ret = handle_tun_read(thread, cqe);
