@@ -25,12 +25,11 @@ static inline int32_t tv_stack_push(struct tv_stack *stack, uint16_t idx)
 {
 	uint16_t sp = stack->sp;
 
-	if (unlikely(sp == 0)) {
+	if (unlikely(sp == 0))
 		/*
-		 * Stack is full!
+		 * Stack is full.
 		 */
 		return -1;
-	}
 
 	stack->arr[--sp] = idx;
 	stack->sp = sp;
@@ -40,21 +39,20 @@ static inline int32_t tv_stack_push(struct tv_stack *stack, uint16_t idx)
 
 static inline int32_t tv_stack_pop(struct tv_stack *stack)
 {
-	int32_t idx;
+	int32_t ret;
 	uint16_t sp = stack->sp;
 	uint16_t max_sp = stack->max_sp;
 
 	assert(sp <= max_sp);
-	if (unlikely(sp == max_sp)) {
+	if (unlikely(sp == max_sp))
 		/*
-		 * Stack is empty!
+		 * Stack is empty.
 		 */
 		return -1;
-	}
 
-	idx = stack->arr[sp++];
+	ret = (int32_t)stack->arr[sp++];
 	stack->sp = sp;
-	return idx;
+	return ret;
 }
 
 
@@ -104,6 +102,12 @@ static inline void __assert_tv_stack(struct tv_stack *stack, uint16_t capacity)
 #endif /* #ifndef NDEBUG */
 
 
+static inline uint16_t tv_stack_count(struct tv_stack *stack)
+{
+	return stack->max_sp - stack->sp;
+}
+
+
 static inline int tv_stack_init(struct tv_stack *stack, uint16_t capacity)
 {
 	int ret;
@@ -116,7 +120,7 @@ static inline int tv_stack_init(struct tv_stack *stack, uint16_t capacity)
 	ret = bt_mutex_init(&stack->lock, NULL);
 	if (unlikely(ret)) {
 		al64_free(arr);
-		pr_err("bt_mutex_init(&stack->lock, NULL): " PRERF, PREAR(ret));
+		pr_err("mutex_init(&stack->lock, NULL): " PRERF, PREAR(ret));
 		return -ret;
 	}
 
@@ -141,5 +145,9 @@ static inline void tv_stack_destroy(struct tv_stack *stack)
 	al64_free(stack->arr);
 	bt_mutex_destroy(&stack->lock);
 }
+
+
+for (i = stack->sp; )
+
 
 #endif /* #ifndef TEAVPN2__STACK_H */

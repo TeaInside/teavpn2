@@ -90,7 +90,11 @@ struct cli_state;
 struct cli_thread {
 	/* Is this thread online? */
 	_Atomic(bool)				is_online;
-
+	bool					in_emergency;
+	bool					need_recv_rearm;
+	bool					break_cqe_foreach;
+	uint16_t				cqe_need_num;
+	uint16_t				stat_counter;
 #if USE_IO_URING
 	/*
 	 * I am not sure it is safe to call io_uring_queue_exit()

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- *  src/teavpn2/include/teavpn2/server/common.h
+ *  src/teavpn2/include/teavpn2/net/linux/iface.h
  *
- *  Common header for TeaVPN2 server.
+ *  Network interface helper.
  *
  *  Copyright (C) 2021  Ammar Faizi
  */
@@ -13,10 +13,9 @@
 #include <teavpn2/base.h>
 #include <linux/if_tun.h>
 
-int tun_alloc(const char *dev, short flags);
 int fd_set_nonblock(int fd);
+int tun_alloc(const char *dev, short flags);
 bool teavpn_iface_up(struct if_info *iface);
 bool teavpn_iface_down(struct if_info *iface);
-
 
 #endif /* #ifndef TEAVPN2__NET__LINUX__IFACE_H */

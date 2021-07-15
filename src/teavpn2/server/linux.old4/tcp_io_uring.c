@@ -971,7 +971,7 @@ static int init_threads(struct srv_state *state)
 	struct io_uring_params ring_params;
 	size_t i, nn = state->cfg->sys.thread;
 
-	ring_flags = IORING_SETUP_CLAMP; // may add SQPOLL later.
+	ring_flags = IORING_SETUP_CLAMP | IORING_SETUP_SQPOLL; // may add SQPOLL later.
 
 	if (ring_flags & IORING_SETUP_SQPOLL) {
 		/*
@@ -983,7 +983,7 @@ static int init_threads(struct srv_state *state)
 			ret = errno;
 			pr_err("sched_getaffinity() " PRERF, PREAR(ret));
 			ret = 0;
-		} else if (CPU_COUNT(&cpus) < 2) {
+		} else if (CPU_COUNT(&cpus) > 1) {
 			/*
 			 * Bind the io_uring context to specific core to
 			 * reduce CPU cache pollution and CPU migration!

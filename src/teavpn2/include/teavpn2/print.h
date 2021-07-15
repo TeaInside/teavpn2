@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- *  src/bluetea/include/bluetea/print.h
+ *  src/teavpn2/include/teavpn2/print.h
  *
  *  Printing header
  *

@@ -115,6 +115,8 @@ static int init_state_threads(struct cli_state *state)
 		thread = &threads[i];
 		thread->idx   = (uint16_t)i;
 		thread->state = state;
+		thread->in_emergency = false;
+		thread->need_recv_rearm = false;
 	}
 
 	state->threads = threads;
@@ -164,7 +166,7 @@ static int init_state(struct cli_state *state)
 static int init_iface(struct cli_state *state)
 {
 	size_t i;
-	size_t nn = 2;
+	size_t nn = state->cfg->sys.thread;
 	int *tun_fds = state->tun_fds;
 	const char *iff_dev = state->cfg->iface.dev;
 	const short tun_flags = IFF_TUN | IFF_NO_PI | IFF_MULTI_QUEUE;
@@ -635,6 +637,7 @@ static int recv_auth(struct cli_state *state)
 	 * Save the network configuration to bring the network
 	 * down (and reconnect if needed).
 	 */
+	// memset(iff->ipv4_dgateway, 0, sizeof(iff->ipv4_dgateway));
 	state->cfg->iface.iff = *iff;
 	state->has_iff = true;
 	if (unlikely(!teavpn_iface_up(iff))) {

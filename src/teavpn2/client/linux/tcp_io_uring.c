@@ -7,6 +7,10 @@
  *  Copyright (C) 2021  Ammar Faizi
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#include <sched.h>
 #include <poll.h>
 #include "./tcp_common.h"
 
@@ -82,6 +86,9 @@ static struct iou_cqe_vec *get_iou_cqe_vec(struct cli_thread *thread)
 	if (unlikely(idx == -1))
 		return NULL;
 
+	if (unlikely((unsigned)idx >= IOUCL_VEC_NUM))
+		panic("idx >= IOUCL_VEC_NUM");
+
 	cqev = &thread->cqe_vec[idx];
 	cqev->idx = (uint16_t)idx;
 	cqev->vec_type = IOU_CQE_VEC_NOP;
@@ -93,6 +100,9 @@ static void put_iou_cqe_vec(struct cli_thread *thread, struct iou_cqe_vec *cqev)
 {
 	int32_t idx;
 	struct tv_stack	*ioucl_stk = &thread->ioucl_stk;
+
+	if (unlikely(cqev->idx >= IOUCL_VEC_NUM))
+		panic("cqev->idx >= IOUCL_VEC_NUM");
 
 	bt_mutex_lock(&ioucl_stk->lock);
 	idx = tv_stack_push(ioucl_stk, cqev->idx);
@@ -128,6 +138,10 @@ static int rearm_io_uring_read_tun(struct cli_thread *thread)
 }
 
 
+static bool iou_cqe_vec_emergency(struct cli_thread *thread);
+static int rearm_io_uring_recv(struct cli_thread *thread);
+static int __handle_server_data(struct cli_thread *thread, size_t recv_s);
+
 static int handle_tun_read(struct cli_thread *thread, struct io_uring_cqe *cqe)
 {
 	int ret;
@@ -136,13 +150,64 @@ static int handle_tun_read(struct cli_thread *thread, struct io_uring_cqe *cqe)
 	struct tcli_pkt *cli_pkt, *cli_pkt0 = &thread->cpkt;
 
 	if (unlikely(read_ret < 0)) {
+		if (read_ret == -EINTR)
+			goto out_rearm;
 		pr_err("read() from tun_fd " PRERF, PREAR((int)-read_ret));
 		return (int)read_ret;
 	}
 
+do_get_iou:
 	cqev = get_iou_cqe_vec(thread);
-	if (unlikely(!cqev))
-		return -EAGAIN;
+	if (unlikely(!cqev)) {
+		uint32_t loop_c = 0;
+		uint16_t old_cqe_need_num = IOUCL_VEC_NUM / 2;
+		/*
+		 * We are in emergency situation, must recover the CQE Vec
+		 * first in any way we are not allowed to crash!
+		 */
+		pr_emerg("Running out of CQE vec on handle_tun_read!!!");
+		thread->in_emergency = true;
+		thread->cqe_need_num = old_cqe_need_num;
+		pr_emerg("Set cqe_need_num to %u", thread->cqe_need_num);
+		if (unlikely(thread->state->stop))
+			return -EAGAIN;
+
+		while (thread->cqe_need_num) {
+			if (unlikely(thread->state->stop))
+				return -EAGAIN;
+
+			iou_cqe_vec_emergency(thread);
+
+			if (old_cqe_need_num != thread->cqe_need_num) {
+				pr_emerg("Set cqe_need_num to %u",
+					 thread->cqe_need_num);
+				old_cqe_need_num = thread->cqe_need_num;
+			}
+
+			if (++loop_c < IOUCL_VEC_NUM) {
+				usleep(1);
+				continue;
+			}
+			panic("Aiee, unable to recover from emergency... "
+			      "(thread=%u)", thread->idx);
+			__builtin_unreachable();
+		}
+		goto do_get_iou;
+	}
+
+
+	if (unlikely(thread->in_emergency)) {
+		pr_notice("Recovered from emergency!");
+		thread->in_emergency = false;
+		thread->break_cqe_foreach = true;
+		if (thread->need_recv_rearm) {
+			pr_notice("Rearming recv()...");
+			thread->need_recv_rearm = false;
+			rearm_io_uring_recv(thread);
+			__handle_server_data(thread, thread->state->recv_s);
+		}
+	}
+
 
 	cli_pkt          = &cqev->cpkt;
 	cli_pkt->type    = TCLI_PKT_IFACE_DATA;
@@ -158,6 +223,8 @@ static int handle_tun_read(struct cli_thread *thread, struct io_uring_cqe *cqe)
 
 	pr_debug("TUN read %d bytes (thread=%u)", cqe->res, thread->idx);
 	pr_debug("send() %zu bytes (thread=%u)", cqev->len, thread->idx);
+
+out_rearm:
 	rearm_io_uring_read_tun(thread);
 	return 0;
 }
@@ -181,8 +248,12 @@ static int rearm_io_uring_recv(struct cli_thread *thread)
 	recv_s   = state->recv_s;
 	recv_buf = state->raw_pkt + recv_s;
 	recv_len = sizeof(state->raw_pkt) - recv_s;
+	if (unlikely(recv_len == 0)) {
+		recv_s = state->recv_s = 0;
+		recv_len = sizeof(state->raw_pkt);
+	}
 
-	io_uring_prep_recv(sqe, tcp_fd, recv_buf, recv_len, 0);
+	io_uring_prep_recv(sqe, tcp_fd, recv_buf, recv_len, MSG_WAITALL);
 	io_uring_sqe_set_data(sqe, UPTR(IOU_CQE_DRC_TCP_RECV));
 	ret = io_uring_submit(&thread->ring);
 	if (unlikely(ret < 0))
@@ -326,6 +397,8 @@ static int handle_server_data(struct cli_thread *thread,
 	}
 
 	if (unlikely(recv_ret < 0)) {
+		if (recv_ret == -EINTR)
+			goto out_rearm;
 		pr_notice("recv() from server error | " PRERF,
 			  PREAR((int)-recv_ret));
 		goto out_close;
@@ -335,12 +408,18 @@ static int handle_server_data(struct cli_thread *thread,
 	pr_debug("recv() %zd bytes from server (recv_s=%zu) (thread=%u)",
 		 recv_ret, recv_s, thread->idx);
 
+	if (unlikely(thread->in_emergency)) {
+		thread->state->recv_s = recv_s;
+		return 0;
+	}
+
 	ret = __handle_server_data(thread, recv_s);
 	if (unlikely(ret && (ret != -EINPROGRESS))) {
 		pr_debug("____handle_client_data returned " PRERF, PREAR(-ret));
 		goto out_close;
 	}
 
+out_rearm:
 	rearm_io_uring_recv(thread);
 	return 0;
 out_close:
@@ -374,6 +453,9 @@ static int handle_iou_cqe_vec(struct cli_thread *thread,
 		      vcqe->vec_type);
 	}
 
+	if (unlikely(thread->in_emergency))
+		thread->cqe_need_num--;
+
 	return ret;
 }
 
@@ -392,6 +474,17 @@ static int handle_event(struct cli_thread *thread, struct io_uring_cqe *cqe)
 	 */
 	fret = io_uring_cqe_get_data(cqe);
 	type = (uintptr_t)fret;
+
+	if (unlikely(thread->in_emergency)) {
+		if (type > IOU_CQE_DRC_TCP_RECV)
+			return handle_iou_cqe_vec(thread, cqe, fret);
+		if (type == IOU_CQE_DRC_TCP_RECV) {
+			handle_server_data(thread, cqe);
+			thread->need_recv_rearm = true;
+		}
+		return 0;
+	}
+
 	switch (type) {
 	case IOU_CQE_DRC_NOP:
 		pr_debug("Got IOU_CQE_DRC_NOP");
@@ -435,6 +528,42 @@ static int do_uring_wait(struct cli_thread *thread, struct io_uring_cqe **cqe_p)
 }
 
 
+static bool iou_cqe_vec_emergency(struct cli_thread *thread)
+{
+	int ret;
+	struct io_uring_cqe *cqe = NULL;
+	long long old_tv_sec = thread->ring_timeout.tv_sec;
+
+	ret = do_uring_wait(thread, &cqe);
+	thread->ring_timeout.tv_sec = old_tv_sec;
+	if (likely(ret == 0)) {
+		ret = handle_event(thread, cqe);
+		io_uring_cqe_seen(&thread->ring, cqe);
+		return ret;
+	}
+
+	if (unlikely(ret == -ETIME)) {
+		/* io_uring reached its timeout. */
+		return 0;
+	}
+
+	if (unlikely(ret == -EINTR)) {
+		struct cli_state *state = thread->state;
+		if (state->intr_sig == -1)
+			panic("Interrupted while recovering from emergency "
+			      "(thread=%u)", thread->idx);
+		teavpn2_client_tcp_wait_for_thread_to_exit(state, true);
+		return -EINTR;
+	}
+	return ret;
+}
+
+static void print_stat(struct cli_thread *thread)
+{
+	pr_notice("Stat: CQE stack count: %u", thread->ioucl_stk.max_sp - thread->ioucl_stk.sp);
+}
+
+
 static int handle_io_uring_cqes(struct cli_thread *thread,
 				struct io_uring_cqe *cqe)
 {
@@ -443,9 +572,15 @@ static int handle_io_uring_cqes(struct cli_thread *thread,
 	struct io_uring *ring = &thread->ring;
 	io_uring_for_each_cqe(ring, head, cqe) {
 		count++;
+		if (unlikely((++thread->stat_counter % 2048) == 0))
+			print_stat(thread);
 		ret = handle_event(thread, cqe);
 		if (unlikely(ret))
 			break;
+		if (unlikely(thread->break_cqe_foreach)) {
+			thread->break_cqe_foreach = false;
+			return 0;
+		}
 	}
 	io_uring_cq_advance(ring, count);
 	return ret;
@@ -460,7 +595,6 @@ static int do_io_uring_event_loop(struct cli_thread *thread)
 	ret = do_uring_wait(thread, &cqe);
 	if (likely(ret == 0))
 		return handle_io_uring_cqes(thread, cqe);
-	
 
 	if (unlikely(ret == -ETIME)) {
 		/* io_uring reached its timeout. */
@@ -493,8 +627,10 @@ static void *run_thread(void *thread_p)
 
 	while (likely(!state->stop)) {
 		ret = do_io_uring_event_loop(thread);
-		if (unlikely(ret))
+		if (unlikely(ret)) {
+			pr_err("do_io_uring_event_loop(): " PRERF, PREAR(-ret));
 			break;
+		}
 	}
 
 	atomic_store(&thread->is_online, false);
@@ -506,13 +642,61 @@ static void *run_thread(void *thread_p)
 }
 
 
+static __u32 cpu_bind_ydyd(cpu_set_t *cpus, unsigned *bc)
+{
+	int i;
+
+	while (1) {
+		i = (int)((*bc)++);
+		i = i % 128;
+		if (CPU_ISSET(i, cpus))
+			return (__u32)i;
+	}
+}
+
+
 static int init_threads(struct cli_state *state)
 {
 	int ret = 0;
+	unsigned bc = 0;
 	struct cli_thread *threads;
+	cpu_set_t __maybe_unused cpus;
 	size_t i, nn = state->cfg->sys.thread;
 	struct io_uring_params ring_params;
-	const unsigned ring_flags = IORING_SETUP_CLAMP;
+	unsigned ring_flags;
+
+	ring_flags = IORING_SETUP_CLAMP; // may add SQPOLL later.
+
+	if (ring_flags & IORING_SETUP_SQPOLL) {
+		/*
+		 * Can we bind our io_uring context to SMP core?
+		 */
+		int cpu_num;
+		CPU_ZERO(&cpus);
+		ret = sched_getaffinity(0, sizeof(cpus), &cpus);
+		if (unlikely(ret < 0)) {
+			ret = errno;
+			pr_err("sched_getaffinity() " PRERF, PREAR(ret));
+			ret = 0;
+		} else if ((cpu_num = CPU_COUNT(&cpus)) > 1) {
+			/*
+			 * Bind the io_uring context to specific core to
+			 * reduce CPU cache pollution and CPU migration!
+			 */
+			ring_flags |= IORING_SETUP_SQ_AFF;
+			pr_notice("We have %d available CPU(s)", CPU_COUNT(&cpus));
+		} else {
+			/*
+			 * We only have 1 CPU, don't use SQPOLL!
+			 */
+			ring_flags &= ~IORING_SETUP_SQPOLL;
+			pr_notice("Not using IORING_SETUP_SQPOLL (CPU num = %d)",
+				  cpu_num);
+		}
+	} else {
+		pr_notice("Not using IORING_SETUP_SQPOLL");
+	}
+
 
 	threads = state->threads;
 
@@ -536,10 +720,21 @@ static int init_threads(struct cli_state *state)
 			break;
 		}
 
+		pr_notice("Initializing io_uring context... (thread=%zu)", i);
 		memset(&ring_params, 0, sizeof(ring_params));
 		ring_params.flags = ring_flags;
 
-		ret = io_uring_queue_init_params(1u << 20u, ring, &ring_params);
+		if (ring_flags & IORING_SETUP_SQPOLL)
+			ring_params.sq_thread_idle = 1000;
+
+		if (ring_flags & (IORING_SETUP_SQPOLL | IORING_SETUP_SQ_AFF)) {
+			__u32 core_num = cpu_bind_ydyd(&cpus, &bc);
+			ring_params.sq_thread_cpu = core_num;
+			pr_notice("Binding io_uring SQThread %zu to CPU %u...",
+				  i, core_num);
+		}
+
+		ret = io_uring_queue_init_params(IOUCL_VEC_NUM, ring, &ring_params);
 		if (unlikely(ret)) {
 			pr_err("io_uring_queue_init_params(): " PRERF,
 			       PREAR(-ret));
@@ -559,9 +754,9 @@ static int init_threads(struct cli_state *state)
 			ret = -ENOMEM;
 			break;
 		}
-
 		io_uring_prep_read(sqe, tun_fd, tun_buf, tun_buf_size, 0);
 		io_uring_sqe_set_data(sqe, UPTR(IOU_CQE_DRC_TUN_READ));
+
 
 		/*
 		 * Don't spawn a thread for `i == 0`,
@@ -604,12 +799,15 @@ static int run_main_thread(struct cli_state *state)
 	struct cli_thread *thread;
 	int tcp_fd = state->tcp_fd;
 
-	thread = &state->threads[0];
+	thread = &state->threads[1];
 	sqe = io_uring_get_sqe(&thread->ring);
-	if (unlikely(!sqe))
-		panic("Cannot get SQE for initialization");
+	if (unlikely(!sqe)) {
+		pr_err("io_uring_get_sqe(): " PRERF, PREAR(ENOMEM));
+		ret = -ENOMEM;
+		goto out;
+	}
 
-	io_uring_prep_recv(sqe, tcp_fd, &state->spkt, sizeof(state->spkt), 0);
+	io_uring_prep_recv(sqe, tcp_fd, &state->spkt, sizeof(state->spkt), MSG_WAITALL);
 	io_uring_sqe_set_data(sqe, UPTR(IOU_CQE_DRC_TCP_RECV));
 	ret = io_uring_submit(&thread->ring);
 	if (unlikely(ret < 0)) {
@@ -617,6 +815,7 @@ static int run_main_thread(struct cli_state *state)
 		goto out;
 	}
 
+	thread = &state->threads[0];
 	fret = run_thread(thread);
 	ret  = (int)((intptr_t)fret);
 out:
