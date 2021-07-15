@@ -136,7 +136,7 @@ static_assert(offsetof(struct iou_rbuf_dd, type) == 0,
 
 static_assert(offsetof(union iou_rbuf_uni, type) == 0,
 	      "Bad offsetof(union iou_rbuf_uni, type)");
-#endif
+#endif /* #if USE_IO_URING */
 
 
 enum srv_evt_loop {
