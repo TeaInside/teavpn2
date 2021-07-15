@@ -2,7 +2,7 @@
 /*
  *  src/teavpn2/include/teavpn2/tcp_pkt_client.h
  *
- *  TCP client packet header file for TeaVPN2
+ *  TeaVPN2 TCP packet abstraction for client.
  *
  *  Copyright (C) 2021  Ammar Faizi
  */
@@ -123,7 +123,7 @@ struct tcli_pkt {
 			struct tcli_pkt_auth		auth;
 			struct tcli_pkt_iface_data	iface_data;
 		};
-		char					raw_buf[0x2000u];
+		char					raw_buf[4096 - 4];
 	};
 };
 
@@ -147,7 +147,7 @@ static_assert(offsetof(struct tcli_pkt, iface_data) == 4,
 static_assert(offsetof(struct tcli_pkt, raw_buf) == 4,
 	      "Bad offsetof(struct tcli_pkt, raw_buf)");
 
-static_assert(sizeof(struct tcli_pkt) == 4u + 0x2000u,
+static_assert(sizeof(struct tcli_pkt) == 4096u,
 	      "Bad sizeof(struct tcli_pkt)");
 
 

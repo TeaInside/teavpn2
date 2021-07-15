@@ -2,7 +2,7 @@
 /*
  *  src/teavpn2/include/teavpn2/tcp_pkt_server.h
  *
- *  TCP server packet header file for TeaVPN2
+ *  TeaVPN2 TCP packet abstraction for server.
  *
  *  Copyright (C) 2021  Ammar Faizi
  */
@@ -118,7 +118,7 @@ struct tsrv_pkt {
 			struct tsrv_pkt_auth_res	auth_res;
 			struct tsrv_pkt_iface_data	iface_data;
 		};
-		char					raw_buf[0x2000u];
+		char					raw_buf[4096 - 4];
 	};
 };
 
@@ -145,7 +145,7 @@ static_assert(offsetof(struct tsrv_pkt, iface_data) == 4,
 static_assert(offsetof(struct tsrv_pkt, raw_buf) == 4,
 	      "Bad offsetof(struct tsrv_pkt, raw_buf)");
 
-static_assert(sizeof(struct tsrv_pkt) == 4u + 0x2000u,
+static_assert(sizeof(struct tsrv_pkt) == 4096u,
 	      "Bad sizeof(struct tsrv_pkt)");
 
 

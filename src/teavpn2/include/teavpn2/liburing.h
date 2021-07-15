@@ -2,7 +2,7 @@
 /*
  *  src/teavpn2/include/teavpn2/liburing.h
  *
- *  Printing header
+ *  Liburing wrapper header.
  *
  *  Copyright (C) 2021  Ammar Faizi
  */
@@ -17,6 +17,7 @@
 
 #ifndef TEAVPN2__LIBURING_H
 #define TEAVPN2__LIBURING_H
+#if USE_IO_URING
 
 /*
  * See: https://github.com/axboe/liburing/issues/366
@@ -79,5 +80,5 @@ struct iou_rbuf_dd {
 		char				raw_pkt[PKT_SIZE];
 	} ____cacheline_aligned_in_smp;
 };
-
+#endif /* #if USE_IO_URING */
 #endif /* #ifndef TEAVPN2__LIBURING_H */
