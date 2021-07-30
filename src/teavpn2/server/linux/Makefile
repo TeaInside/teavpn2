@@ -12,15 +12,22 @@ DEP_DIRS += $(BASE_DEP_DIR)/src/teavpn2/server/linux
 
 OBJ_TMP_CC := \
 	$(BASE_DIR)/src/teavpn2/server/linux/tcp.o \
-	$(BASE_DIR)/src/teavpn2/server/linux/tcp_epoll.o
+	$(BASE_DIR)/src/teavpn2/server/linux/tcp_epoll.o \
+	$(BASE_DIR)/src/teavpn2/server/linux/udp.o \
+	$(BASE_DIR)/src/teavpn2/server/linux/udp_epoll.o
 
 
 
-OBJ_JUST_RM += $(BASE_DIR)/src/teavpn2/server/linux/tcp_io_uring.o
+OBJ_JUST_RM += \
+	$(BASE_DIR)/src/teavpn2/server/linux/tcp_io_uring.o \
+	$(BASE_DIR)/src/teavpn2/server/linux/udp_io_uring.o
+
 ifdef IO_URING_SUPPORT
 ifneq ($(IO_URING_SUPPORT),0)
 	CFLAGS += -DIO_URING_SUPPORT=1
-	OBJ_TMP_CC += $(BASE_DIR)/src/teavpn2/server/linux/tcp_io_uring.o
+	OBJ_TMP_CC += \
+		$(BASE_DIR)/src/teavpn2/server/linux/tcp_io_uring.o \
+		$(BASE_DIR)/src/teavpn2/server/linux/udp_io_uring.o
 endif
 endif
 
