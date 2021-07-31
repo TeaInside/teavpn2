@@ -7,8 +7,16 @@
 #include <teavpn2/common.h>
 
 
-static void show_general_usage(void)
+static void show_general_usage(const char *app)
 {
+	printf(" Usage: %s [client|server] [options]\n\n", app);
+	printf(" See:\n");
+	printf("  [Help]\n");
+	printf("    %s server --help\n", app);
+	printf("    %s client --help\n", app);
+	printf("\n");
+	printf("  [Version]\n");
+	printf("    %s --version\n\n", app);
 }
 
 
@@ -21,7 +29,7 @@ static int run_teavpn2(int argc, char *argv[])
 		return run_client(argc - 1, argv + 1);
 
 	printf("Invalid command: %s\n", argv[1]);
-	show_general_usage();
+	show_general_usage(argv[0]);
 	return 1;
 }
 
@@ -35,7 +43,7 @@ int main(int argc, char *argv[])
 		printf("Cannot set stderr buffer: %s\n", strerror(errno));
 
 	if (argc == 1) {
-		show_general_usage();
+		show_general_usage(argv[0]);
 		return 0;
 	}
 
