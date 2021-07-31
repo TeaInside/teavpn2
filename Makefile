@@ -154,6 +154,37 @@ all: $(TARGET_BIN)
 include $(BASE_DIR)/src/Makefile
 
 #
+# Create dependency directories
+#
+$(DEP_DIRS):
+	$(MKDIR_PRINT)
+	$(Q)$(MKDIR) -p $(@)
+
+
+#
+# Add more dependency chain to objects that are not compiled from the main
+# Makefile (the main Makefile is *this* Makefile).
+#
+$(OBJ_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
+$(OBJ_PRE_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
+
+
+#
+# Compile object from the main Makefile (the main Makefile is *this* Makefile).
+#
+$(OBJ_CC):
+	$(CC_PRINT)
+	$(Q)$(CC) $(PIE_FLAGS) $(DEPFLAGS) $(CFLAGS) -c $(O_TO_C) -o $(@)
+
+
+#
+# Include generated dependencies
+#
+-include $(OBJ_CC:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)
+-include $(OBJ_PRE_CC:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)
+
+
+#
 # Link the target bin.
 #
 $(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC)
