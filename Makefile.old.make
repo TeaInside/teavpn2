@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0
 #
 # @author Ammar Faizi <ammarfaizi2@gmail.com> https://www.facebook.com/ammarfaizi2
-# @license GPL-2.0
+# @license GNU GPL-2.0
 #
 # TeaVPN2 - Free VPN Software
 #
@@ -17,13 +17,15 @@ NAME = Green Grass
 TARGET_BIN = teavpn2
 PACKAGE_NAME = $(TARGET_BIN)-$(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)
 
+export IO_URING_SUPPORT=1
+
 
 #
 # Bin
 #
 AS	:= as
-CC 	:= cc
-CXX	:= c++
+CC 	:= clang
+CXX	:= clang++
 LD	:= $(CXX)
 VG	:= valgrind
 RM	:= rm
@@ -40,21 +42,27 @@ HOSTCXX	:= $(CXX)
 # (middle argumets)
 LDFLAGS		:= -ggdb3
 
+
 # Flag to link any library to $(TARGET_BIN)
 # (end arguments)
 LIB_LDFLAGS	:= -lpthread
 
+
 # Flags that only apply to C
 CFLAGS		:= -std=c11
+
 
 # Flags that only apply to C++
 CXXFLAGS	:= -std=c++2a
 
+
 # Flags that only apply to PIC objects.
 PIC_FLAGS	:= -fPIC -fpic
 
+
 # Flags that only apply to PIE objects.
 PIE_FLAGS	:= -fPIE -fpie
+
 
 # `C_CXX_FLAGS` will be appended to `CFLAGS` and `CXXFLAGS`.
 C_CXX_FLAGS := \
@@ -72,8 +80,11 @@ C_CXX_FLAGS := \
 	-DEXTRAVERSION="\"$(EXTRAVERSION)\"" \
 	-DNAME="\"$(NAME)\""
 
+
+
 C_CXX_FLAGS_RELEASE := -DNDEBUG
 C_CXX_FLAGS_DEBUG :=
+
 
 # Valgrind flags
 VGFLAGS	:= \
@@ -104,6 +115,7 @@ GCC_WARN_FLAGS := \
 	-Wstack-usage=$(STACK_USAGE_SIZE) \
 	-Wunsafe-loop-optimizations
 
+
 CLANG_WARN_FLAGS := \
 	-Wall \
 	-Wextra \
@@ -131,22 +143,16 @@ endif
 include $(BASE_DIR)/src/build/flags.make
 include $(BASE_DIR)/src/build/print.make
 
-#
-# These empty assignments force the variables to be a simple variable.
-#
+
+#######################################
+# Force these variables to be a simple variable
 OBJ_CC		:=
-
-#
-# OBJ_PRE_CC is a collection of object files which the compile rules are
-# defined in sub Makefile.
-#
 OBJ_PRE_CC	:=
-
-
-#
-# OBJ_TMP_CC is a temporary variable which is used in the sub Makefile.
-#
 OBJ_TMP_CC	:=
+OBJ_JUST_RM	:=
+SHARED_LIB	:=
+OBJ_EXTRA	:=
+#######################################
 
 
 all: $(TARGET_BIN)
@@ -154,15 +160,51 @@ all: $(TARGET_BIN)
 include $(BASE_DIR)/src/Makefile
 
 #
+# Create dependency directories
+#
+$(DEP_DIRS):
+	$(MKDIR_PRINT)
+	$(Q)$(MKDIR) -p $(@)
+
+
+#
+# Add more dependency chain to objects that are not
+# compiled from the main Makefile (main Makefile is *this* Makefile).
+#
+$(OBJ_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
+$(OBJ_PRE_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
+
+
+#
+# Compile object from main Makefile (main Makefile is *this* Makefile).
+#
+$(OBJ_CC):
+	$(CC_PRINT)
+	$(Q)$(CC) $(PIE_FLAGS) $(DEPFLAGS) $(CFLAGS) -c $(O_TO_C) -o $(@)
+
+
+#
+# Include generated dependencies
+#
+-include $(OBJ_CC:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)
+-include $(OBJ_PRE_CC:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)
+
+
+#
 # Link the target bin.
 #
-$(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC)
+$(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC) $(FBT_CC_OBJ) $(OBJ_EXTRA)
 	$(LD_PRINT)
 	$(Q)$(LD) $(PIE_FLAGS) $(LDFLAGS) $(^) -o "$(@)" $(LIB_LDFLAGS)
 
 
-clean:
-	$(Q)$(RM) -vf $(TARGET_BIN) $(OBJ_CC) $(OBJ_PRE_CC)
+#
+# Clean project and also clean bluetea framework objects.
+#
+clean: bluetea_clean
+	$(Q)$(RM) -vrf $(OBJ_JUST_RM) $(TARGET_BIN) $(DEP_DIRS) $(OBJ_CC) $(OBJ_PRE_CC)
 
 
-.PHONY: all clean
+clean_all: clean ext_clean
+
+.PHONY: all clean clean_all
