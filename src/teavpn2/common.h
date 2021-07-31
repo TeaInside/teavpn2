@@ -9,4 +9,7 @@
 #include <errno.h>
 #include <string.h>
 
+extern int run_client(int argc, char *argv[]);
+extern int run_server(int argc, char *argv[]);
+
 #endif
