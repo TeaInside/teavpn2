@@ -128,4 +128,6 @@ static_assert(sizeof(struct if_info) == 16 + (IPV4_L * 4) + sizeof(uint16_t),
 
 #endif  /* #ifdef TEAVPN_IPV6_SUPPORT */
 
+extern void show_version(void);
+
 #endif

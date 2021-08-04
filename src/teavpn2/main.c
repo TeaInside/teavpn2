@@ -7,6 +7,15 @@
 #include <teavpn2/common.h>
 
 
+void show_version(void)
+{
+	puts("TeaVPN2 " TEAVPN2_VERSION);
+	puts("Copyright (C) 2021 Ammar Faizi\n"
+	     "This is free software; see the source for copying conditions.  There is NO\n"
+	     "warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n");
+}
+
+
 static void show_general_usage(const char *app)
 {
 	printf(" Usage: %s [client|server] [options]\n\n", app);
@@ -16,7 +25,7 @@ static void show_general_usage(const char *app)
 	printf("    %s client --help\n", app);
 	printf("\n");
 	printf("  [Version]\n");
-	printf("    %s --version\n\n", app);
+	printf("    %s --version, -V\n\n", app);
 }
 
 
@@ -27,6 +36,11 @@ static int run_teavpn2(int argc, char *argv[])
 
 	if (!strcmp("client", argv[1]))
 		return run_client(argc - 1, argv + 1);
+
+	if (!strcmp("--version", argv[1]) || !strcmp("-V", argv[1])) {
+		show_version();
+		return 0;
+	}
 
 	printf("Invalid command: %s\n", argv[1]);
 	show_general_usage(argv[0]);

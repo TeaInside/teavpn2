@@ -11,8 +11,8 @@
 struct cli_cfg_sys {
 	const char		*cfg_file;
 	const char		*data_dir;
-	uint8_t			verbose_level;
 	uint8_t			thread_num;
+	uint8_t			verbose_level;
 };
 
 
@@ -22,10 +22,12 @@ struct cli_cfg_sock {
 	const char		*server_addr;
 	uint16_t		server_port;
 	const char		*event_loop;
+	uint16_t		max_conn;
+	int			backlog;
 };
 
 
-struct cli_iface_cfg {
+struct cli_cfg_iface {
 	char			dev[IFACENAMESIZ];
 
 	/*
@@ -45,7 +47,7 @@ struct cli_cfg_auth {
 struct cli_cfg {
 	struct cli_cfg_sys	sys;
 	struct cli_cfg_sock	sock;
-	struct cli_iface_cfg	iface;
+	struct cli_cfg_iface	iface;
 	struct cli_cfg_auth	auth;
 };
 
