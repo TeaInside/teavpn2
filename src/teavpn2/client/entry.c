@@ -62,8 +62,12 @@ static int parse_argv(int argc, char *argv[], struct cli_cfg *cfg)
 			show_version();
 			exit(0);
 			break;
-		case 'v':
+		case 'v': {
+			uint8_t level = optarg ? (uint8_t)atoi(optarg) : 6u;
+			set_notice_level(level);
+			sys->verbose_level = level;
 			break;
+		}
 
 
 		/*
