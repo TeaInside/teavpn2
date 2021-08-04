@@ -39,6 +39,33 @@ static void show_help(void)
 }
 
 
+#define PR_CFG(C, FMT) printf("   " #C " = " FMT "\n", C);
+
+static void dump_client_cfg(struct cli_cfg *cfg)
+{
+	puts("=============================================");
+	puts("   Config dump   ");
+	puts("=============================================");
+	PR_CFG(cfg->sys.cfg_file, "%s");
+	PR_CFG(cfg->sys.data_dir, "%s");
+	PR_CFG(cfg->sys.thread_num, "%hhu");
+	PR_CFG(cfg->sys.verbose_level, "%hhu");
+	putchar('\n');
+	PR_CFG(cfg->sock.use_encrypt, "%hhu");
+	printf("   cfg->sock.type = %s\n",
+		(cfg->sock.type == SOCK_TCP) ? "SOCK_TCP" :
+		((cfg->sock.type == SOCK_UDP) ? "SOCK_UDP" : "unknown"));
+	PR_CFG(cfg->sock.server_addr, "%s");
+	PR_CFG(cfg->sock.server_port, "%hu");
+	PR_CFG(cfg->sock.event_loop, "%s");
+	PR_CFG(cfg->sock.max_conn, "%hu");
+	PR_CFG(cfg->sock.backlog, "%d");
+	putchar('\n');
+	PR_CFG(cfg->iface.dev, "%s");
+	puts("=============================================");
+}
+
+
 static int parse_argv(int argc, char *argv[], struct cli_cfg *cfg)
 {
 	int c;
@@ -156,6 +183,9 @@ int run_client(int argc, char *argv[])
 	ret = parse_argv(argc, argv, &cfg);
 	if (ret)
 		return -ret;
+
+	dump_client_cfg(&cfg);
+
 
 	return 0;
 }
