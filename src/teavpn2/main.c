@@ -36,17 +36,17 @@ int main(int argc, char *argv[])
 	ar_init(arena_buffer, sizeof(arena_buffer));
 	setvbuf(stdout, stdout_buf, _IOLBF, sizeof(stdout_buf));
 
-	if (strncmp(argv[1], "client", 6) == 0) {
+	if (strcmp(argv[1], "client") == 0) {
 		return teavpn_client_entry(argc, argv);
 	} else
-	if (strncmp(argv[1], "server", 6) == 0) {
+	if (strcmp(argv[1], "server") == 0) {
 		return teavpn_server_entry(argc, argv);
 	} else
-	if (strncmp(argv[1], "--version", strnlen(argv[1], 9)) == 0) {
+	if (strcmp(argv[1], "--version") == 0) {
 		teavpn_print_version();
 		return 0;
 	} else
-	if ((strncmp(argv[1], "--license", 9) == 0) && (argc == 3)) {
+	if ((strcmp(argv[1], "--license") == 0) && (argc == 3)) {
 		return print_license((unsigned short)atoi(argv[2]));
 	}
 
