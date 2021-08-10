@@ -35,11 +35,10 @@ static const char short_opt[] = "hVv::c:d:t:s:H:P:C:B:E:D:";
 
 static void show_help(void)
 {
-	exit(0);
 }
 
 
-#define PR_CFG(C, FMT) printf("   " #C " = " FMT "\n", C);
+#define PR_CFG(C, FMT) printf("   " #C " = " FMT "\n", C)
 
 static void dump_client_cfg(struct cli_cfg *cfg)
 {
@@ -84,11 +83,9 @@ static int parse_argv(int argc, char *argv[], struct cli_cfg *cfg)
 		case 'h':
 			show_help();
 			exit(0);
-			break;
 		case 'V':
 			show_version();
 			exit(0);
-			break;
 		case 'v': {
 			uint8_t level = optarg ? (uint8_t)atoi(optarg) : 6u;
 			set_notice_level(level);
@@ -127,7 +124,7 @@ static int parse_argv(int argc, char *argv[], struct cli_cfg *cfg)
 			tmp[sizeof(tmp) - 1] = '\0';
 
 			while (*p) {
-				*p = tolower((unsigned)*p);
+				*p = (char)tolower((int)(unsigned)*p);
 				p++;
 			}
 
@@ -154,7 +151,7 @@ static int parse_argv(int argc, char *argv[], struct cli_cfg *cfg)
 			sock->backlog = atoi(optarg);
 			break;
 		case 'E':
-			sock->use_encrypt = (bool)atoi(optarg);
+			sock->use_encrypt = atoi(optarg) ? true : false;
 			break;
 
 		/*

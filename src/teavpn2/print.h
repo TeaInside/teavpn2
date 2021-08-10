@@ -73,9 +73,9 @@ static inline void set_notice_level(uint8_t level)
 do {							\
 	uint8_t __lc_notice_level = (uint8_t)(LEVEL);	\
 	if (__lc_notice_level > (MAX_NOTICE_LEVEL))	\
-		continue;				\
+		break;					\
 	if (__lc_notice_level > __notice_level)		\
-		continue;				\
+		break;					\
 	pr_notice(__VA_ARGS__);				\
 } while (0)
 

@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- *  src/teavpn2/print.c
- *
  *  Printing functions
  *
  *  Copyright (C) 2021  Ammar Faizi
