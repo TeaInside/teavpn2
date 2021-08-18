@@ -17,7 +17,7 @@ struct cli_cfg_sys {
 
 
 struct cli_cfg_sock {
-	bool			use_encrypt;
+	bool			use_encryption;
 	sock_type		type;
 	char			server_addr[64];
 	uint16_t		server_port;

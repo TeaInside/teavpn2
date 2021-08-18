@@ -51,7 +51,7 @@ static void dump_client_cfg(struct cli_cfg *cfg)
 	PR_CFG(cfg->sys.thread_num, "%hhu");
 	PR_CFG(cfg->sys.verbose_level, "%hhu");
 	putchar('\n');
-	PR_CFG(cfg->sock.use_encrypt, "%hhu");
+	PR_CFG(cfg->sock.use_encryption, "%hhu");
 	printf("   cfg->sock.type = %s\n",
 		(cfg->sock.type == SOCK_TCP) ? "SOCK_TCP" :
 		((cfg->sock.type == SOCK_UDP) ? "SOCK_UDP" : "unknown"));
@@ -154,7 +154,7 @@ static int parse_argv(int argc, char *argv[], struct cli_cfg *cfg)
 			sock->backlog = atoi(optarg);
 			break;
 		case 'E':
-			sock->use_encrypt = atoi(optarg) ? true : false;
+			sock->use_encryption = atoi(optarg) ? true : false;
 			break;
 
 		/*
@@ -202,7 +202,9 @@ static int cfg_parse_section_socket(struct cfg_parse_ctx *ctx, const char *name,
 				    const char *val, int lineno)
 {
 	struct cli_cfg *cfg = ctx->cfg;
-	if (!strcmp(name, "event_loop")) {
+	if (!strcmp(name, "use_encryption")) {
+		cfg->sock.use_encryption = atoi(val) ? true : false;
+	} else if (!strcmp(name, "event_loop")) {
 		strncpy(cfg->sock.event_loop, val, sizeof(cfg->sock.event_loop));
 		cfg->sock.event_loop[sizeof(cfg->sock.event_loop) - 1] = '\0';
 	} else if (!strcmp(name, "sock_type")) {
@@ -324,10 +326,8 @@ static int parse_cfg_file(const char *cfg_file, struct cli_cfg *cfg)
 	if (ret) {
 		pr_err("Failed to parse config file \"%s\"", cfg_file);
 		ret = -EINVAL;
-		goto out;
 	}
 
-out:
 	fclose(handle);
 	return ret;
 }
