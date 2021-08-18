@@ -360,7 +360,7 @@ int run_client(int argc, char *argv[])
 
 	switch (cfg.sock.type) {
 	case SOCK_UDP:
-		return teavpn2_client_udp_run(&cfg);
+		return -teavpn2_client_udp_run(&cfg);
 	case SOCK_TCP:
 	default:
 		return ESOCKTNOSUPPORT;

@@ -18,6 +18,14 @@
 
 #include <teavpn2/print.h>
 
+#ifndef unlikely
+#  define unlikely(X) __builtin_expect((bool)(X), 0)
+#endif
+
+#ifndef likely
+#  define likely(X) __builtin_expect((bool)(X), 1)
+#endif
+
 #ifndef INET_ADDRSTRLEN
 #  define IPV4_L (sizeof("xxx.xxx.xxx.xxx"))
 #else
