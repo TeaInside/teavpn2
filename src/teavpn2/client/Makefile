@@ -9,6 +9,10 @@
 
 DEP_DIRS += $(BASE_DEP_DIR)/src/teavpn2/client
 
+ifeq ($(UNAME_S),Linux)
+	include $(BASE_DIR)/src/teavpn2/client/linux/Makefile
+endif
+
 OBJ_TMP_CC := \
 	$(BASE_DIR)/src/teavpn2/client/entry.o
 
