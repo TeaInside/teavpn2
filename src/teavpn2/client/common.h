@@ -22,8 +22,6 @@ struct cli_cfg_sock {
 	char			server_addr[64];
 	uint16_t		server_port;
 	char			event_loop[64];
-	uint16_t		max_conn;
-	int			backlog;
 };
 
 

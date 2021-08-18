@@ -23,8 +23,6 @@ static const struct option long_options[] = {
 	{"sock-type",   required_argument, 0, 's'},
 	{"server-addr", required_argument, 0, 'H'},
 	{"server-port", required_argument, 0, 'P'},
-	{"max-conn",    required_argument, 0, 'C'},
-	{"backlog",     required_argument, 0, 'B'},
 	{"encrypt",     no_argument,       0, 'E'},
 
 	{"dev",         required_argument, 0, 'D'},
@@ -58,8 +56,6 @@ static void dump_client_cfg(struct cli_cfg *cfg)
 	PR_CFG(cfg->sock.server_addr, "%s");
 	PR_CFG(cfg->sock.server_port, "%hu");
 	PR_CFG(cfg->sock.event_loop, "%s");
-	PR_CFG(cfg->sock.max_conn, "%hu");
-	PR_CFG(cfg->sock.backlog, "%d");
 	putchar('\n');
 	PR_CFG(cfg->iface.dev, "%s");
 	puts("=============================================");
@@ -146,12 +142,6 @@ static int parse_argv(int argc, char *argv[], struct cli_cfg *cfg)
 			break;
 		case 'P':
 			sock->server_port = (uint16_t)atoi(optarg);
-			break;
-		case 'C':
-			sock->max_conn = (uint16_t)atoi(optarg);
-			break;
-		case 'B':
-			sock->backlog = atoi(optarg);
 			break;
 		case 'E':
 			sock->use_encryption = atoi(optarg) ? true : false;
