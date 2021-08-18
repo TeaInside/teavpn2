@@ -250,7 +250,7 @@ static int cfg_parse_section_iface(struct cfg_parse_ctx *ctx, const char *name,
 		strncpy(cfg->iface.dev, val, sizeof(cfg->iface.dev));
 		cfg->iface.dev[sizeof(cfg->iface.dev) - 1] = '\0';
 	} else if (!strcmp(name, "override_default")) {
-		cfg->iface.override_default = (bool)strtoul(val, NULL, 10);
+		cfg->iface.override_default = atoi(val) ? true : false;
 	} else {
 		pr_err("Unknown name \"%s\" in section \"%s\" at %s:%d\n", name,
 			"iface", cfg->sys.cfg_file, lineno);
