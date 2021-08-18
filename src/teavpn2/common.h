@@ -27,6 +27,8 @@
 #  define likely(X) __builtin_expect((bool)(X), 1)
 #endif
 
+#define fallthrough __attribute__((fallthrough))
+
 #if defined(__clang__)
 #  pragma clang diagnostic push
 #  pragma clang diagnostic ignored "-Wreserved-id-macro"
