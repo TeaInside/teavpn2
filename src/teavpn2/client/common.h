@@ -10,7 +10,7 @@
 
 struct cli_cfg_sys {
 	const char		*cfg_file;
-	const char		*data_dir;
+	char			data_dir[128];
 	uint8_t			thread_num;
 	uint8_t			verbose_level;
 };
@@ -19,15 +19,16 @@ struct cli_cfg_sys {
 struct cli_cfg_sock {
 	bool			use_encrypt;
 	sock_type		type;
-	const char		*server_addr;
+	char			server_addr[64];
 	uint16_t		server_port;
-	const char		*event_loop;
+	char			event_loop[64];
 	uint16_t		max_conn;
 	int			backlog;
 };
 
 
 struct cli_cfg_iface {
+	bool			override_default;
 	char			dev[IFACENAMESIZ];
 
 	/*

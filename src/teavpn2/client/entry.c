@@ -5,6 +5,7 @@
 
 #include <ctype.h>
 #include <getopt.h>
+#include <inih/inih.h>
 #include <teavpn2/client/common.h>
 
 /* TODO: Write my own getopt function. */
@@ -101,7 +102,8 @@ static int parse_argv(int argc, char *argv[], struct cli_cfg *cfg)
 			sys->cfg_file = optarg;
 			break;
 		case 'd':
-			sys->data_dir = optarg;
+			strncpy(sys->data_dir, optarg, sizeof(sys->data_dir));
+			sys->data_dir[sizeof(sys->data_dir) - 1] = '\0';
 			break;
 		case 't': {
 			int tmp = atoi(optarg);
@@ -124,7 +126,7 @@ static int parse_argv(int argc, char *argv[], struct cli_cfg *cfg)
 			tmp[sizeof(tmp) - 1] = '\0';
 
 			while (*p) {
-				*p = (char)tolower((int)(unsigned)*p);
+				*p = (char)tolower((int)((unsigned)*p));
 				p++;
 			}
 
@@ -139,7 +141,8 @@ static int parse_argv(int argc, char *argv[], struct cli_cfg *cfg)
 			break;
 		}
 		case 'H':
-			sock->server_addr = optarg;
+			strncpy(sock->server_addr, optarg, sizeof(sock->server_addr));
+			sock->server_addr[sizeof(sock->server_addr) - 1] = '\0';
 			break;
 		case 'P':
 			sock->server_port = (uint16_t)atoi(optarg);
@@ -170,6 +173,172 @@ static int parse_argv(int argc, char *argv[], struct cli_cfg *cfg)
 }
 
 
+struct cfg_parse_ctx {
+	struct cli_cfg	*cfg;
+};
+
+
+static int cfg_parse_section_sys(struct cfg_parse_ctx *ctx, const char *name,
+				 const char *val, int lineno)
+{
+	struct cli_cfg *cfg = ctx->cfg;
+	if (!strcmp(name, "thread")) {
+		cfg->sys.thread_num = (uint8_t)strtoul(val, NULL, 10);
+	} else if (!strcmp(name, "verbose_level")) {
+		cfg->sys.verbose_level = (uint8_t)strtoul(val, NULL, 10);
+	} else if (!strcmp(name, "data_dir")) {
+		strncpy(cfg->sys.data_dir, val, sizeof(cfg->sys.data_dir));
+		cfg->sys.data_dir[sizeof(cfg->sys.data_dir) - 1] = '\0';
+	} else {
+		pr_err("Unknown name \"%s\" in section \"%s\" at %s:%d\n", name,
+			"sys", cfg->sys.cfg_file, lineno);
+		return 0;
+	}
+	return 1;
+}
+
+
+static int cfg_parse_section_socket(struct cfg_parse_ctx *ctx, const char *name,
+				    const char *val, int lineno)
+{
+	struct cli_cfg *cfg = ctx->cfg;
+	if (!strcmp(name, "event_loop")) {
+		strncpy(cfg->sock.event_loop, val, sizeof(cfg->sock.event_loop));
+		cfg->sock.event_loop[sizeof(cfg->sock.event_loop) - 1] = '\0';
+	} else if (!strcmp(name, "sock_type")) {
+		char tmp[8], *p = tmp;
+		strncpy(tmp, val, sizeof(tmp));
+
+		tmp[sizeof(tmp) - 1] = '\0';
+		while (*p) {
+			*p = (char)tolower((int)((unsigned)*p));
+			p++;
+		}
+
+		if (!strcmp(tmp, "tcp")) {
+			cfg->sock.type = SOCK_TCP;
+		} else if (!strcmp(tmp, "udp")) {
+			cfg->sock.type = SOCK_UDP;
+		} else {
+			pr_err("Invalid socket type \"%s\" at %s:%d", val,
+				cfg->sys.cfg_file, lineno);
+			return 0;
+		}
+	} else if (!strcmp(name, "server_addr")) {
+		strncpy(cfg->sock.server_addr, val, sizeof(cfg->sock.server_addr));
+		cfg->sock.server_addr[sizeof(cfg->sock.server_addr) - 1] = '\0';
+	} else if (!strcmp(name, "server_port")) {
+		cfg->sock.server_port = (uint16_t)strtoul(val, NULL, 10);
+	} else {
+		pr_err("Unknown name \"%s\" in section \"%s\" at %s:%d\n", name,
+			"socket", cfg->sys.cfg_file, lineno);
+		return 0;
+	}
+	return 1;
+}
+
+
+static int cfg_parse_section_iface(struct cfg_parse_ctx *ctx, const char *name,
+				   const char *val, int lineno)
+{
+	struct cli_cfg *cfg = ctx->cfg;
+	if (!strcmp(name, "dev")) {
+		strncpy(cfg->iface.dev, val, sizeof(cfg->iface.dev));
+		cfg->iface.dev[sizeof(cfg->iface.dev) - 1] = '\0';
+	} else if (!strcmp(name, "override_default")) {
+		cfg->iface.override_default = (bool)strtoul(val, NULL, 10);
+	} else {
+		pr_err("Unknown name \"%s\" in section \"%s\" at %s:%d\n", name,
+			"iface", cfg->sys.cfg_file, lineno);
+		return 0;
+	}
+	return 1;
+}
+
+
+static int cfg_parse_section_auth(struct cfg_parse_ctx *ctx, const char *name,
+				  const char *val, int lineno)
+{
+	struct cli_cfg *cfg = ctx->cfg;
+	if (!strcmp(name, "username")) {
+		strncpy(cfg->auth.username, val, sizeof(cfg->auth.username));
+		cfg->auth.username[sizeof(cfg->auth.username) - 1] = '\0';
+	} else if (!strcmp(name, "password")) {
+		strncpy(cfg->auth.password, val, sizeof(cfg->auth.password));
+		cfg->auth.password[sizeof(cfg->auth.password) - 1] = '\0';
+	} else {
+		pr_err("Unknown name \"%s\" in section \"%s\" at %s:%d\n", name,
+			"auth", cfg->sys.cfg_file, lineno);
+		return 0;
+	}
+	return 1;
+}
+
+
+/*
+ * If success, returns 1.
+ * If failure, returns 0.
+ */
+static int client_cfg_parser(void *user, const char *section, const char *name,
+			     const char *val, int lineno)
+{
+	struct cfg_parse_ctx *ctx = (struct cfg_parse_ctx *)user;
+	struct cli_cfg *cfg = ctx->cfg;
+
+	if (!strcmp(section, "sys")) {
+		return cfg_parse_section_sys(ctx, name, val, lineno);
+	} else if (!strcmp(section, "socket")) {
+		return cfg_parse_section_socket(ctx, name, val, lineno);
+	} else if (!strcmp(section, "iface")) {
+		return cfg_parse_section_iface(ctx, name, val, lineno);
+	} else if (!strcmp(section, "auth")) {
+		return cfg_parse_section_auth(ctx, name, val, lineno);
+	}
+
+	pr_err("Unknown section \"%s\" in at %s:%d", section, cfg->sys.cfg_file,
+		lineno);
+	return 0;
+}
+
+
+static int parse_cfg_file(const char *cfg_file, struct cli_cfg *cfg)
+{
+	int ret;
+	FILE *handle;
+	struct cfg_parse_ctx ctx;
+
+	ctx.cfg = cfg;
+
+	if (!cfg_file)
+		return 0;
+
+	handle = fopen(cfg_file, "rb");
+	if (!handle) {
+		ret = errno;
+		pr_err("Cannot open config file \"%s\": " PRERF, cfg_file,
+			PREAR(ret));
+		return -ret;
+	}
+
+	ret = ini_parse_file(handle, client_cfg_parser, &ctx);
+	if (ret) {
+		pr_err("Failed to parse config file \"%s\"", cfg_file);
+		ret = -EINVAL;
+		goto out;
+	}
+
+out:
+	fclose(handle);
+	return ret;
+}
+
+
+/*
+ * This function should return a positive integer or zero.
+ *
+ * The parser returns -errno value, hence we negate the return
+ * value inside this function.
+ */
 int run_client(int argc, char *argv[])
 {
 	int ret;
@@ -178,6 +347,10 @@ int run_client(int argc, char *argv[])
 
 	pr_debug("Parsing argv...");
 	ret = parse_argv(argc, argv, &cfg);
+	if (ret)
+		return -ret;
+
+	ret = parse_cfg_file(cfg.sys.cfg_file, &cfg);
 	if (ret)
 		return -ret;
 
