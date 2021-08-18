@@ -185,7 +185,9 @@ static int cfg_parse_section_sys(struct cfg_parse_ctx *ctx, const char *name,
 	if (!strcmp(name, "thread")) {
 		cfg->sys.thread_num = (uint8_t)strtoul(val, NULL, 10);
 	} else if (!strcmp(name, "verbose_level")) {
-		cfg->sys.verbose_level = (uint8_t)strtoul(val, NULL, 10);
+		uint8_t level = (uint8_t)strtoul(val, NULL, 10);
+		set_notice_level(level);
+		cfg->sys.verbose_level = level;
 	} else if (!strcmp(name, "data_dir")) {
 		strncpy(cfg->sys.data_dir, val, sizeof(cfg->sys.data_dir));
 		cfg->sys.data_dir[sizeof(cfg->sys.data_dir) - 1] = '\0';
