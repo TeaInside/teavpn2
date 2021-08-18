@@ -13,6 +13,7 @@ include $(BASE_DIR)/src/teavpn2/client/Makefile
 include $(BASE_DIR)/src/teavpn2/server/Makefile
 
 OBJ_TMP_CC := \
+	$(BASE_DIR)/src/teavpn2/allocator.o \
 	$(BASE_DIR)/src/teavpn2/main.o \
 	$(BASE_DIR)/src/teavpn2/print.o
 

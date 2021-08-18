@@ -17,6 +17,7 @@
 #include <inttypes.h>
 
 #include <teavpn2/print.h>
+#include <teavpn2/allocator.h>
 
 #ifndef unlikely
 #  define unlikely(X) __builtin_expect((bool)(X), 0)
@@ -24,6 +25,35 @@
 
 #ifndef likely
 #  define likely(X) __builtin_expect((bool)(X), 1)
+#endif
+
+#if defined(__clang__)
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Wreserved-id-macro"
+#endif
+
+#ifndef __maybe_unused
+#  define __maybe_unused __attribute__((unused))
+#endif
+
+#ifndef __inline
+#  define __inline inline
+#endif
+
+#ifndef __always_inline
+#  define __always_inline __inline __attribute__((always_inline))
+#endif
+
+#ifndef __no_inline
+#  define __no_inline __attribute__((noinline))
+#endif
+
+#ifndef __no_return
+#  define __no_return __attribute__((noreturn))
+#endif
+
+#if defined(__clang__)
+#  pragma clang diagnostic pop
 #endif
 
 #ifndef INET_ADDRSTRLEN
@@ -137,5 +167,14 @@ static_assert(sizeof(struct if_info) == 16 + (IPV4_L * 4) + sizeof(uint16_t),
 #endif  /* #ifdef TEAVPN_IPV6_SUPPORT */
 
 extern void show_version(void);
+
+static inline void *calloc_wrp(size_t nmemb, size_t size)
+{
+	void *ret = al64_calloc(nmemb, size);
+	if (unlikely(!ret)) {
+		pr_err("calloc_wrp: " PRERF, PREAR(errno));
+	}
+	return ret;
+}
 
 #endif
