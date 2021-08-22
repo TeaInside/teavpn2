@@ -90,6 +90,14 @@ typedef enum _sock_type_t {
 	SOCK_TCP
 } sock_type;
 
+typedef sock_type sock_type_t;
+
+typedef enum _event_loop_t {
+	EVTL_NOP,
+	EVTL_EPOLL,
+	EVTL_IO_URING
+} event_loop_t;
+
 
 /* Make it 32 bytes in size. */
 struct teavpn2_version {
@@ -172,9 +180,13 @@ extern void show_version(void);
 
 static inline void *calloc_wrp(size_t nmemb, size_t size)
 {
+	int err;
 	void *ret = al64_calloc(nmemb, size);
 	if (unlikely(!ret)) {
-		pr_err("calloc_wrp: " PRERF, PREAR(errno));
+		err = errno;
+		/* The errno might change after pr_err, must backup! */
+		pr_err("calloc_wrp: " PRERF, PREAR(err));
+		errno = err;
 	}
 	return ret;
 }
