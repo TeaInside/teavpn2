@@ -258,7 +258,7 @@ static void destroy_epoll(struct cli_udp_state *state)
 }
 
 
-int teavpn2_udp_epoll(struct cli_udp_state *state)
+int teavpn2_udp_client_epoll(struct cli_udp_state *state)
 {
 	int ret;
 

@@ -6,17 +6,17 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include <teavpn2/client/common.h>
+#include <teavpn2/server/common.h>
 #include <teavpn2/net/linux/iface.h>
-#include <teavpn2/client/linux/udp.h>
+#include <teavpn2/server/linux/udp.h>
 
 
-static struct cli_udp_state *g_state = NULL;
+static struct srv_udp_state *g_state = NULL;
 
 
 static void interrupt_handler(int sig)
 {
-	struct cli_udp_state *state;
+	struct srv_udp_state *state;
 
 	state = g_state;
 	if (unlikely(!state))
@@ -30,7 +30,7 @@ static void interrupt_handler(int sig)
 }
 
 
-static int init_tun_fds(struct cli_udp_state *state)
+static int init_tun_fds(struct srv_udp_state *state)
 {
 	uint8_t i, nn = (uint8_t)state->cfg->sys.thread_num;
 	int *tun_fds = calloc_wrp((size_t)nn, sizeof(*tun_fds));
@@ -46,9 +46,9 @@ static int init_tun_fds(struct cli_udp_state *state)
 }
 
 
-static int select_event_loop(struct cli_udp_state *state)
+static int select_event_loop(struct srv_udp_state *state)
 {
-	struct cli_cfg_sock *sock = &state->cfg->sock;
+	struct srv_cfg_sock *sock = &state->cfg->sock;
 	const char *evtl = sock->event_loop;
 
 	if ((evtl[0] == '\0') || (!strcmp(evtl, "epoll"))) {
@@ -66,11 +66,11 @@ static int select_event_loop(struct cli_udp_state *state)
 }
 
 
-static int init_state(struct cli_udp_state *state)
+static int init_state(struct srv_udp_state *state)
 {
 	int ret;
 
-	prl_notice(2, "Initializing client state...");
+	prl_notice(2, "Initializing server state...");
 	g_state = state;
 	state->udp_fd = -1;
 	state->sig = -1;
@@ -115,7 +115,7 @@ sig_err:
 }
 
 
-static int init_socket(struct cli_udp_state *state)
+static int init_socket(struct srv_udp_state *state)
 {
 	int ret = 0;
 	int udp_fd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0);
@@ -130,7 +130,7 @@ static int init_socket(struct cli_udp_state *state)
 }
 
 
-static int init_iface(struct cli_udp_state *state)
+static int init_iface(struct srv_udp_state *state)
 {
 	const char *dev = state->cfg->iface.dev;
 	int ret = 0, tun_fd, *tun_fds = state->tun_fds;
@@ -174,11 +174,11 @@ err:
 }
 
 
-static int run_client_event_loop(struct cli_udp_state *state)
+static int run_server_event_loop(struct srv_udp_state *state)
 {
 	switch (state->evt_loop) {
 	case EVTL_EPOLL:
-		return teavpn2_udp_client_epoll(state);
+		return teavpn2_udp_server_epoll(state);
 	case EVTL_IO_URING:
 		pr_err("run_client_event_loop() with io_uring: " PRERF,
 			PREAR(EOPNOTSUPP));
@@ -191,7 +191,7 @@ static int run_client_event_loop(struct cli_udp_state *state)
 }
 
 
-static void close_tun_fds(struct cli_udp_state *state)
+static void close_tun_fds(struct srv_udp_state *state)
 {
 	uint8_t i, nn = (uint8_t)state->cfg->sys.thread_num;
 	int *tun_fds = state->tun_fds;
@@ -209,7 +209,7 @@ static void close_tun_fds(struct cli_udp_state *state)
 }
 
 
-static void close_udp_fd(struct cli_udp_state *state)
+static void close_udp_fd(struct srv_udp_state *state)
 {
 	if (state->udp_fd != -1) {
 		prl_notice(2, "Closing udp_fd (fd=%d)...", state->udp_fd);
@@ -219,17 +219,17 @@ static void close_udp_fd(struct cli_udp_state *state)
 }
 
 
-static void destroy_state(struct cli_udp_state *state)
+static void destroy_state(struct srv_udp_state *state)
 {
 	close_tun_fds(state);
 	close_udp_fd(state);
 }
 
 
-int teavpn2_client_udp_run(struct cli_cfg *cfg)
+int teavpn2_server_udp_run(struct srv_cfg *cfg)
 {
 	int ret = 0;
-	struct cli_udp_state *state;
+	struct srv_udp_state *state;
 
 	/* This is a large struct, don't use stack. */
 	state = calloc_wrp(1ul, sizeof(*state));
@@ -246,7 +246,7 @@ int teavpn2_client_udp_run(struct cli_cfg *cfg)
 	ret = init_iface(state);
 	if (unlikely(ret))
 		goto out;
-	ret = run_client_event_loop(state);
+	ret = run_server_event_loop(state);
 out:
 	destroy_state(state);
 	al64_free(state);

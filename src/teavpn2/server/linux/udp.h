@@ -3,8 +3,8 @@
  * Copyright (C) 2021  Ammar Faizi
  */
 
-#ifndef TEAVPN2__CLIENT__LINUX__UDP_H
-#define TEAVPN2__CLIENT__LINUX__UDP_H
+#ifndef TEAVPN2__SERVER__LINUX__UDP_H
+#define TEAVPN2__SERVER__LINUX__UDP_H
 
 #include <pthread.h>
 #include <teavpn2/client/common.h>
@@ -23,24 +23,24 @@ struct epld_struct {
 };
 
 
-struct cli_udp_state;
+struct srv_udp_state;
 
 
 struct epl_thread {
 	uint16_t				idx;
 	pthread_t				thread;
 	int					epoll_fd;
-	struct cli_udp_state			*state;
+	struct srv_udp_state			*state;
 };
 
 
-struct cli_udp_state {
+struct srv_udp_state {
 	volatile bool				stop;
 	int					sig;
 	int					udp_fd;
 	event_loop_t				evt_loop;
 	int					*tun_fds;
-	struct cli_cfg				*cfg;
+	struct srv_cfg				*cfg;
 	union {
 		struct {
 			struct epld_struct	*epl_udata;
@@ -50,7 +50,6 @@ struct cli_udp_state {
 };
 
 
-extern int teavpn2_udp_client_epoll(struct cli_udp_state *state);
+extern int teavpn2_udp_server_epoll(struct srv_udp_state *state);
 
-
-#endif /* #ifndef TEAVPN2__CLIENT__LINUX__UDP_H */
+#endif /* #ifndef TEAVPN2__SERVER__LINUX__UDP_H */
