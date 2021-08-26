@@ -35,6 +35,8 @@ struct epl_thread {
 
 
 struct cli_udp_state {
+	volatile bool				stop;
+	int					sig;
 	int					udp_fd;
 	event_loop_t				evt_loop;
 	int					*tun_fds;

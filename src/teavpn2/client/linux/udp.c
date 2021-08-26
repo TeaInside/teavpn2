@@ -11,6 +11,25 @@
 #include <teavpn2/client/linux/udp.h>
 
 
+static struct cli_udp_state *g_state = NULL;
+
+
+static void interrupt_handler(int sig)
+{
+	struct cli_udp_state *state;
+
+	state = g_state;
+	if (unlikely(!state))
+		panic("interrupt_handler is called when g_state is NULL");
+
+	if (state->sig == -1) {
+		state->stop = true;
+		state->sig  = sig;
+		putchar('\n');
+	}
+}
+
+
 static int init_tun_fds(struct cli_udp_state *state)
 {
 	uint8_t i, nn = (uint8_t)state->cfg->sys.thread_num;
@@ -52,7 +71,9 @@ static int init_state(struct cli_udp_state *state)
 	int ret;
 
 	prl_notice(2, "Initializing client state...");
+	g_state = state;
 	state->udp_fd = -1;
+	state->sig = -1;
 
 	ret = init_tun_fds(state);
 	if (unlikely(ret))
@@ -74,8 +95,23 @@ static int init_state(struct cli_udp_state *state)
 		__builtin_unreachable();
 	}
 
+	prl_notice(2, "Setting up interrupt handler...");
+	if (signal(SIGINT, interrupt_handler) == SIG_ERR)
+		goto sig_err;
+	if (signal(SIGTERM, interrupt_handler) == SIG_ERR)
+		goto sig_err;
+	if (signal(SIGHUP, interrupt_handler) == SIG_ERR)
+		goto sig_err;
+	if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
+		goto sig_err;
+
 	prl_notice(2, "Client state initialized successfully!");
 	return ret;
+
+sig_err:
+	ret = errno;
+	pr_err("signal(): " PRERF, PREAR(ret));
+	return -ret;
 }
 
 
@@ -169,9 +205,20 @@ static void close_tun_fds(struct cli_udp_state *state)
 }
 
 
+static void close_udp_fd(struct cli_udp_state *state)
+{
+	if (state->udp_fd != -1) {
+		prl_notice(2, "Closing udp_fd (fd=%d)...", state->udp_fd);
+		close(state->udp_fd);
+		state->udp_fd = -1;
+	}
+}
+
+
 static void destroy_state(struct cli_udp_state *state)
 {
 	close_tun_fds(state);
+	close_udp_fd(state);
 }
 
 
