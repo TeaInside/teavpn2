@@ -117,16 +117,40 @@ sig_err:
 
 static int init_socket(struct srv_udp_state *state)
 {
-	int ret = 0;
-	int udp_fd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0);
+	int ret;
+	int type;
+	struct sockaddr_in addr;
+	struct srv_cfg_sock *sock = &state->cfg->sock;
+
+	type = SOCK_DGRAM;
+	if (state->evt_loop != EVTL_IO_URING)
+		type |= SOCK_NONBLOCK;
+
+	int udp_fd = socket(AF_INET, type, 0);
 	if (unlikely(udp_fd < 0)) {
 		ret = errno;
-		pr_err("socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0): " PRERF,
-			PREAR(ret));
+		pr_err("socket(AF_INET, SOCK_DGRAM%s, 0): " PRERF,
+		       (type & SOCK_NONBLOCK) ? " | SOCK_NONBLOCK" : "",
+		       PREAR(ret));
 		return -ret;
 	}
 	state->udp_fd = udp_fd;
-	return ret;
+
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(sock->bind_port);
+	addr.sin_addr.s_addr = inet_addr(sock->bind_addr);
+	ret = bind(udp_fd, (struct sockaddr *)&addr, sizeof(addr));
+	if (unlikely(ret < 0)) {
+		ret = errno;
+		pr_err("bind(): " PRERF, PREAR(ret));
+		goto out_err;
+	}
+
+	return 0;
+out_err:
+	close(udp_fd);
+	return -ret;
 }
 
 
