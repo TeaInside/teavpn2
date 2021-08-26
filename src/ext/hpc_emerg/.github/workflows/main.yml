@@ -1,0 +1,26 @@
+name: Build and Test (x86-64)
+on:
+  push:
+    branches: [ master, dev_ammarfaizi2 ]
+  pull_request:
+    branches: [ master, dev_ammarfaizi2 ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Dependencies
+        run: sudo apt-get install gcc make clang -y
+      
+      - name: Build and Test (GCC)
+        run: |
+          make test_x64 -j4;
+          make clean -j4;
+
+      - name: Build and Test (Clang)
+        run: |
+          make CC=clang CXX=clang++ test_x64 -j4;
+          make clean -j4;

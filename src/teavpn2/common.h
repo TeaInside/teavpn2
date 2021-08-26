@@ -19,6 +19,8 @@
 #include <teavpn2/print.h>
 #include <teavpn2/allocator.h>
 
+#include <emerg/emerg.h>
+
 #ifndef unlikely
 #  define unlikely(X) __builtin_expect((bool)(X), 0)
 #endif

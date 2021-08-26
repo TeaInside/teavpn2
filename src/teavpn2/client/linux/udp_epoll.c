@@ -143,7 +143,7 @@ static int init_epoll_thread_data(struct cli_udp_state *state)
 				goto out;
 		}
 	}
-
+	WARN_ON(1);
 out:
 	return ret;
 }

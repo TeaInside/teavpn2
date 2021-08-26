@@ -61,5 +61,11 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 
+	if (emerg_init_handler(EMERG_INIT_ALL)) {
+		int ret = errno;
+		printf("Cannot set emerg handler: %s\n", strerror(ret));
+		return -ret;
+	}
+
 	return run_teavpn2(argc, argv);
 }
