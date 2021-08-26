@@ -8,6 +8,11 @@
 #include <inih/inih.h>
 #include <teavpn2/client/common.h>
 
+
+struct cfg_parse_ctx {
+	struct cli_cfg	*cfg;
+};
+
 /* TODO: Write my own getopt function. */
 
 
@@ -29,7 +34,7 @@ static const struct option long_options[] = {
 
 	{0, 0, 0, 0}
 };
-static const char short_opt[] = "hVv::c:d:t:s:H:P:C:B:E:D:";
+static const char short_opt[] = "hVv::c:d:t:s:H:P:ED:";
 
 
 static void show_help(void)
@@ -161,11 +166,6 @@ static int parse_argv(int argc, char *argv[], struct cli_cfg *cfg)
 
 	return 0;
 }
-
-
-struct cfg_parse_ctx {
-	struct cli_cfg	*cfg;
-};
 
 
 static int cfg_parse_section_sys(struct cfg_parse_ctx *ctx, const char *name,
