@@ -255,8 +255,11 @@ static int cfg_parse_section_iface(struct cfg_parse_ctx *ctx, const char *name,
 	if (!strcmp(name, "dev")) {
 		strncpy(cfg->iface.dev, val, sizeof(cfg->iface.dev));
 		cfg->iface.dev[sizeof(cfg->iface.dev) - 1] = '\0';
+		strncpy(cfg->iface.iff.dev, val, sizeof(cfg->iface.iff.dev));
+		cfg->iface.iff.dev[sizeof(cfg->iface.iff.dev) - 1] = '\0';
 	} else if (!strcmp(name, "mtu")) {
 		cfg->iface.mtu = (uint16_t)strtoul(val, NULL, 10);
+		cfg->iface.iff.ipv4_mtu = cfg->iface.mtu;
 	} else if (!strcmp(name, "ipv4")) {
 		strncpy(cfg->iface.iff.ipv4, val, sizeof(cfg->iface.iff.ipv4));
 		cfg->iface.iff.ipv4[sizeof(cfg->iface.iff.ipv4) - 1] = '\0';

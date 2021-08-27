@@ -7,10 +7,13 @@
 #define TEAVPN2__SERVER__LINUX__UDP_H
 
 #include <pthread.h>
+#include <sys/epoll.h>
+#include <stdatomic.h>
 #include <teavpn2/client/common.h>
 
-#define EPLD_DATA_TUN	(1u << 0u)
-#define EPLD_DATA_UDP	(1u << 1u)
+#define EPLD_DATA_TUN		(1u << 0u)
+#define EPLD_DATA_UDP		(1u << 1u)
+#define EPOLL_EVT_ARR_NUM	(16)
 
 
 /*
@@ -30,7 +33,9 @@ struct epl_thread {
 	uint16_t				idx;
 	pthread_t				thread;
 	int					epoll_fd;
+	int					epoll_timeout;
 	struct srv_udp_state			*state;
+	struct epoll_event			evt[EPOLL_EVT_ARR_NUM];
 };
 
 
@@ -41,6 +46,7 @@ struct srv_udp_state {
 	event_loop_t				evt_loop;
 	int					*tun_fds;
 	struct srv_cfg				*cfg;
+	_Atomic(uint16_t)			ready_thread;
 	union {
 		struct {
 			struct epld_struct	*epl_udata;

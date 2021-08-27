@@ -119,6 +119,7 @@ static int init_socket(struct srv_udp_state *state)
 {
 	int ret;
 	int type;
+	int udp_fd;
 	struct sockaddr_in addr;
 	struct srv_cfg_sock *sock = &state->cfg->sock;
 
@@ -126,7 +127,7 @@ static int init_socket(struct srv_udp_state *state)
 	if (state->evt_loop != EVTL_IO_URING)
 		type |= SOCK_NONBLOCK;
 
-	int udp_fd = socket(AF_INET, type, 0);
+	udp_fd = socket(AF_INET, type, 0);
 	if (unlikely(udp_fd < 0)) {
 		ret = errno;
 		pr_err("socket(AF_INET, SOCK_DGRAM%s, 0): " PRERF,
@@ -161,8 +162,12 @@ static int init_iface(struct srv_udp_state *state)
 	uint8_t i, nn = (uint8_t)state->cfg->sys.thread_num;
 	short flags = IFF_TUN | IFF_NO_PI | IFF_MULTI_QUEUE;
 
-	prl_notice(2, "Initializing virtual network interface...");
+	if (unlikely(!dev || !*dev)) {
+		pr_err("iface dev cannot be empty!");
+		return -EINVAL;
+	}
 
+	prl_notice(2, "Initializing virtual network interface (%s)...", dev);
 	for (i = 0; i < nn; i++) {
 		prl_notice(4, "Initializing tun_fds[%hhu]...", i);
 
@@ -174,17 +179,24 @@ static int init_iface(struct srv_udp_state *state)
 			goto err;
 		}
 
-		ret = fd_set_nonblock(tun_fd);
-		if (unlikely(ret < 0)) {
-			pr_err("fd_set_nonblock(%d): " PRERF, tun_fd,
-				PREAR(-ret));
-			close(tun_fd);
-			goto err;
+		if (state->evt_loop != EVTL_IO_URING) {
+			ret = fd_set_nonblock(tun_fd);
+			if (unlikely(ret < 0)) {
+				pr_err("fd_set_nonblock(%d): " PRERF, tun_fd,
+					PREAR(-ret));
+				close(tun_fd);
+				goto err;
+			}
 		}
 
 		tun_fds[i] = tun_fd;
 		prl_notice(4, "Successfully initialized tun_fds[%hhu] (fd=%d)",
 			   i, tun_fd);
+	}
+
+	if (unlikely(!teavpn_iface_up(&state->cfg->iface.iff))) {
+		pr_err("teavpn_iface_up(): cannot bring up network interface");
+		return -ENETDOWN;
 	}
 
 	prl_notice(2, "Virtual network interface initialized successfully!");
@@ -217,12 +229,13 @@ static int run_server_event_loop(struct srv_udp_state *state)
 
 static void close_tun_fds(struct srv_udp_state *state)
 {
-	uint8_t i, nn = (uint8_t)state->cfg->sys.thread_num;
+	uint8_t i, nn;
 	int *tun_fds = state->tun_fds;
 
 	if (!tun_fds)
 		return;
 
+	nn = (uint8_t)state->cfg->sys.thread_num;
 	for (i = 0; i < nn; i++) {
 		if (tun_fds[i] != -1) {
 			prl_notice(2, "Closing tun_fds[%hhu] (fd=%d)...", i,

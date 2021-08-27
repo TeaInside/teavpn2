@@ -182,16 +182,92 @@ static void close_epoll_fds(struct epl_thread *threads, uint8_t nn)
 }
 
 
+static int _do_epoll_wait(struct epl_thread *thread)
+{
+	int ret;
+	int timeout = thread->epoll_timeout;
+	int epoll_fd = thread->epoll_fd;
+	struct epoll_event *evt = thread->evt;
+
+wait_again:
+	ret = epoll_wait(epoll_fd, evt, EPOLL_EVT_ARR_NUM, timeout);
+	if (unlikely(ret < 0)) {
+		ret = errno;
+
+		if (likely(ret == EINTR)) {
+			prl_notice(2, "Interrupted!");
+			return 0;
+		}
+
+		pr_err("epoll_wait(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+
+
+	if (unlikely(ret == 0)) {
+		/*
+		 * We've reached our timeout here, may do something?
+		 */
+		goto wait_again;
+	}
+
+	prl_notice(2, "test");
+	return ret;
+}
+
+
+static int do_epoll_wait(struct epl_thread *thread)
+{
+	int ret;
+
+	ret = _do_epoll_wait(thread);
+	if (unlikely(ret < 0)) {
+		pr_err("_do_epoll_wait(): " PRERF, PREAR(-ret));
+		return ret;
+	}
+
+	return ret;
+}
+
+
+static void thread_wait_or_add_counter(struct epl_thread *thread,
+				       struct srv_udp_state *state)
+{
+	uint8_t nn;
+
+	atomic_fetch_add(&state->ready_thread, 1);
+	if (thread->idx != 0)
+		return;
+
+	/*
+	 * We are the main thread...
+	 */
+	nn = (uint8_t)state->cfg->sys.thread_num;
+	while (atomic_load(&state->ready_thread) != nn) {
+		prl_notice(2, "Waiting for subthread(s) to be ready...");
+		if (unlikely(state->stop))
+			return;
+		sleep(1);
+	}
+
+	if (nn > 1)
+		prl_notice(2, "All threads all are ready!");
+}
+
+
 static void *_run_event_loop(void *thread_p)
 {
 	int ret = 0;
-	struct srv_udp_state *state;
 	struct epl_thread *thread = (struct epl_thread *)thread_p;
+	struct srv_udp_state *state = thread->state;
 
-	state = thread->state;
+	thread_wait_or_add_counter(thread, state);
+	thread->epoll_timeout = 1000;
+
 	while (likely(!state->stop)) {
-		prl_notice(3, "thread %u", thread->idx);
-		sleep(1);
+		ret = do_epoll_wait(thread);
+		if (unlikely(ret))
+			break;
 	}
 
 	return (void *)((intptr_t)ret);
@@ -225,11 +301,14 @@ static int run_event_loop(struct srv_udp_state *state)
 	struct epl_thread *threads = state->epl_threads;
 	uint8_t i, nn = (uint8_t)state->cfg->sys.thread_num;
 
+
+	atomic_store(&state->ready_thread, 0);
 	for (i = 1; i < nn; i++) {
 		ret = spawn_thread(&threads[i]);
 		if (unlikely(ret))
 			goto out;
 	}
+
 
 	{
 		/*
@@ -245,8 +324,8 @@ out:
 
 static void destroy_epoll(struct srv_udp_state *state)
 {
-	uint8_t nn = (uint8_t)state->cfg->sys.thread_num;
 	struct epl_thread *threads;
+	uint8_t nn = (uint8_t)state->cfg->sys.thread_num;
 
 	threads = state->epl_threads;
 	if (threads) {
