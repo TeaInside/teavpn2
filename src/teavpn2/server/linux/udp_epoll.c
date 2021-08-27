@@ -76,7 +76,7 @@ static int register_tun_fd_to_thread(struct epl_thread *thread, int tun_fd)
 	if (tun_fd > 1000)
 		panic("Got tun_fd > 1000 (fd=%d)", tun_fd);
 
-	data.u64 = EPLD_DATA_TUN;
+	data.u64 = (uint64_t)tun_fd;
 	prl_notice(4, "Registering tun_fd (%d) to epoll (for thread %u)...",
 		   tun_fd, thread->idx);
 	return epoll_add(epoll_fd, tun_fd, events, data);
@@ -185,6 +185,25 @@ static void close_epoll_fds(struct epl_thread *threads, uint8_t nn)
 }
 
 
+static int handle_event_tun(struct epl_thread *thread, struct epoll_event *evt)
+{
+	int ret;
+	int tun_fd = (int)((int64_t)evt->data.u64);
+	ssize_t read_ret;
+
+	read_ret = read(tun_fd, thread->tun_buf, sizeof(thread->tun_buf));
+	if (unlikely(read_ret < 0)) {
+		ret = errno;
+		pr_err("read() from tun_fd (fd=%d): " PRERF, tun_fd,
+		       PREAR(ret));
+		return likely(ret == EAGAIN) ? 0 : -ret;
+	}
+
+	pr_debug("read() from tun_fd (fd=%d) %zd bytes", tun_fd, read_ret);
+	return 0;
+}
+
+
 /*
  * TL;DR
  * If this function returns non zero, TeaVPN2 process is exiting!
@@ -200,7 +219,17 @@ static void close_epoll_fds(struct epl_thread *threads, uint8_t nn)
 static int handle_event(struct epl_thread *thread, struct epoll_event *evt)
 {
 	int ret = 0;
-	prl_notice(2, "udata = %lu", evt->data.u64);
+	uint64_t dt = evt->data.u64;
+
+	if (dt < 1000) {
+		/*
+		 * This is a TUN_FD.
+		 */
+		ret = handle_event_tun(thread, evt);
+	} else {
+
+	}
+
 	return ret;
 }
 
@@ -284,6 +313,8 @@ static void thread_wait_or_add_counter(struct epl_thread *thread,
 
 	if (nn > 1)
 		prl_notice(2, "All threads all are ready!");
+
+	prl_notice(2, "Initialization Sequence Completed");
 }
 
 
