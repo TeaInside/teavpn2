@@ -1,44 +1,29 @@
 #
-# SPDX-License-Identifier: GPL-2.0
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # @author Ammar Faizi <ammarfaizi2@gmail.com> https://www.facebook.com/ammarfaizi2
-# @license GNU GPL-2.0
+# @license GPL-2.0-only
 #
 # Copyright (C) 2021  Ammar Faizi
 #
 
-INCLUDE_DIR	+= -I$(BASE_DIR)/src/ext
-DEP_DIRS	+= $(BASE_DEP_DIR)/src/teavpn2/ext
+INCLUDE_DIR += \
+	-I$(BASE_DIR)/src/ext \
+	-I$(BASE_DIR)/src/ext/hpc_emerg/src
 
 include $(BASE_DIR)/src/ext/inih/Makefile
 
 
-INCLUDE_DIR	+= -I$(BASE_DIR)/src/ext/liburing/src/include
+## Build HPC emerg objects
+LIB_LDFLAGS += -ldl
+$(BASE_DIR)/src/ext/hpc_emerg/src/emerg/arch/x64/emerg.o:
+	+$(Q)$(MAKE) --no-print-directory -C $(BASE_DIR)/src/ext/hpc_emerg $(@)
 
-LIBURING_OBJ	+= \
-	$(BASE_DIR)/src/ext/liburing/src/syscall.ol \
-	$(BASE_DIR)/src/ext/liburing/src/setup.ol \
-	$(BASE_DIR)/src/ext/liburing/src/register.ol \
-	$(BASE_DIR)/src/ext/liburing/src/queue.ol
+OBJ_PRE_CC += $(BASE_DIR)/src/ext/hpc_emerg/src/emerg/arch/x64/emerg.o
 
-OBJ_EXTRA += $(LIBURING_OBJ)
+hpc_emerg_clean:
+	+$(Q)$(MAKE) --no-print-directory -C $(BASE_DIR)/src/ext/hpc_emerg clean
 
+clean: hpc_emerg_clean
 
-export V
-
-
-$(BASE_DIR)/src/ext/liburing/src/liburing.so.2.0.0:
-	+$(Q)cd $(BASE_DIR)/src/ext/liburing && ./configure && $(MAKE) -C src;
-
-
-liburing_clean:
-	+$(Q)cd $(BASE_DIR)/src/ext/liburing && $(MAKE) clean;
-
-
-$(LIBURING_OBJ): $(BASE_DIR)/src/ext/liburing/src/liburing.so.2.0.0
-
-
-ext_clean: liburing_clean
-
-
-.PHONY: ext_clean liburing_clean liburing_build
+.PHONY: hpc_emerg_clean

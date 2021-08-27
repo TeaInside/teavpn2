@@ -1,8 +1,8 @@
 #
-# SPDX-License-Identifier: GPL-2.0
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # @author Ammar Faizi <ammarfaizi2@gmail.com> https://www.facebook.com/ammarfaizi2
-# @license GNU GPL-2.0
+# @license GNU GPL-2.0-only
 #
 # Flag for compilers and linkers.
 #
@@ -53,8 +53,7 @@ ifeq ($(RELEASE_MODE),1)
 	C_CXX_FLAGS	+= -O3 $(C_CXX_FLAGS_RELEASE)
 else
 	LDFLAGS		+= $(DEFAULT_OPTIMIZATION)
-	C_CXX_FLAGS	+= $(DEFAULT_OPTIMIZATION) $(C_CXX_FLAGS_DEBUG) \
-			-grecord-gcc-switches
+	C_CXX_FLAGS	+= $(DEFAULT_OPTIMIZATION) $(C_CXX_FLAGS_DEBUG)
 
 	#
 	# Always sanitize debug build, unless otherwise specified.

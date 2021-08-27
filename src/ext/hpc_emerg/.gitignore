@@ -1,0 +1,12 @@
+*.o
+*.so
+*.swo
+*.swp
+*.tmp
+*.log
+*.lock
+/main
+/core
+/.deps
+/hpc_emerg.tar.gz
+/hpc_emerg.zip

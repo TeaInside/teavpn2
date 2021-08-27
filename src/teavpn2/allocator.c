@@ -1,9 +1,5 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- *  src/teavpn2/allocator.c
- *
- *  Printing functions
- *
  *  Copyright (C) 2021  Ammar Faizi
  */
 
@@ -11,9 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include <bluetea/base.h>
 #include <teavpn2/allocator.h>
-
+#include <teavpn2/common.h>
 
 __no_inline void *al64_calloc(size_t nmemb, size_t size)
 {

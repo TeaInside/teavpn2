@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- *  src/teavpn2/net/linux/iface.c
- *
  *  Network interface functions for TeaVPN2 (Linux)
  *
  *  Copyright (C) 2021  Ammar Faizi
@@ -18,11 +16,150 @@
 #include <sys/ioctl.h>
 #include <linux/if_tun.h>
 
-
-#include <bluetea/lib/string.h>
-
-#include <teavpn2/base.h>
+#include <teavpn2/common.h>
 #include <teavpn2/net/linux/iface.h>
+
+#include <ctype.h>
+
+
+static __inline int is_ws(int the_chr)
+{
+	return isspace((int)((unsigned)the_chr));
+}
+
+
+static __no_inline char *strtriml_move(char *str, size_t len)
+{
+	size_t trimmed_len;
+	char *orig = str, *end;
+
+	if (unlikely(len == 0))
+		return orig;
+
+
+	/*
+	 * We assume that `str + len` is the location of the NUL char
+	 */
+	end = str + len - 1;
+
+
+	while (is_ws(*str)) {
+
+		if (str == &end[1]) {
+			*orig = '\0';
+			return orig;
+		}
+
+		str++;
+	}
+
+
+	if (*str == '\0' && str == &end[1]) {
+		/*
+		 * All spaces C string, or empty C string will go here.
+		 */
+		*orig = '\0';
+		return orig;
+	}
+
+
+	while (is_ws(*end))
+		end--;
+
+
+	trimmed_len = (size_t)(end - str) + 1u;
+	if (orig != str)
+		memmove(orig, str, trimmed_len);
+
+	orig[trimmed_len] = '\0';
+	return orig;
+}
+
+
+
+static __no_inline char *strtrim_move(char *str)
+{
+	/* TODO: Don't waste time just for strlen */
+	return strtriml_move(str, strlen(str));
+}
+
+
+static char *sane_strncpy(char *__restrict__ dst, char *__restrict__ src,
+			  size_t len)
+{
+	strncpy(dst, src, len);
+	dst[len - 1] = '\0';
+	return dst;
+}
+
+
+/*
+ *
+ * Thanks to PHP
+ * https://github.com/php/php-src/blob/e9d78339e7ff2edb8a1eda93d047ccaac25efa24/ext/standard/exec.c#L388-L468
+ *
+ */
+static __no_inline char *escapeshellarg(char *alloc, const char *str,
+					size_t len, size_t *res_len)
+{
+	size_t y = 0;
+	size_t l = (len > 0) ? len : strlen(str);
+	size_t x;
+	char *cmd;
+
+	if (alloc == NULL)
+		/* Worst case */
+		cmd = (char *)malloc((sizeof(char) * l * 4) + 1);
+	else
+		cmd = alloc;
+
+#ifdef WIN32
+	cmd[y++] = '"';
+#else
+	cmd[y++] = '\'';
+#endif
+
+	for (x = 0; x < l; x++) {
+		switch (str[x]) {
+#ifdef WIN32
+		case '"':
+		case '%':
+		case '!':
+			cmd[y++] = ' ';
+			break;
+#else
+		case '\'':
+			cmd[y++] = '\'';
+			cmd[y++] = '\\';
+			cmd[y++] = '\'';
+#endif
+		fallthrough;
+		default:
+			cmd[y++] = str[x];
+		}
+	}
+
+#ifdef WIN32
+	if (y > 0 && '\\' == cmd[y - 1]) {
+		int k = 0, n = y - 1;
+		for (; n >= 0 && '\\' == cmd[n]; n--, k++);
+		if (k % 2) {
+			cmd[y++] = '\\';
+		}
+	}
+	cmd[y++] = '"';
+#else
+	cmd[y++] = '\'';
+#endif
+
+	cmd[y] = '\0';
+
+	if (res_len != NULL)
+		*res_len = y;
+
+	return cmd;
+}
+
 
 
 /* https://www.kernel.org/doc/Documentation/networking/tuntap.txt
@@ -328,7 +465,7 @@ static __no_inline bool teavpn_iface_toggle(struct if_info *iface, bool up,
 		return false;
 
 	EXEC_CMD(&ret, cbuf, ip, "link set dev %s %s mtu %d", edev,
-		 (up ? "up" : "down"), iface->mtu);
+		 (up ? "up" : "down"), iface->ipv4_mtu);
 
 	if (unlikely(ret != 0))
 		return false;
