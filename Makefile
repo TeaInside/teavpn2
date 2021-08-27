@@ -1,8 +1,8 @@
 #
-# SPDX-License-Identifier: GPL-2.0
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # @author Ammar Faizi <ammarfaizi2@gmail.com> https://www.facebook.com/ammarfaizi2
-# @license GNU GPL-2.0
+# @license GPL-2.0-only
 #
 # TeaVPN2 - Free VPN Software
 #
@@ -12,20 +12,20 @@
 VERSION	= 0
 PATCHLEVEL = 1
 SUBLEVEL = 2
-EXTRAVERSION = -rc1
+EXTRAVERSION := -rc1
 NAME = Green Grass
 TARGET_BIN = teavpn2
 PACKAGE_NAME = $(TARGET_BIN)-$(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)
 
-export IO_URING_SUPPORT=1
-
+GIT_HASH = $(shell git log --pretty=format:'%H' -n 1)
+EXTRAVERSION := $(EXTRAVERSION)-$(GIT_HASH)
 
 #
 # Bin
 #
 AS	:= as
-CC 	:= clang
-CXX	:= clang++
+CC 	:= cc
+CXX	:= c++
 LD	:= $(CXX)
 VG	:= valgrind
 RM	:= rm
@@ -40,29 +40,23 @@ HOSTCXX	:= $(CXX)
 
 # Flag to link any library to $(TARGET_BIN)
 # (middle argumets)
-LDFLAGS		:= -ggdb3
-
+LDFLAGS		:= -ggdb3 -rdynamic
 
 # Flag to link any library to $(TARGET_BIN)
 # (end arguments)
 LIB_LDFLAGS	:= -lpthread
 
-
 # Flags that only apply to C
 CFLAGS		:= -std=c11
-
 
 # Flags that only apply to C++
 CXXFLAGS	:= -std=c++2a
 
-
 # Flags that only apply to PIC objects.
 PIC_FLAGS	:= -fPIC -fpic
 
-
 # Flags that only apply to PIE objects.
 PIE_FLAGS	:= -fPIE -fpie
-
 
 # `C_CXX_FLAGS` will be appended to `CFLAGS` and `CXXFLAGS`.
 C_CXX_FLAGS := \
@@ -72,7 +66,6 @@ C_CXX_FLAGS := \
 	-fno-omit-frame-pointer \
 	-fdata-sections \
 	-ffunction-sections \
-	-pedantic-errors \
 	-D_GNU_SOURCE \
 	-DVERSION=$(VERSION) \
 	-DPATCHLEVEL=$(PATCHLEVEL) \
@@ -80,11 +73,8 @@ C_CXX_FLAGS := \
 	-DEXTRAVERSION="\"$(EXTRAVERSION)\"" \
 	-DNAME="\"$(NAME)\""
 
-
-
 C_CXX_FLAGS_RELEASE := -DNDEBUG
 C_CXX_FLAGS_DEBUG :=
-
 
 # Valgrind flags
 VGFLAGS	:= \
@@ -115,7 +105,6 @@ GCC_WARN_FLAGS := \
 	-Wstack-usage=$(STACK_USAGE_SIZE) \
 	-Wunsafe-loop-optimizations
 
-
 CLANG_WARN_FLAGS := \
 	-Wall \
 	-Wextra \
@@ -125,7 +114,8 @@ CLANG_WARN_FLAGS := \
 	-Wno-covered-switch-default \
 	-Wno-disabled-macro-expansion \
 	-Wno-language-extension-token \
-	-Wno-used-but-marked-unused
+	-Wno-used-but-marked-unused \
+	-Wno-gnu-statement-expression
 
 
 BASE_DIR	:= $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
@@ -143,16 +133,22 @@ endif
 include $(BASE_DIR)/src/build/flags.make
 include $(BASE_DIR)/src/build/print.make
 
-
-#######################################
-# Force these variables to be a simple variable
+#
+# These empty assignments force the variables to be a simple variable.
+#
 OBJ_CC		:=
+
+#
+# OBJ_PRE_CC is a collection of object files which the compile rules are
+# defined in sub Makefile.
+#
 OBJ_PRE_CC	:=
+
+
+#
+# OBJ_TMP_CC is a temporary variable which is used in the sub Makefile.
+#
 OBJ_TMP_CC	:=
-OBJ_JUST_RM	:=
-SHARED_LIB	:=
-OBJ_EXTRA	:=
-#######################################
 
 
 all: $(TARGET_BIN)
@@ -168,15 +164,15 @@ $(DEP_DIRS):
 
 
 #
-# Add more dependency chain to objects that are not
-# compiled from the main Makefile (main Makefile is *this* Makefile).
+# Add more dependency chain to objects that are not compiled from the main
+# Makefile (the main Makefile is *this* Makefile).
 #
 $(OBJ_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
 $(OBJ_PRE_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
 
 
 #
-# Compile object from main Makefile (main Makefile is *this* Makefile).
+# Compile object from the main Makefile (the main Makefile is *this* Makefile).
 #
 $(OBJ_CC):
 	$(CC_PRINT)
@@ -193,18 +189,13 @@ $(OBJ_CC):
 #
 # Link the target bin.
 #
-$(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC) $(FBT_CC_OBJ) $(OBJ_EXTRA)
+$(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC)
 	$(LD_PRINT)
 	$(Q)$(LD) $(PIE_FLAGS) $(LDFLAGS) $(^) -o "$(@)" $(LIB_LDFLAGS)
 
 
-#
-# Clean project and also clean bluetea framework objects.
-#
-clean: bluetea_clean
-	$(Q)$(RM) -vrf $(OBJ_JUST_RM) $(TARGET_BIN) $(DEP_DIRS) $(OBJ_CC) $(OBJ_PRE_CC)
+clean:
+	$(Q)$(RM) -vf $(TARGET_BIN) $(OBJ_CC) $(OBJ_PRE_CC)
 
 
-clean_all: clean ext_clean
-
-.PHONY: all clean clean_all
+.PHONY: all clean

@@ -1,28 +1,26 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- *  src/teavpn2/print.c
- *
  *  Printing functions
  *
  *  Copyright (C) 2021  Ammar Faizi
  */
 
 #include <stdarg.h>
-#include <teavpn2/base.h>
 #include <teavpn2/print.h>
-
+#include <teavpn2/common.h>
 
 #if defined(__linux__)
-#  include <pthread.h>
+	#include <pthread.h>
 	static pthread_mutex_t get_time_lock = PTHREAD_MUTEX_INITIALIZER;
 	static pthread_mutex_t print_lock    = PTHREAD_MUTEX_INITIALIZER;
 #else
-#  define pthread_mutex_lock(MUTEX)
-#  define pthread_mutex_unlock(MUTEX)
+	#define pthread_mutex_lock(MUTEX)
+	#define pthread_mutex_unlock(MUTEX)
+	#define pthread_mutex_trylock(MUTEX)
 #endif
 
 
-uint8_t __notice_level = NOTICE_DEFAULT_LEVEL;
+uint8_t __notice_level = DEFAULT_NOTICE_LEVEL;
 
 
 static __always_inline char *get_time(char *buf)
@@ -108,6 +106,9 @@ void __attribute__((format(printf, 3, 4)))
 __panic(const char *file, int lineno, const char *fmt, ...)
 {
 	va_list vl;
+	__emerg_release_bug = true;
+	pthread_mutex_trylock(&print_lock);
+	pthread_mutex_trylock(&get_time_lock);
 	puts("=======================================================");
 	printf("Emergency: Panic - Not syncing: ");
 	va_start(vl, fmt);
