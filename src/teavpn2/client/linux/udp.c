@@ -199,6 +199,29 @@ err:
 }
 
 
+static int do_auth(struct cli_udp_state *state)
+{
+	int ret = 0;
+	int udp_fd = state->udp_fd;
+	ssize_t send_ret;
+	char buf[1024] = {0};
+	struct sockaddr_in addr;
+	struct cli_cfg_sock *sock = &state->cfg->sock;
+
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(sock->server_port);
+	addr.sin_addr.s_addr = inet_addr(sock->server_addr);
+
+	send_ret = sendto(udp_fd, buf, sizeof(buf), 0, (struct sockaddr *)&addr,
+			  sizeof(addr));
+
+	prl_notice(2, "send_ret = %zd", send_ret);
+
+	return ret;
+}
+
+
 static int run_client_event_loop(struct cli_udp_state *state)
 {
 	switch (state->evt_loop) {
@@ -269,6 +292,9 @@ int teavpn2_client_udp_run(struct cli_cfg *cfg)
 	if (unlikely(ret))
 		goto out;
 	ret = init_iface(state);
+	if (unlikely(ret))
+		goto out;
+	ret = do_auth(state);
 	if (unlikely(ret))
 		goto out;
 	ret = run_client_event_loop(state);

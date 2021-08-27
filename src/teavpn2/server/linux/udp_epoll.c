@@ -67,16 +67,19 @@ static int create_epoll_fd(void)
 }
 
 
-static int register_tun_fd_to_thread(struct epl_thread *thread, int udp_fd)
+static int register_tun_fd_to_thread(struct epl_thread *thread, int tun_fd)
 {
 	epoll_data_t data;
 	const uint32_t events = EPOLLIN | EPOLLPRI;
 	int epoll_fd = thread->epoll_fd;
 
+	if (tun_fd > 1000)
+		panic("Got tun_fd > 1000 (fd=%d)", tun_fd);
+
 	data.u64 = EPLD_DATA_TUN;
 	prl_notice(4, "Registering tun_fd (%d) to epoll (for thread %u)...",
-		   udp_fd, thread->idx);
-	return epoll_add(epoll_fd, udp_fd, events, data);
+		   tun_fd, thread->idx);
+	return epoll_add(epoll_fd, tun_fd, events, data);
 }
 
 
@@ -182,15 +185,35 @@ static void close_epoll_fds(struct epl_thread *threads, uint8_t nn)
 }
 
 
+/*
+ * TL;DR
+ * If this function returns non zero, TeaVPN2 process is exiting!
+ *
+ * This function should only return error code if
+ * the error is fatal and need termination entire
+ * process!
+ *
+ * If the error is not fatal, this function must
+ * return 0.
+ *
+ */
+static int handle_event(struct epl_thread *thread, struct epoll_event *evt)
+{
+	int ret = 0;
+	prl_notice(2, "udata = %lu", evt->data.u64);
+	return ret;
+}
+
+
 static int _do_epoll_wait(struct epl_thread *thread)
 {
 	int ret;
-	int timeout = thread->epoll_timeout;
 	int epoll_fd = thread->epoll_fd;
-	struct epoll_event *evt = thread->evt;
+	int timeout = thread->epoll_timeout;
+	struct epoll_event *events = thread->events;
 
 wait_again:
-	ret = epoll_wait(epoll_fd, evt, EPOLL_EVT_ARR_NUM, timeout);
+	ret = epoll_wait(epoll_fd, events, EPOLL_EVT_ARR_NUM, timeout);
 	if (unlikely(ret < 0)) {
 		ret = errno;
 
@@ -211,14 +234,14 @@ wait_again:
 		goto wait_again;
 	}
 
-	prl_notice(2, "test");
 	return ret;
 }
 
 
 static int do_epoll_wait(struct epl_thread *thread)
 {
-	int ret;
+	int ret, i, tmp;
+	struct epoll_event *events;
 
 	ret = _do_epoll_wait(thread);
 	if (unlikely(ret < 0)) {
@@ -226,7 +249,16 @@ static int do_epoll_wait(struct epl_thread *thread)
 		return ret;
 	}
 
-	return ret;
+	pr_debug("_do_epoll_wait(): %d", ret);
+
+	events = thread->events;
+	for (i = 0; i < ret; i++) {
+		tmp = handle_event(thread, &events[i]);
+		if (unlikely(tmp))
+			return tmp;
+	}
+
+	return 0;
 }
 
 
