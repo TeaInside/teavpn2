@@ -77,8 +77,8 @@ static char alt_stack[ALT_STACK_SIZE];
 static int is_valid_addr(void *addr, size_t len)
 {
 	if (unlikely(vfd == -1)) {
-		// vfd = open(emerg_file_tmp, O_CREAT | O_WRONLY, 0700);
-		vfd = memfd_create("emerg_tmp", MFD_CLOEXEC);
+		vfd = open(emerg_file_tmp, O_CREAT | O_WRONLY, 0700);
+		// vfd = memfd_create("emerg_tmp", MFD_CLOEXEC);
 		if (unlikely(vfd < 0))
 			return 0;
 	}
@@ -153,6 +153,17 @@ static void dump_code(char *buf, void *addr)
 	unsigned char *end, *start = (unsigned char *)addr;
 	start -= 42;
 	end = start + 64;
+	if (!ftruncate(vfd, 0)) {
+		if (lseek(vfd, 0, SEEK_SET) < 0) {
+			strcpy(buf, "lseek() error!");
+			return;
+		}
+		if (write(vfd, start, (size_t)(end - start)) < 0) {
+			strcpy(buf, "Cannot read from RIP!");
+			return;
+		}
+		fdatasync(vfd);
+	}
 	while (start < end) {
 		buf += sprintf(
 			buf,
@@ -222,6 +233,20 @@ static void print_backtrace(uintptr_t rip)
 			fx.rip_next
 		);
 	}
+}
+
+
+static void dump_rip_insn(void *rip)
+{
+	int ret;
+	char cmd[256];
+	snprintf(cmd, sizeof(cmd),
+		 "objdump --adjust-vma=%#lx -D -Mx86-64 -b binary -m i386 '%s'",
+		 (uintptr_t)rip - 42,
+		 emerg_file_tmp);
+	pr_intr("\n  Executing: %s\n", cmd);
+	ret = system(cmd);
+	(void)ret;
 }
 
 
@@ -318,8 +343,10 @@ static int ___emerg_handler(int sig, siginfo_t *si, ucontext_t *ctx)
 	dump_stack((void *)regs[REG_RSP]);
 	print_backtrace((uintptr_t)rip);
 
-	if (likely(is_recoverable))
+	if (likely(is_recoverable)) {
+		dump_rip_insn((void *)regs[REG_RIP]);
 		emerg_recover(regs);
+	}
 
 	if (likely(vfd != -1)) {
 		close(vfd);

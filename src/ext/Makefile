@@ -17,7 +17,7 @@ include $(BASE_DIR)/src/ext/inih/Makefile
 ## Build HPC emerg objects
 LIB_LDFLAGS += -ldl
 $(BASE_DIR)/src/ext/hpc_emerg/src/emerg/arch/x64/emerg.o:
-	+$(Q)$(MAKE) --no-print-directory -C $(BASE_DIR)/src/ext/hpc_emerg $(@)
+	+$(Q)$(MAKE) -s --no-print-directory -C $(BASE_DIR)/src/ext/hpc_emerg $(@)
 
 OBJ_PRE_CC += $(BASE_DIR)/src/ext/hpc_emerg/src/emerg/arch/x64/emerg.o
 
@@ -26,4 +26,4 @@ hpc_emerg_clean:
 
 clean: hpc_emerg_clean
 
-.PHONY: hpc_emerg_clean
+.PHONY: hpc_emerg_clean $(BASE_DIR)/src/ext/hpc_emerg/src/emerg/arch/x64/emerg.o
