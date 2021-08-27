@@ -156,6 +156,7 @@ static void dump_code(char *buf, void *addr)
 	if (!ftruncate(vfd, 0)) {
 		if (lseek(vfd, 0, SEEK_SET) < 0) {
 			strcpy(buf, "lseek() error!");
+			return;
 		}
 		if (write(vfd, start, (size_t)(end - start)) < 0) {
 			strcpy(buf, "Cannot read from RIP!");
