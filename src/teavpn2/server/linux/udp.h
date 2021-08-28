@@ -36,8 +36,16 @@ struct epl_thread {
 	int					epoll_timeout;
 	struct srv_udp_state			*state;
 	struct epoll_event			events[EPOLL_EVT_ARR_NUM];
-	size_t					tun_bsize;
-	char					tun_buf[4096];
+	union {
+		struct {
+			size_t			udp_bsize;
+			char			udp_buf[4096];
+		};
+		struct {
+			size_t			tun_bsize;
+			char			tun_buf[4096];
+		};
+	};
 };
 
 

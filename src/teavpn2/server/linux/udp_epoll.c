@@ -5,6 +5,8 @@
 
 #include <unistd.h>
 #include <sys/epoll.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <teavpn2/server/common.h>
 #include <teavpn2/server/linux/udp.h>
 
@@ -19,6 +21,22 @@ static int epoll_add(int epoll_fd, int fd, uint32_t events, epoll_data_t data)
 	evt.data = data;
 
 	ret = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &evt);
+	if (unlikely(ret < 0)) {
+		ret = errno;
+		pr_err("epoll_ctl(%d, EPOLL_CTL_ADD, %d, events): " PRERF,
+			epoll_fd, fd, PREAR(ret));
+		ret = -ret;
+	}
+
+	return ret;
+}
+
+
+static int epoll_delete(int epoll_fd, int fd)
+{
+	int ret;
+
+	ret = epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
 	if (unlikely(ret < 0)) {
 		ret = errno;
 		pr_err("epoll_ctl(%d, EPOLL_CTL_ADD, %d, events): " PRERF,
@@ -67,32 +85,17 @@ static int create_epoll_fd(void)
 }
 
 
-static int register_tun_fd_to_thread(struct epl_thread *thread, int tun_fd)
+static int register_fd_in_to_epoll(struct epl_thread *thread, int fd)
 {
 	epoll_data_t data;
 	const uint32_t events = EPOLLIN | EPOLLPRI;
 	int epoll_fd = thread->epoll_fd;
 
-	if (tun_fd > 1000)
-		panic("Got tun_fd > 1000 (fd=%d)", tun_fd);
-
-	data.u64 = (uint64_t)tun_fd;
-	prl_notice(4, "Registering tun_fd (%d) to epoll (for thread %u)...",
-		   tun_fd, thread->idx);
-	return epoll_add(epoll_fd, tun_fd, events, data);
-}
-
-
-static int register_udp_fd_to_thread(struct epl_thread *thread, int udp_fd)
-{
-	epoll_data_t data;
-	const uint32_t events = EPOLLIN | EPOLLPRI;
-	int epoll_fd = thread->epoll_fd;
-
-	data.u64 = EPLD_DATA_UDP;
-	prl_notice(4, "Registering udp_fd (%d) to epoll (for thread %u)...",
-		   udp_fd, thread->idx);
-	return epoll_add(epoll_fd, udp_fd, events, data);
+	memset(&data, 0, sizeof(data));
+	data.fd = (uint64_t)fd;
+	prl_notice(4, "Registering fd (%d) to epoll (for thread %u)...",
+		   fd, thread->idx);
+	return epoll_add(epoll_fd, fd, events, data);
 }
 
 
@@ -136,9 +139,9 @@ static int init_epoll_thread_data(struct srv_udp_state *state)
 			 * Main thread is responsible to handle packet from UDP
 			 * socket, decapsulate it and write it to tun_fd.
 			 */
-			ret = register_udp_fd_to_thread(thread, state->udp_fd);
+			ret = register_fd_in_to_epoll(thread, state->udp_fd);
 		} else {
-			ret = register_tun_fd_to_thread(thread, tun_fds[i]);
+			ret = register_fd_in_to_epoll(thread, tun_fds[i]);
 		}
 
 		if (unlikely(ret))
@@ -152,14 +155,14 @@ static int init_epoll_thread_data(struct srv_udp_state *state)
 		 * responsible to read from TUN fd, encapsulate it and
 		 * send it via UDP.
 		 */
-		ret = register_udp_fd_to_thread(&threads[0], tun_fds[0]);
+		ret = register_fd_in_to_epoll(&threads[0], tun_fds[0]);
 	} else {
 		/*
 		 * If we are multithreaded, the subthread is responsible
 		 * to read from tun_fds[0]. Don't give this work to the
 		 * main thread for better concurrency.
 		 */
-		ret = register_tun_fd_to_thread(&threads[1], tun_fds[0]);
+		ret = register_fd_in_to_epoll(&threads[1], tun_fds[0]);
 	}
 out:
 	return ret;
@@ -185,23 +188,58 @@ static void close_epoll_fds(struct epl_thread *threads, uint8_t nn)
 }
 
 
-static int handle_event_tun(struct epl_thread *thread, struct epoll_event *evt)
+static int handle_event_udp(int udp_fd, struct epl_thread *thread)
 {
 	int ret;
-	int tun_fd = (int)((int64_t)evt->data.u64);
-	ssize_t read_ret;
+	ssize_t recv_ret;
+	struct sockaddr_in addr;
+	char *buf = thread->udp_buf;
+	socklen_t addrlen = sizeof(addr);
+	size_t recv_size = sizeof(thread->udp_buf);
 
-	read_ret = read(tun_fd, thread->tun_buf, sizeof(thread->tun_buf));
-	if (unlikely(read_ret < 0)) {
+	recv_ret = recvfrom(udp_fd, buf, recv_size, 0, (struct sockaddr *)&addr,
+			    &addrlen);
+	if (unlikely(recv_ret <= 0)) {
+
+		if (recv_ret == 0) {
+			pr_err("UDP socket disconnected!");
+			return -ENETDOWN;
+		}
+
 		ret = errno;
-		pr_err("read() from tun_fd (fd=%d): " PRERF, tun_fd,
-		       PREAR(ret));
-		return likely(ret == EAGAIN) ? 0 : -ret;
+		if (likely(ret == EAGAIN))
+			return 0;
+
+		pr_err("recvfrom(udp_fd) (fd=%d): " PRERF, udp_fd, PREAR(ret));
+		return -ret;
 	}
 
-	pr_debug("read() from tun_fd (fd=%d) %zd bytes", tun_fd, read_ret);
+	pr_debug("recvfrom() client %zd bytes", recv_ret);
 	return 0;
 }
+
+
+static int handle_event_tun(int tun_fd, struct epl_thread *thread)
+{
+	int ret;
+	ssize_t read_ret;
+	char *buf = thread->tun_buf;
+	size_t read_size = sizeof(thread->tun_buf);
+
+	read_ret = read(tun_fd, buf, read_size);
+	if (unlikely(read_ret < 0)) {
+		ret = errno;
+		if (likely(ret == EAGAIN))
+			return 0;
+
+		pr_err("read(tun_fd) (fd=%d): " PRERF, tun_fd, PREAR(ret));
+		return -ret;
+	}
+
+	pr_debug("read() from tun_fd %zd bytes", read_ret);
+	return 0;
+}
+
 
 
 /*
@@ -219,15 +257,15 @@ static int handle_event_tun(struct epl_thread *thread, struct epoll_event *evt)
 static int handle_event(struct epl_thread *thread, struct epoll_event *evt)
 {
 	int ret = 0;
-	uint64_t dt = evt->data.u64;
+	int fd = evt->data.fd;
 
-	if (dt < 1000) {
-		/*
-		 * This is a TUN_FD.
-		 */
-		ret = handle_event_tun(thread, evt);
+	if (fd == thread->state->udp_fd) {
+		ret = handle_event_udp(fd, thread);
 	} else {
-
+		/*
+		 * It's a TUN fd.
+		 */
+		ret = handle_event_tun(fd, thread);
 	}
 
 	return ret;
@@ -241,7 +279,6 @@ static int _do_epoll_wait(struct epl_thread *thread)
 	int timeout = thread->epoll_timeout;
 	struct epoll_event *events = thread->events;
 
-wait_again:
 	ret = epoll_wait(epoll_fd, events, EPOLL_EVT_ARR_NUM, timeout);
 	if (unlikely(ret < 0)) {
 		ret = errno;
@@ -253,14 +290,6 @@ wait_again:
 
 		pr_err("epoll_wait(): " PRERF, PREAR(ret));
 		return -ret;
-	}
-
-
-	if (unlikely(ret == 0)) {
-		/*
-		 * We've reached our timeout here, may do something?
-		 */
-		goto wait_again;
 	}
 
 	return ret;
@@ -278,7 +307,7 @@ static int do_epoll_wait(struct epl_thread *thread)
 		return ret;
 	}
 
-	pr_debug("_do_epoll_wait(): %d", ret);
+	pr_debug("_do_epoll_wait(): %d (thread=%u)", ret, thread->idx);
 
 	events = thread->events;
 	for (i = 0; i < ret; i++) {
@@ -360,6 +389,7 @@ static int spawn_thread(struct epl_thread *thread)
 
 static int run_event_loop(struct srv_udp_state *state)
 {
+	void *ret_p;
 	int ret = 0;
 	struct epl_thread *threads = state->epl_threads;
 	uint8_t i, nn = (uint8_t)state->cfg->sys.thread_num;
@@ -372,15 +402,11 @@ static int run_event_loop(struct srv_udp_state *state)
 			goto out;
 	}
 
-
-	{
-		/*
-		 * ret_p is just to shut the clang warning up!
-		 */
-		void *ret_p;
-		ret_p = _run_event_loop(&threads[0]);
-		ret   = (int)((intptr_t)ret_p);
-	}
+	/*
+	 * ret_p is just to shut the clang warning up!
+	 */
+	ret_p = _run_event_loop(&threads[0]);
+	ret   = (int)((intptr_t)ret_p);
 out:
 	return ret;
 }

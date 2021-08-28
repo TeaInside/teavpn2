@@ -127,6 +127,7 @@ static int init_socket(struct cli_udp_state *state)
 	if (state->evt_loop != EVTL_IO_URING)
 		type |= SOCK_NONBLOCK;
 
+	state->udp_fd = -1;
 	udp_fd = socket(AF_INET, type, 0);
 	if (unlikely(udp_fd < 0)) {
 		ret = errno;
@@ -135,12 +136,12 @@ static int init_socket(struct cli_udp_state *state)
 		       PREAR(ret));
 		return -ret;
 	}
-	state->udp_fd = udp_fd;
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(sock->server_port);
 	addr.sin_addr.s_addr = inet_addr(sock->server_addr);
+
 	ret = connect(udp_fd, (struct sockaddr *)&addr, sizeof(addr));
 	if (unlikely(ret < 0)) {
 		ret = errno;
@@ -148,7 +149,9 @@ static int init_socket(struct cli_udp_state *state)
 		goto out_err;
 	}
 
+	state->udp_fd = udp_fd;
 	return 0;
+
 out_err:
 	close(udp_fd);
 	return -ret;
@@ -205,17 +208,9 @@ static int do_auth(struct cli_udp_state *state)
 	int udp_fd = state->udp_fd;
 	ssize_t send_ret;
 	char buf[1024] = {0};
-	struct sockaddr_in addr;
 	struct cli_cfg_sock *sock = &state->cfg->sock;
 
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(sock->server_port);
-	addr.sin_addr.s_addr = inet_addr(sock->server_addr);
-
-	send_ret = sendto(udp_fd, buf, sizeof(buf), 0, (struct sockaddr *)&addr,
-			  sizeof(addr));
-
+	send_ret = sendto(udp_fd, buf, sizeof(buf), 0, NULL, 0);
 	prl_notice(2, "send_ret = %zd", send_ret);
 
 	return ret;
@@ -248,10 +243,9 @@ static void close_tun_fds(struct cli_udp_state *state)
 		return;
 
 	for (i = 0; i < nn; i++) {
-		if (tun_fds[i] != -1) {
-			prl_notice(2, "Closing tun_fds[%hhu] (fd=%d)...", i,
-				   tun_fds[i]);
-		}
+		if (tun_fds[i] == -1)
+			continue;
+		prl_notice(2, "Closing tun_fds[%hhu] (fd=%d)...", i, tun_fds[i]);
 	}
 	al64_free(tun_fds);
 }
