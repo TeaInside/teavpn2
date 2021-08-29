@@ -1,24 +1,29 @@
-# SPDX-License-Identifier: GPL-2.0
+#
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # @author Ammar Faizi <ammarfaizi2@gmail.com> https://www.facebook.com/ammarfaizi2
-# @license GNU GPL-v2
+# @license GPL-2.0-only
 #
-# TeaVPN2 - Fast and Free VPN Software
+# Copyright (C) 2021  Ammar Faizi
 #
 
-include $(BASE_DIR)/src/ext/criterion/Makefile
+INCLUDE_DIR += \
+	-I$(BASE_DIR)/src/ext \
+	-I$(BASE_DIR)/src/ext/hpc_emerg/src
+
 include $(BASE_DIR)/src/ext/inih/Makefile
-include $(BASE_DIR)/src/ext/openssl_1.1.1j/Makefile
 
-# __execute_make_io_uring:
-# 	+$(Q)cd $(BASE_DIR)/src/ext/liburing-2.0 && $(MAKE) --no-print-directory;
 
-# __clean_io_uring:
-# 	+$(Q)cd $(BASE_DIR)/src/ext/liburing-2.0 && $(MAKE) --no-print-directory clean;
+## Build HPC emerg objects
+LIB_LDFLAGS += -ldl
+$(BASE_DIR)/src/ext/hpc_emerg/src/emerg/arch/x64/emerg.o:
+	+$(Q)$(MAKE) -s --no-print-directory -C $(BASE_DIR)/src/ext/hpc_emerg $(@)
 
-# LIB_LDFLAGS	+= -L$(BASE_DIR)/src/ext/liburing-2.0/src -luring
-# SHARED_LIB	+= $(BASE_DIR)/src/ext/liburing-2.0/src/liburing.so.2.0.0
+OBJ_PRE_CC += $(BASE_DIR)/src/ext/hpc_emerg/src/emerg/arch/x64/emerg.o
 
-# $(BASE_DIR)/src/ext/liburing-2.0/src/liburing.so.2.0.0: __execute_make_io_uring
+hpc_emerg_clean:
+	+$(Q)$(MAKE) --no-print-directory -C $(BASE_DIR)/src/ext/hpc_emerg clean
 
-# clean_ext: __clean_io_uring
+clean: hpc_emerg_clean
+
+.PHONY: hpc_emerg_clean $(BASE_DIR)/src/ext/hpc_emerg/src/emerg/arch/x64/emerg.o

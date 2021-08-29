@@ -1,61 +1,71 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- *  src/teavpn2/main.c
- *
- *  Entry point of TeaVPN2
- *
- *  Copyright (C) 2021  Ammar Faizi
+ * Copyright (C) 2021  Ammar Faizi
  */
 
 #include <stdio.h>
-#include <string.h>
 #include <teavpn2/common.h>
-#include <teavpn2/lib/arena.h>
 
 
-static __always_inline void usage(const char *app)
+void show_version(void)
 {
-	printf("Usage: %s [client|server] [options]\n\n", app);
-	printf("See:\n");
-	printf(" [Help]\n");
-	printf("   %s server --help\n", app);
-	printf("   %s client --help\n", app);
+	puts("TeaVPN2 " TEAVPN2_VERSION);
+	puts("Copyright (C) 2021 Ammar Faizi\n"
+	     "This is free software; see the source for copying conditions.  There is NO\n"
+	     "warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n");
+}
+
+
+static void show_general_usage(const char *app)
+{
+	printf(" Usage: %s [client|server] [options]\n\n", app);
+	printf(" See:\n");
+	printf("  [Help]\n");
+	printf("    %s server --help\n", app);
+	printf("    %s client --help\n", app);
 	printf("\n");
-	printf(" [Version]\n");
-	printf("   %s --version\n", app);
-	printf("\n");
-	printf(" [License]\n");
-	printf("   %s --license\t\tShow TeaVPN2 license text\n", app);
+	printf("  [Version]\n");
+	printf("    %s --version, -V\n\n", app);
+}
+
+
+static int run_teavpn2(int argc, char *argv[])
+{
+	if (!strcmp("server", argv[1]))
+		return run_server(argc - 1, argv + 1);
+
+	if (!strcmp("client", argv[1]))
+		return run_client(argc - 1, argv + 1);
+
+	if (!strcmp("--version", argv[1]) || !strcmp("-V", argv[1])) {
+		show_version();
+		return 0;
+	}
+
+	printf("Invalid command: %s\n", argv[1]);
+	show_general_usage(argv[0]);
+	return 1;
 }
 
 
 int main(int argc, char *argv[])
 {
-	char arena_buffer[4096];
+	if (setvbuf(stdout, NULL, _IOLBF, 2048))
+		printf("Cannot set stdout buffer: %s\n", strerror(errno));
 
-	if (argc <= 1) {
-		usage(argv[0]);
-		return 1;
-	}
+	if (setvbuf(stderr, NULL, _IOLBF, 2048))
+		printf("Cannot set stderr buffer: %s\n", strerror(errno));
 
-	memset(arena_buffer, 0, sizeof(arena_buffer));
-	ar_init(arena_buffer, sizeof(arena_buffer));
-
-	if (strncmp(argv[1], "client", 6) == 0) {
-		return teavpn_client_entry(argc, argv);
-	} else
-	if (strncmp(argv[1], "server", 6) == 0) {
-		return teavpn_server_entry(argc, argv);
-	} else
-	if (strncmp(argv[1], "--version", strnlen(argv[1], 9)) == 0) {
-		teavpn_print_version();
+	if (argc == 1) {
+		show_general_usage(argv[0]);
 		return 0;
-	} else
-	if (strncmp(argv[1], "--license", 9) == 0) {
-		return print_license();
 	}
 
-	printf("Invalid argument: \"%s\"\n", argv[1]);
-	usage(argv[0]);
-	return 1;
+	if (emerg_init_handler(EMERG_INIT_BUG | EMERG_INIT_WARN)) {
+		int ret = errno;
+		printf("Cannot set emerg handler: %s\n", strerror(ret));
+		return -ret;
+	}
+
+	return run_teavpn2(argc, argv);
 }
