@@ -463,7 +463,6 @@ int teavpn2_udp_server_epoll(struct srv_udp_state *state)
 	ret = init_epoll_user_data(state);
 	if (unlikely(ret))
 		goto out;
-
 	ret = init_epoll_thread_data(state);
 	if (unlikely(ret))
 		goto out;

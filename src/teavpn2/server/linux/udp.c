@@ -210,6 +210,24 @@ err:
 }
 
 
+static int init_udp_session_array(struct srv_udp_state *state)
+{
+	int ret = 0;
+	struct udp_sess *sess;
+	uint16_t i, len = UDP_SESS_NUM + 1;
+
+	sess = calloc_wrp((size_t)len, sizeof(*sess));
+	if (unlikely(!sess))
+		return -errno;
+
+	state->sess = sess;
+	for (i = 0; i < len; i++)
+		reset_udp_session(&sess[i], i);
+
+	return ret;
+}
+
+
 static int run_server_event_loop(struct srv_udp_state *state)
 {
 	switch (state->evt_loop) {
@@ -259,6 +277,7 @@ static void destroy_state(struct srv_udp_state *state)
 {
 	close_tun_fds(state);
 	close_udp_fd(state);
+	al64_free(state->sess);
 }
 
 
@@ -280,6 +299,9 @@ int teavpn2_server_udp_run(struct srv_cfg *cfg)
 	if (unlikely(ret))
 		goto out;
 	ret = init_iface(state);
+	if (unlikely(ret))
+		goto out;
+	ret = init_udp_session_array(state);
 	if (unlikely(ret))
 		goto out;
 	ret = run_server_event_loop(state);

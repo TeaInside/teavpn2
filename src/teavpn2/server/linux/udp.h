@@ -6,6 +6,7 @@
 #ifndef TEAVPN2__SERVER__LINUX__UDP_H
 #define TEAVPN2__SERVER__LINUX__UDP_H
 
+#include <time.h>
 #include <pthread.h>
 #include <sys/epoll.h>
 #include <stdatomic.h>
@@ -15,6 +16,8 @@
 #define EPLD_DATA_TUN		(1u << 0u)
 #define EPLD_DATA_UDP		(1u << 1u)
 #define EPOLL_EVT_ARR_NUM	(16)
+
+#define UDP_SESS_NUM		(32u)
 
 
 /*
@@ -41,6 +44,17 @@ struct epl_thread {
 };
 
 
+struct udp_sess {
+	time_t					last_act;
+	uint32_t				src_addr;
+	uint16_t				src_port;
+	uint16_t				idx;
+	uint16_t				err_c;
+	bool					is_authenticated;
+	bool					is_connected;
+};
+
+
 struct srv_udp_state {
 	volatile bool				stop;
 	int					sig;
@@ -49,6 +63,7 @@ struct srv_udp_state {
 	int					*tun_fds;
 	struct srv_cfg				*cfg;
 	_Atomic(uint16_t)			ready_thread;
+	struct udp_sess				*sess;
 	union {
 		struct {
 			struct epld_struct	*epl_udata;
@@ -59,5 +74,17 @@ struct srv_udp_state {
 
 
 extern int teavpn2_udp_server_epoll(struct srv_udp_state *state);
+
+
+static inline void reset_udp_session(struct udp_sess *sess, uint16_t idx)
+{
+	sess->last_act = 0;
+	sess->src_addr = 0;
+	sess->src_port = 0;
+	sess->idx = idx;
+	sess->err_c = 0;
+	sess->is_authenticated = false;
+	sess->is_connected = false;
+}
 
 #endif /* #ifndef TEAVPN2__SERVER__LINUX__UDP_H */
