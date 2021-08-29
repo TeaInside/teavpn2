@@ -249,10 +249,13 @@ poll_again:
 	ret = poll(fds, nfds, timeout);
 	if (unlikely(ret < 0)) {
 		ret = errno;
-		if (ret == EINTR) {
-			prl_notice(2, "poll() is interrupted!");
-			if (!state->stop)
-				goto poll_again;
+		if (ret != EINTR)
+			return -ret;
+
+		prl_notice(2, "poll() is interrupted!");
+		if (!state->stop) {
+			prl_notice(2, "Executing poll() again...");
+			goto poll_again;
 		}
 		return -ret;
 	}

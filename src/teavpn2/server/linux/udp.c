@@ -237,10 +237,9 @@ static void close_tun_fds(struct srv_udp_state *state)
 
 	nn = (uint8_t)state->cfg->sys.thread_num;
 	for (i = 0; i < nn; i++) {
-		if (tun_fds[i] != -1) {
-			prl_notice(2, "Closing tun_fds[%hhu] (fd=%d)...", i,
-				   tun_fds[i]);
-		}
+		if (tun_fds[i] == -1)
+			continue;
+		prl_notice(2, "Closing tun_fds[%hhu] (fd=%d)...", i, tun_fds[i]);
 	}
 	al64_free(tun_fds);
 }
