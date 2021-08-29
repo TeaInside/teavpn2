@@ -45,13 +45,19 @@ struct epl_thread {
 
 
 struct udp_sess {
-	time_t					last_act;
 	uint32_t				src_addr;
 	uint16_t				src_port;
 	uint16_t				idx;
 	uint16_t				err_c;
 	bool					is_authenticated;
 	bool					is_connected;
+	time_t					last_act;
+};
+
+
+struct map_bucket {
+	struct map_bucket			*next;
+	struct udp_sess				*sess;
 };
 
 
@@ -64,6 +70,7 @@ struct srv_udp_state {
 	struct srv_cfg				*cfg;
 	_Atomic(uint16_t)			ready_thread;
 	struct udp_sess				*sess;
+	struct map_bucket			(*sess_map)[0x100];
 	union {
 		struct {
 			struct epld_struct	*epl_udata;

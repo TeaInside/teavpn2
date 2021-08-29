@@ -216,6 +216,7 @@ static int init_udp_session_array(struct srv_udp_state *state)
 	struct udp_sess *sess;
 	uint16_t i, len = UDP_SESS_NUM + 1;
 
+	prl_notice(4, "Initializing UDP session array...");
 	sess = calloc_wrp((size_t)len, sizeof(*sess));
 	if (unlikely(!sess))
 		return -errno;
@@ -224,6 +225,22 @@ static int init_udp_session_array(struct srv_udp_state *state)
 	for (i = 0; i < len; i++)
 		reset_udp_session(&sess[i], i);
 
+	return ret;
+}
+
+
+static int init_udp_session_map(struct srv_udp_state *state)
+{
+	int ret = 0;
+	size_t len = 0x100u * 0x100u;
+	struct map_bucket (*sess_map)[0x100u];
+
+	prl_notice(4, "Initializing UDP session map...");
+	sess_map = calloc_wrp((size_t)len, sizeof(struct map_bucket));
+	if (unlikely(!sess_map))
+		return -errno;
+
+	state->sess_map = sess_map;
 	return ret;
 }
 
@@ -302,6 +319,9 @@ int teavpn2_server_udp_run(struct srv_cfg *cfg)
 	if (unlikely(ret))
 		goto out;
 	ret = init_udp_session_array(state);
+	if (unlikely(ret))
+		goto out;
+	ret = init_udp_session_map(state);
 	if (unlikely(ret))
 		goto out;
 	ret = run_server_event_loop(state);
