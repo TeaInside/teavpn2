@@ -169,22 +169,86 @@ out:
 }
 
 
-static void close_epoll_fds(struct epl_thread *threads, uint8_t nn)
+static ssize_t send_to_client(struct epl_thread *thread,
+			      struct udp_sess *cur_sess, const void *buf,
+			      size_t pkt_len)
 {
-	uint8_t i;
-	struct epl_thread *thread;
-	for (i = 0; i < nn; i++) {
-		int epoll_fd;
-		thread = &threads[i];
+	int ret;
+	ssize_t send_ret;
 
-		epoll_fd = thread->epoll_fd;
-		if (epoll_fd == -1)
-			continue;
+	send_ret = sendto(thread->state->udp_fd, buf, pkt_len, 0,
+			  &cur_sess->addr, sizeof(cur_sess->addr));
+	if (unlikely(send_ret <= 0)) {
 
-		close(epoll_fd);
-		prl_notice(2, "Closing threads[%hhu].epoll_fd (fd=%d)", i,
-			   epoll_fd);
+		if (send_ret == 0) {
+			pr_err("UDP socket disconnected!");
+			return -ENETDOWN;
+		}
+
+		ret = errno;
+		if (ret != EAGAIN)
+			pr_err("sendto(): " PRERF, PREAR(ret));
+
+		return (ssize_t)-ret;
 	}
+
+	pr_debug("sendto(): %zd bytes %x:%hx", send_ret, cur_sess->src_addr,
+		 cur_sess->src_port);
+	return send_ret;
+}
+
+
+static int handle_client_handshake(struct epl_thread *thread,
+				   struct udp_sess *cur_sess)
+{
+	struct cli_pkt *cli = &thread->pkt.cli;
+	struct pkt_handshake *handshake = &cli->handshake;
+	struct teavpn2_version *cur = &handshake->cur;
+
+	/* For printing safety! */
+	cur->extra[sizeof(cur->extra) - 1] = '\0';
+
+	prl_notice(2,
+		   "Got a new client from %x:%hx (TeaVPN2-%hhu.%hhu.%hhu%s)",
+		   cur_sess->src_addr,
+		   cur_sess->src_port,
+		   cur->ver,
+		   cur->patch_lvl,
+		   cur->sub_lvl,
+		   cur->extra);
+
+	if (cur->ver       != VERSION 	 ||
+	    cur->patch_lvl != PATCHLEVEL ||
+	    cur->sub_lvl   != SUBLEVEL) {
+		/*
+		 * Version mismatch!
+		 */
+	} else {
+		// ssize_t 
+		// // send_to_client(thread, cur_sess, );
+	}
+
+	return 0;
+}
+
+
+static int handle_new_client(struct epl_thread *thread, uint32_t addr,
+			     uint16_t port, struct sockaddr_in *saddr)
+{
+	int ret;
+	struct udp_sess *cur_sess;
+
+	cur_sess = get_udp_sess(thread->state, addr, port);
+	if (unlikely(!cur_sess)) {
+		ret = errno;
+		return (ret == EAGAIN) ? 0 : -ret;
+	}
+	cur_sess->addr = *saddr;
+
+	/*
+	 * We expect a protocol handshake from client here!
+	 */
+	return handle_client_handshake(thread, cur_sess);
 }
 
 
@@ -193,11 +257,23 @@ static int _handle_event_udp(struct epl_thread *thread, struct sockaddr_in *sadd
 	int ret = 0;
 	uint16_t port;
 	uint32_t addr;
+	struct udp_sess *sess;
 
 	port = ntohs(saddr->sin_port);
 	addr = ntohl(saddr->sin_addr.s_addr);
+	sess = map_find_udp_sess(thread->state->sess_map, addr, port);
+	if (unlikely(!sess)) {
+		/*
+		 * It's a new client since we don't find it in
+		 * the session entry.
+		 */
+		ret = handle_new_client(thread, addr, port, saddr);
+		if (unlikely(ret))
+			return (ret == -EAGAIN) ? 0 : ret;
+	}
 
-	pr_debug("%x:%hx", addr, port);
+	// pr_debug("%x:%hx", addr, port);
+	// pr_debug("%p", (void *)sess);
 
 	return ret;
 }
@@ -208,7 +284,7 @@ static int handle_event_udp(int udp_fd, struct epl_thread *thread)
 	int ret;
 	ssize_t recv_ret;
 	struct sockaddr_in saddr;
-	char *buf = thread->pkt.cli.__raw;
+	char *buf = thread->pkt.__raw;
 	socklen_t addrlen = sizeof(saddr);
 	size_t recv_size = sizeof(thread->pkt.cli.__raw);
 
@@ -256,7 +332,6 @@ static int handle_event_tun(int tun_fd, struct epl_thread *thread)
 	pr_debug("read() from tun_fd %zd bytes", read_ret);
 	return 0;
 }
-
 
 
 /*
@@ -439,6 +514,25 @@ static int run_event_loop(struct srv_udp_state *state)
 	ret   = (int)((intptr_t)ret_p);
 out:
 	return ret;
+}
+
+
+static void close_epoll_fds(struct epl_thread *threads, uint8_t nn)
+{
+	uint8_t i;
+	struct epl_thread *thread;
+	for (i = 0; i < nn; i++) {
+		int epoll_fd;
+		thread = &threads[i];
+
+		epoll_fd = thread->epoll_fd;
+		if (epoll_fd == -1)
+			continue;
+
+		close(epoll_fd);
+		prl_notice(2, "Closing threads[%hhu].epoll_fd (fd=%d)", i,
+			   epoll_fd);
+	}
 }
 
 

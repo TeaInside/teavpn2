@@ -64,6 +64,18 @@
 #  define __stringify(EXPR) ____stringify(EXPR)
 #endif
 
+#ifndef __acquires
+#  define __acquires(LOCK)
+#endif
+
+#ifndef __releases
+#  define __releases(LOCK)
+#endif
+
+#ifndef __must_hold
+#  define __must_hold(LOCK)
+#endif
+
 #if defined(__clang__)
 #  pragma clang diagnostic pop
 #endif

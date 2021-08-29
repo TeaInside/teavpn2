@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- *  Printing header
- *
- *  Copyright (C) 2021  Ammar Faizi
+ * Copyright (C) 2021  Ammar Faizi
  */
 #ifndef TEAVPN2__PACKET_H
 #define TEAVPN2__PACKET_H
@@ -122,6 +120,7 @@ struct sc_pkt {
 	union {
 		struct cli_pkt			cli;
 		struct srv_pkt			srv;
+		char				__raw[sizeof(struct cli_pkt)];
 	};
 };
 

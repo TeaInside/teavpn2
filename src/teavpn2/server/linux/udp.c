@@ -127,6 +127,9 @@ static int init_socket(struct srv_udp_state *state)
 	if (state->evt_loop != EVTL_IO_URING)
 		type |= SOCK_NONBLOCK;
 
+	prl_notice(2, "Initializing UDP socket...");
+	prl_notice(4, "Calling socket(AF_INET, SOCK_DGRAM%s, 0)...",
+		   (type & SOCK_NONBLOCK) ? " | SOCK_NONBLOCK" : "");
 	udp_fd = socket(AF_INET, type, 0);
 	if (unlikely(udp_fd < 0)) {
 		ret = errno;
@@ -135,7 +138,11 @@ static int init_socket(struct srv_udp_state *state)
 		       PREAR(ret));
 		return -ret;
 	}
-	state->udp_fd = udp_fd;
+	prl_notice(2, "UDP socket initialized successfully (fd=%d)", udp_fd);
+
+
+	prl_notice(2, "Binding UDP socket to %s:%u...", sock->bind_addr,
+		   sock->bind_port);
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
@@ -148,6 +155,7 @@ static int init_socket(struct srv_udp_state *state)
 		goto out_err;
 	}
 
+	state->udp_fd = udp_fd;
 	return 0;
 out_err:
 	close(udp_fd);
@@ -199,6 +207,7 @@ static int init_iface(struct srv_udp_state *state)
 		return -ENETDOWN;
 	}
 
+	state->need_remove_iff = true;
 	prl_notice(2, "Virtual network interface initialized successfully!");
 	return ret;
 err:
@@ -242,6 +251,35 @@ static int init_udp_session_map(struct srv_udp_state *state)
 
 	state->sess_map = sess_map;
 	return ret;
+}
+
+
+static int init_udp_session_stack(struct srv_udp_state *state)
+{
+	int ret;
+	size_t i;
+
+	prl_notice(4, "Initializing UDP session stack...");
+	if (unlikely(!bt_stack_init(&state->sess_stk, UDP_SESS_NUM)))
+		return -errno;
+
+	ret = pthread_mutex_init(&state->sess_stk_lock, NULL);
+	if (unlikely(ret)) {
+		pr_err("pthread_mutex_init(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+	state->sess_stk_lock_init = true;
+
+	if (unlikely(state->sess_stk.sp != state->sess_stk.max_sp))
+		panic("Invalid bt_stack pointer assertion with max_sp");
+
+	for (i = UDP_SESS_NUM; i--;)
+		bt_stack_push(&state->sess_stk, (uint16_t)i);
+
+	if (unlikely(state->sess_stk.sp != 0))
+		panic("Invalid bt_stack pointer assertion with zero");
+
+	return 0;
 }
 
 
@@ -292,9 +330,15 @@ static void close_udp_fd(struct srv_udp_state *state)
 
 static void destroy_state(struct srv_udp_state *state)
 {
+	if (state->need_remove_iff) {
+		prl_notice(2, "Removing virtual network interface IP config...");
+		teavpn_iface_down(&state->cfg->iface.iff);
+	}
 	close_tun_fds(state);
 	close_udp_fd(state);
 	al64_free(state->sess);
+	if (state->sess_stk_lock_init)
+		pthread_mutex_destroy(&state->sess_stk_lock);
 }
 
 
@@ -322,6 +366,9 @@ int teavpn2_server_udp_run(struct srv_cfg *cfg)
 	if (unlikely(ret))
 		goto out;
 	ret = init_udp_session_map(state);
+	if (unlikely(ret))
+		goto out;
+	ret = init_udp_session_stack(state);
 	if (unlikely(ret))
 		goto out;
 	ret = run_server_event_loop(state);

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- *  Printing functions
- *
- *  Copyright (C) 2021  Ammar Faizi
+ * Copyright (C) 2021  Ammar Faizi
  */
 
 #include <stdarg.h>
