@@ -188,16 +188,31 @@ static void close_epoll_fds(struct epl_thread *threads, uint8_t nn)
 }
 
 
+static int _handle_event_udp(struct epl_thread *thread, struct sockaddr_in *saddr)
+{
+	int ret = 0;
+	uint16_t port;
+	uint32_t addr;
+
+	port = ntohs(saddr->sin_port);
+	addr = ntohl(saddr->sin_addr.s_addr);
+
+	pr_debug("%x:%hx", addr, port);
+
+	return ret;
+}
+
+
 static int handle_event_udp(int udp_fd, struct epl_thread *thread)
 {
 	int ret;
 	ssize_t recv_ret;
-	struct sockaddr_in addr;
+	struct sockaddr_in saddr;
 	char *buf = thread->pkt.cli.__raw;
-	socklen_t addrlen = sizeof(addr);
+	socklen_t addrlen = sizeof(saddr);
 	size_t recv_size = sizeof(thread->pkt.cli.__raw);
 
-	recv_ret = recvfrom(udp_fd, buf, recv_size, 0, (struct sockaddr *)&addr,
+	recv_ret = recvfrom(udp_fd, buf, recv_size, 0, (struct sockaddr *)&saddr,
 			    &addrlen);
 	if (unlikely(recv_ret <= 0)) {
 
@@ -216,7 +231,7 @@ static int handle_event_udp(int udp_fd, struct epl_thread *thread)
 	thread->pkt.len = (size_t)recv_ret;
 
 	pr_debug("recvfrom() client %zd bytes", recv_ret);
-	return 0;
+	return _handle_event_udp(thread, &saddr);
 }
 
 
@@ -309,7 +324,7 @@ static int do_epoll_wait(struct epl_thread *thread)
 		return ret;
 	}
 
-	pr_debug("_do_epoll_wait(): %d (thread=%u)", ret, thread->idx);
+	// pr_debug("_do_epoll_wait(): %d (thread=%u)", ret, thread->idx);
 
 	events = thread->events;
 	for (i = 0; i < ret; i++) {
@@ -325,27 +340,40 @@ static int do_epoll_wait(struct epl_thread *thread)
 static void thread_wait_or_add_counter(struct epl_thread *thread,
 				       struct srv_udp_state *state)
 {
-	uint8_t nn;
+	static _Atomic(bool) release_sub_thread = false;
+	uint8_t nn = (uint8_t)state->cfg->sys.thread_num;
 
 	atomic_fetch_add(&state->ready_thread, 1);
-	if (thread->idx != 0)
+	if (thread->idx != 0) {
+		/*
+		 * We are the sub thread.
+		 * Waiting for the main thread be ready...
+		 */
+		while (!atomic_load(&release_sub_thread)) {
+			if (unlikely(state->stop))
+				return;
+			usleep(100000);
+		}
 		return;
+	}
 
 	/*
 	 * We are the main thread...
 	 */
-	nn = (uint8_t)state->cfg->sys.thread_num;
 	while (atomic_load(&state->ready_thread) != nn) {
-		prl_notice(2, "Waiting for subthread(s) to be ready...");
+		prl_notice(2, "(thread=%u) "
+			   "Waiting for subthread(s) to be ready...",
+			   thread->idx);
 		if (unlikely(state->stop))
 			return;
-		sleep(1);
+		usleep(100000);
 	}
 
 	if (nn > 1)
 		prl_notice(2, "All threads all are ready!");
 
 	prl_notice(2, "Initialization Sequence Completed");
+	atomic_store(&release_sub_thread, true);
 }
 
 
@@ -412,6 +440,7 @@ static int run_event_loop(struct srv_udp_state *state)
 out:
 	return ret;
 }
+
 
 static void destroy_epoll(struct srv_udp_state *state)
 {
