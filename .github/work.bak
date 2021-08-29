@@ -1,0 +1,68 @@
+
+name: C/C++ (Linux)
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+      - dev_001
+
+jobs:
+  main:
+    name: Build and Test
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-18.04 ]
+
+        target: [ clang-10.0.1, g++-10]
+
+        include:
+          - { target: clang-10.0.1, compiler: clang, cxx-version: 10.0.1 }
+          - { target: g++-10, compiler: g++, cxx-version: 10.2.0 }
+
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+
+    # - name: sudo apt-get install valgrind -y
+    #   run: sudo apt-get install valgrind -y
+
+    # #################### Unit tests and codecov #################### 
+    # - name: Run unit tests and gcov
+    #   run: env DEFAULT_OPTIMIZATION=-O1 make test -j$(nproc)
+    # - name: Codecov report
+    #   run: bash .github/codecov.sh -X gcov
+    # #################### End of unit tests and codecov ####################
+
+    # - name: Cleaning unit tests and codecov
+    #   run: make clean; make clean_gcov
+
+    - name: Build release binary
+      run: env RELEASE_MODE=1 make -j$(nproc)
+
+    ## Store generated artifacts
+    - name: Store teavpn2 artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: teavpn2
+        path: teavpn2
+
+
+
+    # - name: Build release binary
+    #   run: env RELEASE_MODE=1 DEFAULT_OPTIMIZATION=-O3 make -j$(nproc)
+
+    # - name: Strip the release binaries
+    #   run: |
+    #     strip -s teavpn_server
+    #     strip -s teavpn_client
+
+    # - name: Store teavpn_client artifact
+    #   uses: actions/upload-artifact@v2
+    #   with:
+    #     name: teavpn_client
+    #     path: teavpn_client
