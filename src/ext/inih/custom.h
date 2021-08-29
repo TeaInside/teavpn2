@@ -1,4 +1,9 @@
-
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ *  Custom config for inih
+ *
+ *  Copyright (C) 2021  Ammar Faizi
+ */
 #ifndef INIH__CUSTOM_H
 #define INIH__CUSTOM_H
 
