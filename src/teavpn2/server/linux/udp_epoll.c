@@ -92,7 +92,7 @@ static int register_fd_in_to_epoll(struct epl_thread *thread, int fd)
 	int epoll_fd = thread->epoll_fd;
 
 	memset(&data, 0, sizeof(data));
-	data.fd = (uint64_t)fd;
+	data.fd = fd;
 	prl_notice(4, "Registering fd (%d) to epoll (for thread %u)...",
 		   fd, thread->idx);
 	return epoll_add(epoll_fd, fd, events, data);
@@ -193,9 +193,9 @@ static int handle_event_udp(int udp_fd, struct epl_thread *thread)
 	int ret;
 	ssize_t recv_ret;
 	struct sockaddr_in addr;
-	char *buf = thread->udp_buf;
+	char *buf = thread->pkt.cli.__raw;
 	socklen_t addrlen = sizeof(addr);
-	size_t recv_size = sizeof(thread->udp_buf);
+	size_t recv_size = sizeof(thread->pkt.cli.__raw);
 
 	recv_ret = recvfrom(udp_fd, buf, recv_size, 0, (struct sockaddr *)&addr,
 			    &addrlen);
@@ -213,6 +213,7 @@ static int handle_event_udp(int udp_fd, struct epl_thread *thread)
 		pr_err("recvfrom(udp_fd) (fd=%d): " PRERF, udp_fd, PREAR(ret));
 		return -ret;
 	}
+	thread->pkt.len = (size_t)recv_ret;
 
 	pr_debug("recvfrom() client %zd bytes", recv_ret);
 	return 0;
@@ -223,8 +224,8 @@ static int handle_event_tun(int tun_fd, struct epl_thread *thread)
 {
 	int ret;
 	ssize_t read_ret;
-	char *buf = thread->tun_buf;
-	size_t read_size = sizeof(thread->tun_buf);
+	char *buf = thread->pkt.srv.__raw;
+	size_t read_size = sizeof(thread->pkt.srv.__raw);
 
 	read_ret = read(tun_fd, buf, read_size);
 	if (unlikely(read_ret < 0)) {
@@ -235,6 +236,7 @@ static int handle_event_tun(int tun_fd, struct epl_thread *thread)
 		pr_err("read(tun_fd) (fd=%d): " PRERF, tun_fd, PREAR(ret));
 		return -ret;
 	}
+	thread->pkt.len = (size_t)read_ret;
 
 	pr_debug("read() from tun_fd %zd bytes", read_ret);
 	return 0;

@@ -67,29 +67,17 @@ static int create_epoll_fd(void)
 }
 
 
-static int register_tun_fd_to_thread(struct epl_thread *thread, int udp_fd)
+static int register_fd_in_to_epoll(struct epl_thread *thread, int fd)
 {
 	epoll_data_t data;
 	const uint32_t events = EPOLLIN | EPOLLPRI;
 	int epoll_fd = thread->epoll_fd;
 
-	data.u64 = EPLD_DATA_TUN;
-	prl_notice(4, "Registering tun_fd (%d) to epoll (for thread %u)...",
-		   udp_fd, thread->idx);
-	return epoll_add(epoll_fd, udp_fd, events, data);
-}
-
-
-static int register_udp_fd_to_thread(struct epl_thread *thread, int udp_fd)
-{
-	epoll_data_t data;
-	const uint32_t events = EPOLLIN | EPOLLPRI;
-	int epoll_fd = thread->epoll_fd;
-
-	data.u64 = EPLD_DATA_UDP;
-	prl_notice(4, "Registering udp_fd (%d) to epoll (for thread %u)...",
-		   udp_fd, thread->idx);
-	return epoll_add(epoll_fd, udp_fd, events, data);
+	memset(&data, 0, sizeof(data));
+	data.fd = fd;
+	prl_notice(4, "Registering fd (%d) to epoll (for thread %u)...",
+		   fd, thread->idx);
+	return epoll_add(epoll_fd, fd, events, data);
 }
 
 
@@ -133,9 +121,9 @@ static int init_epoll_thread_data(struct cli_udp_state *state)
 			 * Main thread is responsible to handle packet from UDP
 			 * socket, decapsulate it and write it to tun_fd.
 			 */
-			ret = register_udp_fd_to_thread(thread, state->udp_fd);
+			ret = register_fd_in_to_epoll(thread, state->udp_fd);
 		} else {
-			ret = register_tun_fd_to_thread(thread, tun_fds[i]);
+			ret = register_fd_in_to_epoll(thread, tun_fds[i]);
 		}
 
 		if (unlikely(ret))
@@ -149,14 +137,14 @@ static int init_epoll_thread_data(struct cli_udp_state *state)
 		 * responsible to read from TUN fd, encapsulate it and
 		 * send it via UDP.
 		 */
-		ret = register_udp_fd_to_thread(&threads[0], tun_fds[0]);
+		ret = register_fd_in_to_epoll(&threads[0], tun_fds[0]);
 	} else {
 		/*
 		 * If we are multithreaded, the subthread is responsible
 		 * to read from tun_fds[0]. Don't give this work to the
 		 * main thread for better concurrency.
 		 */
-		ret = register_tun_fd_to_thread(&threads[1], tun_fds[0]);
+		ret = register_fd_in_to_epoll(&threads[1], tun_fds[0]);
 	}
 out:
 	return ret;

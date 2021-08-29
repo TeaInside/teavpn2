@@ -3,6 +3,7 @@
  * Copyright (C) 2021  Ammar Faizi
  */
 
+#include <poll.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -202,16 +203,178 @@ err:
 }
 
 
+static ssize_t do_send_to(int udp_fd, const void *pkt, size_t send_len)
+{
+	int ret;
+	ssize_t send_ret;
+	send_ret = sendto(udp_fd, pkt, send_len, 0, NULL, 0);
+	if (unlikely(send_ret < 0)) {
+		ret = errno;
+		pr_err("sendto(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+	if (unlikely((size_t)send_ret != send_len)) {
+		pr_err("send_ret != send_len");
+		return -EBADMSG;
+	}
+	pr_debug("sendto() %zd bytes", send_ret);
+	return send_ret;
+}
+
+
+static ssize_t do_recv_from(int udp_fd, void *pkt, size_t recv_len)
+{
+	int ret;
+	ssize_t recv_ret;
+	recv_ret = recvfrom(udp_fd, pkt, recv_len, 0, NULL, 0);
+	if (unlikely(recv_ret < 0)) {
+		ret = errno;
+		pr_err("recvfrom(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+	pr_debug("recvfrom() %zd bytes", recv_ret);
+	return recv_ret;
+}
+
+
+static int poll_fd_input(struct cli_udp_state *state, int fd, int timeout)
+{
+	int ret;
+	nfds_t nfds = 1;
+	struct pollfd fds[1];
+
+poll_again:
+	fds[0].fd = fd;
+	fds[0].events = POLLIN | POLLPRI;
+	ret = poll(fds, nfds, timeout);
+	if (unlikely(ret < 0)) {
+		ret = errno;
+		if (ret == EINTR) {
+			prl_notice(2, "poll() is interrupted!");
+			if (!state->stop)
+				goto poll_again;
+		}
+		return -ret;
+	}
+	if (ret == 0)
+		return -ETIMEDOUT;
+
+	return ret;
+}
+
+
+static int _do_handshake(struct cli_udp_state *state)
+{
+	size_t send_len;
+	ssize_t send_ret;
+	int udp_fd = state->udp_fd;
+	struct cli_pkt *pkt = &state->pkt.cli;
+	struct pkt_handshake *hand = &pkt->handshake;
+	struct teavpn2_version *cur = &hand->cur;
+
+	memset(hand, 0, sizeof(*hand));
+	cur->ver = VERSION;
+	cur->patch_lvl = PATCHLEVEL;
+	cur->sub_lvl = SUBLEVEL;
+	strncpy(cur->extra, EXTRAVERSION, sizeof(cur->extra) - 1);
+
+	prl_notice(2, "Initializing protocol handshake...");
+	pkt->len     = htons(sizeof(*hand));
+	pkt->pad_len = 0u;
+	send_len     = PKT_MIN_LEN + sizeof(*hand);
+	send_ret     = do_send_to(udp_fd, pkt, send_len);
+	return (send_ret >= 0) ? 0 : (int)send_ret;
+}
+
+
+static int wait_for_handshake_response(struct cli_udp_state *state)
+{
+	int ret;
+	ssize_t recv_ret;
+	int udp_fd = state->udp_fd;
+	struct srv_pkt *srv_pkt = &state->pkt.srv;
+
+	prl_notice(2, "Waiting for server handshake response...");
+	ret = poll_fd_input(state, udp_fd, 5000);
+	if (unlikely(ret))
+		return ret;
+
+	recv_ret = do_recv_from(udp_fd, srv_pkt, PKT_MAX_LEN);
+	if (unlikely(recv_ret < 0))
+		return (int)recv_ret;
+
+	return 0;
+}
+
+
+static int do_handshake(struct cli_udp_state *state)
+{
+	int ret;
+	uint8_t try_count = 0;
+	const uint8_t max_try = 5;
+
+try_again:
+	ret = _do_handshake(state);
+	if (unlikely(ret))
+		return ret;
+
+	ret = wait_for_handshake_response(state);
+	if (ret == -ETIMEDOUT && try_count++ < max_try)
+		goto try_again;
+
+	return ret;
+}
+
+
+static int _do_auth(struct cli_udp_state *state)
+{
+	size_t send_len;
+	ssize_t send_ret;
+	struct cli_pkt *pkt = &state->pkt.cli;
+	struct pkt_auth *auth = &pkt->auth;
+	struct cli_cfg_auth *auth_c = &state->cfg->auth;
+
+	strncpy(auth->username, auth_c->username, sizeof(auth->username));
+	strncpy(auth->password, auth_c->password, sizeof(auth->password));
+	auth->username[sizeof(auth->username) - 1] = '\0';
+	auth->password[sizeof(auth->password) - 1] = '\0';
+
+	prl_notice(2, "Authenticating as %s...", auth->username);
+	pkt->len     = htons(sizeof(*auth));
+	pkt->pad_len = 0u;
+	send_len     = PKT_MIN_LEN + sizeof(*auth);
+	send_ret     = do_send_to(state->udp_fd, pkt, send_len);
+	return (send_ret >= 0) ? 0 : (int)send_ret;
+}
+
+
+static int wait_for_auth_response(struct cli_udp_state *state)
+{
+	int ret;
+
+	prl_notice(2, "Waiting for server auth response...");
+	ret = poll_fd_input(state, state->udp_fd, 5000);
+	if (unlikely(ret))
+		return ret;
+
+	return 0;
+}
+
+
 static int do_auth(struct cli_udp_state *state)
 {
-	int ret = 0;
-	int udp_fd = state->udp_fd;
-	ssize_t send_ret;
-	char buf[1024] = {0};
-	struct cli_cfg_sock *sock = &state->cfg->sock;
+	int ret;
+	uint8_t try_count = 0;
+	const uint8_t max_try = 5;
 
-	send_ret = sendto(udp_fd, buf, sizeof(buf), 0, NULL, 0);
-	prl_notice(2, "send_ret = %zd", send_ret);
+try_again:
+	ret = _do_auth(state);
+	if (unlikely(ret))
+		return ret;
+
+	ret = wait_for_auth_response(state);
+	if (ret == -ETIMEDOUT && try_count++ < max_try)
+		goto try_again;
 
 	return ret;
 }
@@ -288,11 +451,17 @@ int teavpn2_client_udp_run(struct cli_cfg *cfg)
 	ret = init_iface(state);
 	if (unlikely(ret))
 		goto out;
+	ret = do_handshake(state);
+	if (unlikely(ret))
+		goto out;
 	ret = do_auth(state);
 	if (unlikely(ret))
 		goto out;
 	ret = run_client_event_loop(state);
 out:
+	if (unlikely(ret))
+		pr_err("teavpn2_client_udp_run(): " PRERF, PREAR(-ret));
+
 	destroy_state(state);
 	al64_free(state);
 	return ret;

@@ -7,6 +7,7 @@
 #define TEAVPN2__CLIENT__LINUX__UDP_H
 
 #include <pthread.h>
+#include <teavpn2/packet.h>
 #include <teavpn2/client/common.h>
 
 #define EPLD_DATA_TUN	(1u << 0u)
@@ -31,6 +32,7 @@ struct epl_thread {
 	pthread_t				thread;
 	int					epoll_fd;
 	struct cli_udp_state			*state;
+	struct sc_pkt				pkt;
 };
 
 
@@ -46,6 +48,7 @@ struct cli_udp_state {
 			struct epld_struct	*epl_udata;
 			struct epl_thread	*epl_threads;
 		};
+		struct sc_pkt			pkt;
 	};
 };
 

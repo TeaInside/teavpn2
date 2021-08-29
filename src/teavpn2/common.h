@@ -56,6 +56,14 @@
 #  define __no_return __attribute__((noreturn))
 #endif
 
+#ifndef ____stringify
+#  define ____stringify(EXPR) #EXPR
+#endif
+
+#ifndef __stringify
+#  define __stringify(EXPR) ____stringify(EXPR)
+#endif
+
 #if defined(__clang__)
 #  pragma clang diagnostic pop
 #endif
