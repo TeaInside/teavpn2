@@ -279,7 +279,8 @@ static int _do_handshake(struct cli_udp_state *state)
 	cur->ver = VERSION;
 	cur->patch_lvl = PATCHLEVEL;
 	cur->sub_lvl = SUBLEVEL;
-	strncpy(cur->extra, EXTRAVERSION, sizeof(cur->extra) - 1);
+	strncpy(cur->extra, EXTRAVERSION, sizeof(cur->extra));
+	cur->extra[sizeof(cur->extra) - 1] = '\0';
 
 	prl_notice(2, "Initializing protocol handshake...");
 	pkt->len     = htons(sizeof(*hand));
