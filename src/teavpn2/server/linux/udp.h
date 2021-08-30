@@ -21,6 +21,11 @@
 
 #define UDP_SESS_NUM		(32u)
 
+#define W_IP(CLIENT) 		((CLIENT)->str_addr), ((CLIENT)->src_port)
+#define W_UN(CLIENT) 		((CLIENT)->username)
+#define W_IU(CLIENT) 		W_IP(CLIENT), W_UN(CLIENT), ((CLIENT)->idx)
+#define PRWIU 			"%s:%d (%s) (cli_idx=%hu)"
+
 
 /*
  * Epoll user data struct.
@@ -53,6 +58,8 @@ struct udp_sess {
 	uint16_t				err_c;
 	time_t					last_act;
 	struct sockaddr_in			addr;
+	char					str_addr[IPV4_L];
+	char					username[0x100];
 	bool					is_authenticated;
 	bool					is_connected;
 };
@@ -113,6 +120,9 @@ static inline void reset_udp_session(struct udp_sess *sess, uint16_t idx)
 	sess->err_c = 0;
 	sess->is_authenticated = false;
 	sess->is_connected = false;
+	sess->str_addr[0] = '\0';
+	sess->username[0] = '_';
+	sess->username[1] = '\0';
 }
 
 

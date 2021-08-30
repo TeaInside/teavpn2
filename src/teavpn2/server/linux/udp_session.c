@@ -116,6 +116,10 @@ struct udp_sess *get_udp_sess(struct srv_udp_state *state, uint32_t addr,
 		err = ENOMEM;
 		goto out;
 	}
+
+	addr = htonl(addr);
+	WARN_ON(!inet_ntop(AF_INET, &addr, cur_sess->str_addr,
+			   sizeof(cur_sess->str_addr)));
 out:
 	mutex_unlock(&state->sess_stk_lock);
 	errno = err;
