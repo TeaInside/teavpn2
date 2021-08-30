@@ -198,37 +198,141 @@ static ssize_t send_to_client(struct epl_thread *thread,
 }
 
 
+static int send_handshake(struct epl_thread *thread, struct udp_sess *cur_sess)
+{
+	size_t send_len;
+	ssize_t send_ret;
+	struct srv_pkt *srv_pkt = &thread->pkt.srv;
+	struct pkt_handshake *hand = &srv_pkt->handshake;
+	struct teavpn2_version *cur = &hand->cur;
+
+	memset(hand, 0, sizeof(*hand));
+	cur->ver = VERSION;
+	cur->patch_lvl = PATCHLEVEL;
+	cur->sub_lvl = SUBLEVEL;
+	strncpy(cur->extra, EXTRAVERSION, sizeof(cur->extra));
+	cur->extra[sizeof(cur->extra) - 1] = '\0';
+
+	srv_pkt->type    = TSRV_PKT_HANDSHAKE;
+	srv_pkt->len     = htons(sizeof(*hand));
+	srv_pkt->pad_len = 0u;
+
+	send_len = PKT_MIN_LEN + sizeof(*hand);
+	send_ret = send_to_client(thread, cur_sess, srv_pkt, send_len);
+	if (unlikely(send_ret < 0))
+		return (int)send_ret;
+
+	return 0;
+}
+
+
+static int send_handshake_reject(struct epl_thread *thread,
+				 struct udp_sess *cur_sess, uint8_t reason,
+				 const char *msg)
+{
+	size_t send_len;
+	ssize_t send_ret;
+	struct srv_pkt *srv_pkt = &thread->pkt.srv;
+	struct pkt_handshake_reject *rej = &srv_pkt->hs_reject;
+
+	rej->reason = reason;
+
+	if (!msg) {
+		memset(rej->msg, 0, sizeof(rej->msg));
+	} else {
+		strncpy(rej->msg, msg, sizeof(rej->msg));
+		rej->msg[sizeof(rej->msg) - 1] = '\0';
+	}
+
+do_send:
+	srv_pkt->type    = TSRV_PKT_HANDSHAKE_REJECT;
+	srv_pkt->len     = htons(sizeof(*rej));
+	srv_pkt->pad_len = 0u;
+
+	send_len = PKT_MIN_LEN + sizeof(*rej);
+	send_ret = send_to_client(thread, cur_sess, srv_pkt, send_len);
+	if (unlikely(send_ret < 0))
+		return (int)send_ret;
+
+	return 0;
+}
+
+
 static int handle_client_handshake(struct epl_thread *thread,
 				   struct udp_sess *cur_sess)
 {
-	struct cli_pkt *cli = &thread->pkt.cli;
-	struct pkt_handshake *handshake = &cli->handshake;
-	struct teavpn2_version *cur = &handshake->cur;
+	int ret;
+	char rej_msg[255];
+	uint8_t rej_reason = 0;
+	size_t len = thread->pkt.len;
+	struct cli_pkt *cli_pkt = &thread->pkt.cli;
+	struct pkt_handshake *hand = &cli_pkt->handshake;
+	struct teavpn2_version *cur = &hand->cur;
+	const size_t expected_len = sizeof(*hand);
+
+	if (len < (PKT_MIN_LEN + expected_len)) {
+		snprintf(rej_msg, sizeof(rej_msg),
+			 "Invalid handshake packet length from " PRWIU
+			 " (expected at least %zu bytes; actual = %zu bytes)",
+			 W_IU(cur_sess), (PKT_MIN_LEN + expected_len), len);
+
+		ret = -EBADMSG;
+		rej_reason = TSRV_HREJECT_INVALID;
+		goto reject;
+	}
+
+	cli_pkt->len = ntohs(cli_pkt->len);
+	if (((size_t)cli_pkt->len) != expected_len) {
+		snprintf(rej_msg, sizeof(rej_msg),
+			 "Invalid handshake packet length from " PRWIU
+			 " (expected = %zu; actual: cli_pkt->len = %hu)",
+			 W_IU(cur_sess), expected_len, cli_pkt->len);
+
+		ret = -EBADMSG;
+		rej_reason = TSRV_HREJECT_INVALID;
+		goto reject;
+	}
+
+	if (cli_pkt->type != TCLI_PKT_HANDSHAKE) {
+		snprintf(rej_msg, sizeof(rej_msg),
+			 "Invalid first packet type from " PRWIU
+			 " (expected = TCLI_PKT_HANDSHAKE (%u); actual = %hhu)",
+			 W_IU(cur_sess), TCLI_PKT_HANDSHAKE, cli_pkt->type);
+
+		ret = -EBADMSG;
+		rej_reason = TSRV_HREJECT_INVALID;
+		goto reject;
+	}
 
 	/* For printing safety! */
 	cur->extra[sizeof(cur->extra) - 1] = '\0';
-
-	prl_notice(2,
-		   "Got a new client from %x:%hx (TeaVPN2-%hhu.%hhu.%hhu%s)",
-		   cur_sess->src_addr,
-		   cur_sess->src_port,
+	prl_notice(2, "New connection from " PRWIU
+		   " (client version: TeaVPN2-%hhu.%hhu.%hhu%s)",
+		   W_IU(cur_sess),
 		   cur->ver,
 		   cur->patch_lvl,
 		   cur->sub_lvl,
 		   cur->extra);
 
-	if (cur->ver       != VERSION 	 ||
-	    cur->patch_lvl != PATCHLEVEL ||
-	    cur->sub_lvl   != SUBLEVEL) {
-		/*
-		 * Version mismatch!
-		 */
-	} else {
-		// ssize_t 
-		// // send_to_client(thread, cur_sess, );
+	if ((cur->ver != VERSION) || (cur->patch_lvl != PATCHLEVEL) ||
+	    (cur->sub_lvl != SUBLEVEL)) {
+		ret = -EBADMSG;
+		rej_reason = TSRV_HREJECT_VERSION_NOT_SUPPORTED;
+		prl_notice(2, "Dropping connection from " PRWIU
+			   " (version not supported)...", W_IU(cur_sess));
+		goto reject;
 	}
 
-	return 0;
+
+	/*
+	 * Good handshake packet, send back.
+	 */
+	return send_handshake(thread, cur_sess);
+
+reject:
+	prl_notice(2, "%s", rej_msg);
+	send_handshake_reject(thread, cur_sess, rej_reason, rej_msg);
+	return ret;
 }
 
 
@@ -239,43 +343,48 @@ static int handle_new_client(struct epl_thread *thread, uint32_t addr,
 	struct udp_sess *cur_sess;
 
 	cur_sess = get_udp_sess(thread->state, addr, port);
-	if (unlikely(!cur_sess)) {
-		ret = errno;
-		return (ret == EAGAIN) ? 0 : -ret;
-	}
-	cur_sess->addr = *saddr;
+	if (unlikely(!cur_sess))
+		return -errno;
 
-	/*
-	 * We expect a protocol handshake from client here!
-	 */
-	return handle_client_handshake(thread, cur_sess);
+	cur_sess->addr = *saddr;
+	ret = handle_client_handshake(thread, cur_sess);
+	if (ret == -EBADMSG) {
+		/* Invalid handshake, drop the client session! */
+		// put_udp_session(thread->state, cur_sess);
+		return 0;
+	}
+
+	return ret;
+}
+
+
+static int __handle_event_udp(struct epl_thread *thread, struct udp_sess *cur_sess)
+{
+
 }
 
 
 static int _handle_event_udp(struct epl_thread *thread, struct sockaddr_in *saddr)
 {
-	int ret = 0;
 	uint16_t port;
 	uint32_t addr;
-	struct udp_sess *sess;
+	struct udp_sess *cur_sess;
 
 	port = ntohs(saddr->sin_port);
 	addr = ntohl(saddr->sin_addr.s_addr);
-	sess = map_find_udp_sess(thread->state->sess_map, addr, port);
-	if (unlikely(!sess)) {
+	cur_sess = map_find_udp_sess(thread->state, addr, port);
+	if (unlikely(!cur_sess)) {
+		int ret;
+
 		/*
 		 * It's a new client since we don't find it in
 		 * the session entry.
 		 */
 		ret = handle_new_client(thread, addr, port, saddr);
-		if (unlikely(ret))
-			return (ret == -EAGAIN) ? 0 : ret;
+		return (ret == -EAGAIN) ? 0 : ret;
 	}
 
-	// pr_debug("%x:%hx", addr, port);
-	// pr_debug("%p", (void *)sess);
-
-	return ret;
+	return __handle_event_udp(thread, cur_sess);
 }
 
 
@@ -298,7 +407,7 @@ static int handle_event_udp(int udp_fd, struct epl_thread *thread)
 		}
 
 		ret = errno;
-		if (likely(ret == EAGAIN))
+		if (ret == EAGAIN)
 			return 0;
 
 		pr_err("recvfrom(udp_fd) (fd=%d): " PRERF, udp_fd, PREAR(ret));
@@ -354,9 +463,7 @@ static int handle_event(struct epl_thread *thread, struct epoll_event *evt)
 	if (fd == thread->state->udp_fd) {
 		ret = handle_event_udp(fd, thread);
 	} else {
-		/*
-		 * It's a TUN fd.
-		 */
+		/* It's a TUN fd. */
 		ret = handle_event_tun(fd, thread);
 	}
 
@@ -380,7 +487,8 @@ static int _do_epoll_wait(struct epl_thread *thread)
 			return 0;
 		}
 
-		pr_err("epoll_wait(): " PRERF, PREAR(ret));
+		pr_err("[thread=%u] epoll_wait(): " PRERF, thread->idx,
+		       PREAR(ret));
 		return -ret;
 	}
 
@@ -398,8 +506,6 @@ static int do_epoll_wait(struct epl_thread *thread)
 		pr_err("_do_epoll_wait(): " PRERF, PREAR(-ret));
 		return ret;
 	}
-
-	// pr_debug("_do_epoll_wait(): %d (thread=%u)", ret, thread->idx);
 
 	events = thread->events;
 	for (i = 0; i < ret; i++) {
@@ -452,7 +558,7 @@ static void thread_wait_or_add_counter(struct epl_thread *thread,
 }
 
 
-static void *_run_event_loop(void *thread_p)
+__no_inline static void *_run_event_loop(void *thread_p)
 {
 	int ret = 0;
 	struct epl_thread *thread = (struct epl_thread *)thread_p;
@@ -498,7 +604,6 @@ static int run_event_loop(struct srv_udp_state *state)
 	int ret = 0;
 	struct epl_thread *threads = state->epl_threads;
 	uint8_t i, nn = (uint8_t)state->cfg->sys.thread_num;
-
 
 	atomic_store(&state->ready_thread, 0);
 	for (i = 1; i < nn; i++) {

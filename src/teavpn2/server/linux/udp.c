@@ -240,14 +240,18 @@ static int init_udp_session_array(struct srv_udp_state *state)
 
 static int init_udp_session_map(struct srv_udp_state *state)
 {
-	int ret = 0;
+	int ret;
 	size_t len = 0x100u * 0x100u;
-	struct map_bucket (*sess_map)[0x100u];
+	struct udp_map_bucket (*sess_map)[0x100u];
 
 	prl_notice(4, "Initializing UDP session map...");
-	sess_map = calloc_wrp((size_t)len, sizeof(struct map_bucket));
+	sess_map = calloc_wrp((size_t)len, sizeof(struct udp_map_bucket));
 	if (unlikely(!sess_map))
 		return -errno;
+
+	ret = mutex_init(&state->sess_map_lock, NULL);
+	if (unlikely(ret))
+		return -ret;
 
 	state->sess_map = sess_map;
 	return ret;
@@ -263,21 +267,12 @@ static int init_udp_session_stack(struct srv_udp_state *state)
 	if (unlikely(!bt_stack_init(&state->sess_stk, UDP_SESS_NUM)))
 		return -errno;
 
-	ret = pthread_mutex_init(&state->sess_stk_lock, NULL);
-	if (unlikely(ret)) {
-		pr_err("pthread_mutex_init(): " PRERF, PREAR(ret));
+	ret = mutex_init(&state->sess_stk_lock, NULL);
+	if (unlikely(ret))
 		return -ret;
-	}
-	state->sess_stk_lock_init = true;
-
-	if (unlikely(state->sess_stk.sp != state->sess_stk.max_sp))
-		panic("Invalid bt_stack pointer assertion with max_sp");
 
 	for (i = UDP_SESS_NUM; i--;)
 		bt_stack_push(&state->sess_stk, (uint16_t)i);
-
-	if (unlikely(state->sess_stk.sp != 0))
-		panic("Invalid bt_stack pointer assertion with zero");
 
 	return 0;
 }
@@ -337,8 +332,8 @@ static void destroy_state(struct srv_udp_state *state)
 	close_tun_fds(state);
 	close_udp_fd(state);
 	al64_free(state->sess);
-	if (state->sess_stk_lock_init)
-		pthread_mutex_destroy(&state->sess_stk_lock);
+	mutex_destroy(&state->sess_stk_lock);
+	mutex_destroy(&state->sess_map_lock);
 }
 
 

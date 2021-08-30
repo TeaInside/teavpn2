@@ -283,11 +283,59 @@ static int _do_handshake(struct cli_udp_state *state)
 	cur->extra[sizeof(cur->extra) - 1] = '\0';
 
 	prl_notice(2, "Initializing protocol handshake...");
+	pkt->type    = TCLI_PKT_HANDSHAKE;
 	pkt->len     = htons(sizeof(*hand));
 	pkt->pad_len = 0u;
 	send_len     = PKT_MIN_LEN + sizeof(*hand);
 	send_ret     = do_send_to(udp_fd, pkt, send_len);
 	return (send_ret >= 0) ? 0 : (int)send_ret;
+}
+
+
+static int server_handshake_chk(struct srv_pkt *srv_pkt, size_t len)
+{
+	struct pkt_handshake *hand = &srv_pkt->handshake;
+	struct teavpn2_version *cur = &hand->cur;
+	const size_t expected_len = sizeof(*hand);
+
+	if (len < (PKT_MIN_LEN + expected_len)) {
+		pr_err("Invalid handshake packet length (expected_len = %zu;"
+		       " actual = %zu)", PKT_MIN_LEN + expected_len, len);
+		return -EBADMSG;
+	}
+
+	srv_pkt->len = ntohs(srv_pkt->len);
+	if ((size_t)srv_pkt->len != expected_len) {
+		pr_err("Invalid handshake packet length (expected_len = %zu;"
+		       " srv_pkt->len = %hhu)", expected_len, srv_pkt->len);
+		return -EBADMSG;
+	}
+
+	if (srv_pkt->type != TSRV_PKT_HANDSHAKE) {
+		pr_err("Invalid packet type "
+		       "(expected = TSRV_PKT_HANDSHAKE (%hhu);"
+		       " actual = %hhu",
+		       TSRV_PKT_HANDSHAKE, srv_pkt->type);
+		return -EBADMSG;
+	}
+
+	/* For printing safety! */
+	cur->extra[sizeof(cur->extra) - 1] = '\0';
+	prl_notice(2, "Got server handshake response "
+		   "(server version: TeaVPN2-%hhu.%hhu.%hhu%s)",
+		   cur->ver,
+		   cur->patch_lvl,
+		   cur->sub_lvl,
+		   cur->extra);
+
+
+	if ((cur->ver != VERSION) || (cur->patch_lvl != PATCHLEVEL) ||
+	    (cur->sub_lvl != SUBLEVEL)) {
+	    	pr_err("Server version is not supported for this client");
+		return -EBADMSG;
+	}
+
+	return 0;
 }
 
 
@@ -297,17 +345,19 @@ static int wait_for_handshake_response(struct cli_udp_state *state)
 	ssize_t recv_ret;
 	int udp_fd = state->udp_fd;
 	struct srv_pkt *srv_pkt = &state->pkt.srv;
+	struct pkt_handshake *hand = &srv_pkt->handshake;
+	struct teavpn2_version *cur = &hand->cur;
 
 	prl_notice(2, "Waiting for server handshake response...");
 	ret = poll_fd_input(state, udp_fd, 5000);
-	if (unlikely(ret))
+	if (unlikely(ret < 0))
 		return ret;
 
 	recv_ret = do_recv_from(udp_fd, srv_pkt, PKT_MAX_LEN);
 	if (unlikely(recv_ret < 0))
 		return (int)recv_ret;
 
-	return 0;
+	return server_handshake_chk(srv_pkt, (size_t)recv_ret);
 }
 
 
@@ -344,6 +394,7 @@ static int _do_auth(struct cli_udp_state *state)
 	auth->password[sizeof(auth->password) - 1] = '\0';
 
 	prl_notice(2, "Authenticating as %s...", auth->username);
+	pkt->type    = TCLI_PKT_AUTH;
 	pkt->len     = htons(sizeof(*auth));
 	pkt->pad_len = 0u;
 	send_len     = PKT_MIN_LEN + sizeof(*auth);
@@ -358,7 +409,7 @@ static int wait_for_auth_response(struct cli_udp_state *state)
 
 	prl_notice(2, "Waiting for server auth response...");
 	ret = poll_fd_input(state, state->udp_fd, 5000);
-	if (unlikely(ret))
+	if (unlikely(ret < 0))
 		return ret;
 
 	return 0;
