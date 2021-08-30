@@ -207,7 +207,6 @@ static int handle_client_handshake(struct epl_thread *thread,
 
 	/* For printing safety! */
 	cur->extra[sizeof(cur->extra) - 1] = '\0';
-
 	prl_notice(2,
 		   "Got a new client from %x:%hx (TeaVPN2-%hhu.%hhu.%hhu%s)",
 		   cur_sess->src_addr,
@@ -217,16 +216,11 @@ static int handle_client_handshake(struct epl_thread *thread,
 		   cur->sub_lvl,
 		   cur->extra);
 
-	if (cur->ver       != VERSION 	 ||
-	    cur->patch_lvl != PATCHLEVEL ||
-	    cur->sub_lvl   != SUBLEVEL) {
-		/*
-		 * Version mismatch!
-		 */
-	} else {
-		// ssize_t 
-		// // send_to_client(thread, cur_sess, );
-	}
+	// if (cur->ver       != VERSION 	 ||
+	//     cur->patch_lvl != PATCHLEVEL ||
+	//     cur->sub_lvl   != SUBLEVEL) {
+	// } else {
+	// }
 
 	return 0;
 }
@@ -244,10 +238,6 @@ static int handle_new_client(struct epl_thread *thread, uint32_t addr,
 		return (ret == EAGAIN) ? 0 : -ret;
 	}
 	cur_sess->addr = *saddr;
-
-	/*
-	 * We expect a protocol handshake from client here!
-	 */
 	return handle_client_handshake(thread, cur_sess);
 }
 
@@ -261,7 +251,7 @@ static int _handle_event_udp(struct epl_thread *thread, struct sockaddr_in *sadd
 
 	port = ntohs(saddr->sin_port);
 	addr = ntohl(saddr->sin_addr.s_addr);
-	sess = map_find_udp_sess(thread->state->sess_map, addr, port);
+	sess = map_find_udp_sess(thread->state, addr, port);
 	if (unlikely(!sess)) {
 		/*
 		 * It's a new client since we don't find it in
@@ -271,9 +261,6 @@ static int _handle_event_udp(struct epl_thread *thread, struct sockaddr_in *sadd
 		if (unlikely(ret))
 			return (ret == -EAGAIN) ? 0 : ret;
 	}
-
-	// pr_debug("%x:%hx", addr, port);
-	// pr_debug("%p", (void *)sess);
 
 	return ret;
 }
@@ -298,7 +285,7 @@ static int handle_event_udp(int udp_fd, struct epl_thread *thread)
 		}
 
 		ret = errno;
-		if (likely(ret == EAGAIN))
+		if (ret == EAGAIN)
 			return 0;
 
 		pr_err("recvfrom(udp_fd) (fd=%d): " PRERF, udp_fd, PREAR(ret));
@@ -354,9 +341,7 @@ static int handle_event(struct epl_thread *thread, struct epoll_event *evt)
 	if (fd == thread->state->udp_fd) {
 		ret = handle_event_udp(fd, thread);
 	} else {
-		/*
-		 * It's a TUN fd.
-		 */
+		/* It's a TUN fd. */
 		ret = handle_event_tun(fd, thread);
 	}
 
@@ -452,7 +437,7 @@ static void thread_wait_or_add_counter(struct epl_thread *thread,
 }
 
 
-static void *_run_event_loop(void *thread_p)
+__no_inline static void *_run_event_loop(void *thread_p)
 {
 	int ret = 0;
 	struct epl_thread *thread = (struct epl_thread *)thread_p;
@@ -498,7 +483,6 @@ static int run_event_loop(struct srv_udp_state *state)
 	int ret = 0;
 	struct epl_thread *threads = state->epl_threads;
 	uint8_t i, nn = (uint8_t)state->cfg->sys.thread_num;
-
 
 	atomic_store(&state->ready_thread, 0);
 	for (i = 1; i < nn; i++) {

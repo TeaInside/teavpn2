@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <sys/epoll.h>
 #include <stdatomic.h>
+#include <teavpn2/mutex.h>
 #include <teavpn2/stack.h>
 #include <teavpn2/packet.h>
 #include <teavpn2/client/common.h>
@@ -57,15 +58,14 @@ struct udp_sess {
 };
 
 
-struct map_bucket {
-	struct map_bucket			*next;
+struct udp_map_bucket {
+	struct udp_map_bucket			*next;
 	struct udp_sess				*sess;
 };
 
 
 struct srv_udp_state {
 	volatile bool				stop;
-	bool					sess_stk_lock_init;
 	bool					need_remove_iff;
 	int					sig;
 	int					udp_fd;
@@ -73,10 +73,15 @@ struct srv_udp_state {
 	int					*tun_fds;
 	struct srv_cfg				*cfg;
 	_Atomic(uint16_t)			ready_thread;
-	struct bt_stack				sess_stk;
-	pthread_mutex_t				sess_stk_lock;
+
 	struct udp_sess				*sess;
-	struct map_bucket			(*sess_map)[0x100];
+
+	struct bt_stack				sess_stk;
+	struct tmutex				sess_stk_lock;
+
+	struct udp_map_bucket			(*sess_map)[0x100];
+	struct tmutex				sess_map_lock;
+
 	union {
 		struct {
 			struct epld_struct	*epl_udata;
@@ -88,15 +93,15 @@ struct srv_udp_state {
 
 extern int teavpn2_udp_server_epoll(struct srv_udp_state *state);
 
-extern struct udp_sess *map_find_udp_sess(struct map_bucket (*sess_map)[0x100],
+extern struct udp_sess *map_find_udp_sess(struct srv_udp_state *state,
 					  uint32_t addr, uint16_t port);
 
-extern struct udp_sess *map_insert_udp_sess(struct map_bucket (*sess_map)[0x100],
+extern struct udp_sess *map_insert_udp_sess(struct srv_udp_state *state,
 					    uint32_t addr, uint16_t port,
 					    struct udp_sess *cur_sess);
 
 extern struct udp_sess *get_udp_sess(struct srv_udp_state *state, uint32_t addr,
-			      	     uint16_t port);
+				     uint16_t port);
 
 
 static inline void reset_udp_session(struct udp_sess *sess, uint16_t idx)
