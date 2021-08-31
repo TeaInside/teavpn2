@@ -126,5 +126,51 @@ static inline void reset_udp_session(struct udp_sess *sess, uint16_t idx)
 }
 
 
+static inline size_t srv_pprep(struct srv_pkt *srv_pkt, uint8_t type,
+			       uint16_t data_len, uint8_t pad_len)
+{
+	srv_pkt->type    = type;
+	srv_pkt->len     = htons(data_len);
+	srv_pkt->pad_len = pad_len;
+	return data_len + PKT_MIN_LEN;
+}
+
+
+static inline size_t srv_pprep_handshake_reject(struct srv_pkt *srv_pkt,
+						uint8_t reason,
+					    	const char *msg)
+{
+	struct pkt_handshake_reject *rej = &srv_pkt->hs_reject;
+
+	rej->reason = reason;
+	if (!msg) {
+		memset(rej->msg, 0, sizeof(rej->msg));
+	} else {
+		strncpy(rej->msg, msg, sizeof(rej->msg));
+		rej->msg[sizeof(rej->msg) - 1] = '\0';
+	}
+
+	return srv_pprep(srv_pkt, TSRV_PKT_HANDSHAKE_REJECT,
+			 (uint16_t)sizeof(*rej), 0);
+}
+
+
+static inline size_t srv_pprep_handshake(struct srv_pkt *srv_pkt)
+{
+	struct pkt_handshake *hand = &srv_pkt->handshake;
+	struct teavpn2_version *cur = &hand->cur;
+
+	memset(hand, 0, sizeof(*hand));
+	cur->ver = VERSION;
+	cur->patch_lvl = PATCHLEVEL;
+	cur->sub_lvl = SUBLEVEL;
+	strncpy(cur->extra, EXTRAVERSION, sizeof(cur->extra));
+	cur->extra[sizeof(cur->extra) - 1] = '\0';
+
+	return srv_pprep(srv_pkt, TSRV_PKT_HANDSHAKE, (uint16_t)sizeof(*hand),
+			 0);
+}
+
+
 #endif /* #ifndef TEAVPN2__SERVER__LINUX__UDP_H */
 

@@ -313,7 +313,7 @@ static int server_handshake_chk(struct srv_pkt *srv_pkt, size_t len)
 
 	if (srv_pkt->type != TSRV_PKT_HANDSHAKE) {
 		pr_err("Invalid packet type "
-		       "(expected = TSRV_PKT_HANDSHAKE (%hhu);"
+		       "(expected = TSRV_PKT_HANDSHAKE (%u);"
 		       " actual = %hhu",
 		       TSRV_PKT_HANDSHAKE, srv_pkt->type);
 		return -EBADMSG;

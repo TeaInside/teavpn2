@@ -48,11 +48,11 @@ SIZE_ASSERT(struct pkt_handshake, 96);
 #define TSRV_HREJECT_VERSION_NOT_SUPPORTED	(1u << 1u)
 struct pkt_handshake_reject {
 	uint8_t					reason;
-	char					msg[255];
+	char					msg[511];
 };
 OFFSET_ASSERT(struct pkt_handshake_reject, reason, 0);
 OFFSET_ASSERT(struct pkt_handshake_reject, msg, 1);
-SIZE_ASSERT(struct pkt_handshake_reject, 256);
+SIZE_ASSERT(struct pkt_handshake_reject, 512);
 
 
 struct pkt_auth {

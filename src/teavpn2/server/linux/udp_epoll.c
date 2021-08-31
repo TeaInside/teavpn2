@@ -203,21 +203,8 @@ static int send_handshake(struct epl_thread *thread, struct udp_sess *cur_sess)
 	size_t send_len;
 	ssize_t send_ret;
 	struct srv_pkt *srv_pkt = &thread->pkt.srv;
-	struct pkt_handshake *hand = &srv_pkt->handshake;
-	struct teavpn2_version *cur = &hand->cur;
 
-	memset(hand, 0, sizeof(*hand));
-	cur->ver = VERSION;
-	cur->patch_lvl = PATCHLEVEL;
-	cur->sub_lvl = SUBLEVEL;
-	strncpy(cur->extra, EXTRAVERSION, sizeof(cur->extra));
-	cur->extra[sizeof(cur->extra) - 1] = '\0';
-
-	srv_pkt->type    = TSRV_PKT_HANDSHAKE;
-	srv_pkt->len     = htons(sizeof(*hand));
-	srv_pkt->pad_len = 0u;
-
-	send_len = PKT_MIN_LEN + sizeof(*hand);
+	send_len = srv_pprep_handshake(srv_pkt);
 	send_ret = send_to_client(thread, cur_sess, srv_pkt, send_len);
 	if (unlikely(send_ret < 0))
 		return (int)send_ret;
@@ -233,23 +220,8 @@ static int send_handshake_reject(struct epl_thread *thread,
 	size_t send_len;
 	ssize_t send_ret;
 	struct srv_pkt *srv_pkt = &thread->pkt.srv;
-	struct pkt_handshake_reject *rej = &srv_pkt->hs_reject;
 
-	rej->reason = reason;
-
-	if (!msg) {
-		memset(rej->msg, 0, sizeof(rej->msg));
-	} else {
-		strncpy(rej->msg, msg, sizeof(rej->msg));
-		rej->msg[sizeof(rej->msg) - 1] = '\0';
-	}
-
-do_send:
-	srv_pkt->type    = TSRV_PKT_HANDSHAKE_REJECT;
-	srv_pkt->len     = htons(sizeof(*rej));
-	srv_pkt->pad_len = 0u;
-
-	send_len = PKT_MIN_LEN + sizeof(*rej);
+	send_len = srv_pprep_handshake_reject(srv_pkt, reason, msg);
 	send_ret = send_to_client(thread, cur_sess, srv_pkt, send_len);
 	if (unlikely(send_ret < 0))
 		return (int)send_ret;
@@ -262,7 +234,7 @@ static int handle_client_handshake(struct epl_thread *thread,
 				   struct udp_sess *cur_sess)
 {
 	int ret;
-	char rej_msg[255];
+	char rej_msg[512];
 	uint8_t rej_reason = 0;
 	size_t len = thread->pkt.len;
 	struct cli_pkt *cli_pkt = &thread->pkt.cli;
