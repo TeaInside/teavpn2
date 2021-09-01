@@ -120,8 +120,82 @@ struct udp_sess *get_udp_sess(struct srv_udp_state *state, uint32_t addr,
 	addr = htonl(addr);
 	WARN_ON(!inet_ntop(AF_INET, &addr, cur_sess->str_addr,
 			   sizeof(cur_sess->str_addr)));
+
+	udp_sess_tv_update(cur_sess);
+	atomic_store(&cur_sess->is_connected, true);
+	atomic_fetch_add(&state->active_sess, 1);
 out:
 	mutex_unlock(&state->sess_stk_lock);
 	errno = err;
+	return ret;
+}
+
+
+static int remove_sess_from_bkt(struct srv_udp_state *state,
+				struct udp_sess *cur_sess)
+	__acquires(&state->sess_map_lock)
+	__releases(&state->sess_map_lock)
+{
+	int ret = 0;
+	struct udp_sess *sess;
+	struct udp_map_bucket *prev = NULL, *cur, *tmp;
+
+	cur = addr_to_bkt(state->sess_map, cur_sess->src_addr);
+	mutex_lock(&state->sess_map_lock);
+	do {
+		sess = cur->sess;
+		if (sess == cur_sess)
+			goto do_remove;
+
+		prev = cur;
+		cur  = cur->next;
+	} while (cur);
+
+	ret = -ENOENT;
+	goto out;
+
+do_remove:
+	cur->sess = NULL;
+	if (prev == NULL) {
+		/*
+		 * WARNING!!!
+		 * It is illegal to `free(cur)` when `prev == NULL`.
+		 */
+		if (cur->next) {
+			tmp = cur->next->next;
+			cur->sess = cur->next->sess;
+			free(cur->next);
+			cur->next = tmp;
+			pr_debug("put case 0");
+		} else {
+			/* Pass! */
+			pr_debug("put case 1");
+		}
+	} else {
+		pr_debug("put case 2");
+		tmp = cur->next;
+		free(cur);
+		prev->next = tmp;
+	}
+out:
+	mutex_unlock(&state->sess_map_lock);
+	if (ret)
+		errno = -ret;
+	return ret;
+}
+
+
+int put_udp_session(struct srv_udp_state *state, struct udp_sess *cur_sess)
+	__acquires(&state->sess_stk_lock)
+	__releases(&state->sess_stk_lock)
+{
+	int ret;
+	mutex_lock(&state->sess_stk_lock);
+	BUG_ON(bt_stack_push(&state->sess_stk, cur_sess->idx) == -1);
+	if (state->sess_map)
+		ret = remove_sess_from_bkt(state, cur_sess);
+	reset_udp_session(cur_sess, cur_sess->idx);
+	mutex_unlock(&state->sess_stk_lock);
+	atomic_fetch_sub(&state->active_sess, 1);
 	return ret;
 }
