@@ -22,6 +22,7 @@ static inline int32_t bt_stack_pop(struct bt_stack *stk)
 	int32_t ret;
 	uint16_t sp;
 
+	pr_debug("bt_stack_pop");
 	if (BUG_ON(stk == NULL))
 		return -1;
 
@@ -40,6 +41,7 @@ static inline int32_t bt_stack_push(struct bt_stack *stk, uint16_t n)
 {
 	uint16_t sp;
 
+	pr_debug("bt_stack_push");
 	if (BUG_ON(stk == NULL))
 		return -1;
 
@@ -69,6 +71,13 @@ static inline struct bt_stack *bt_stack_init(struct bt_stack *stk,
 	stk->sp = capacity;
 	stk->max_sp = capacity;
 	return stk;
+}
+
+
+static inline void bt_stack_destroy(struct bt_stack *stk)
+{
+	if (stk->arr)
+		al64_free(stk->arr);
 }
 
 

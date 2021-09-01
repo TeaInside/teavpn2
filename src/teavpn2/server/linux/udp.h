@@ -8,6 +8,7 @@
 
 #include <time.h>
 #include <pthread.h>
+#include <sys/time.h>
 #include <sys/epoll.h>
 #include <stdatomic.h>
 #include <teavpn2/mutex.h>
@@ -18,6 +19,8 @@
 #define EPLD_DATA_TUN		(1u << 0u)
 #define EPLD_DATA_UDP		(1u << 1u)
 #define EPOLL_EVT_ARR_NUM	(16)
+
+#define UDP_SESS_TIMEOUT	(10u)
 
 #define UDP_SESS_NUM		(32u)
 
@@ -51,17 +54,20 @@ struct epl_thread {
 };
 
 
+struct udp_map_bucket;
+
+
 struct udp_sess {
 	uint32_t				src_addr;
 	uint16_t				src_port;
 	uint16_t				idx;
 	uint16_t				err_c;
-	time_t					last_act;
+	time_t					last_touch;
 	struct sockaddr_in			addr;
 	char					str_addr[IPV4_L];
 	char					username[0x100];
 	bool					is_authenticated;
-	bool					is_connected;
+	_Atomic(bool)				is_connected;
 };
 
 
@@ -73,6 +79,7 @@ struct udp_map_bucket {
 
 struct srv_udp_state {
 	volatile bool				stop;
+	bool					threads_wont_exit;
 	bool					need_remove_iff;
 	int					sig;
 	int					udp_fd;
@@ -81,6 +88,7 @@ struct srv_udp_state {
 	struct srv_cfg				*cfg;
 	_Atomic(uint16_t)			ready_thread;
 
+	_Atomic(uint16_t)			active_sess;
 	struct udp_sess				*sess;
 
 	struct bt_stack				sess_stk;
@@ -110,14 +118,17 @@ extern struct udp_sess *map_insert_udp_sess(struct srv_udp_state *state,
 extern struct udp_sess *get_udp_sess(struct srv_udp_state *state, uint32_t addr,
 				     uint16_t port);
 
+extern int put_udp_session(struct srv_udp_state *state,
+			   struct udp_sess *cur_sess);
+
 
 static inline void reset_udp_session(struct udp_sess *sess, uint16_t idx)
 {
-	sess->last_act = 0;
 	sess->src_addr = 0;
 	sess->src_port = 0;
 	sess->idx = idx;
 	sess->err_c = 0;
+	sess->last_touch = 0;
 	sess->is_authenticated = false;
 	sess->is_connected = false;
 	sess->str_addr[0] = '\0';
@@ -138,7 +149,7 @@ static inline size_t srv_pprep(struct srv_pkt *srv_pkt, uint8_t type,
 
 static inline size_t srv_pprep_handshake_reject(struct srv_pkt *srv_pkt,
 						uint8_t reason,
-					    	const char *msg)
+						const char *msg)
 {
 	struct pkt_handshake_reject *rej = &srv_pkt->hs_reject;
 
@@ -169,6 +180,27 @@ static inline size_t srv_pprep_handshake(struct srv_pkt *srv_pkt)
 
 	return srv_pprep(srv_pkt, TSRV_PKT_HANDSHAKE, (uint16_t)sizeof(*hand),
 			 0);
+}
+
+
+static inline int get_unix_time(time_t *tm)
+{
+	int ret;
+	struct timeval tv;
+	ret = gettimeofday(&tv, NULL);
+	if (unlikely(ret)) {
+		ret = errno;
+		pr_err("gettimeofday(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+	*tm = tv.tv_sec;
+	return ret;
+}
+
+
+static inline int udp_sess_tv_update(struct udp_sess *cur_sess)
+{
+	return get_unix_time(&cur_sess->last_touch);
 }
 
 

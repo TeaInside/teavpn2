@@ -320,10 +320,10 @@ static int handle_new_client(struct epl_thread *thread, uint32_t addr,
 
 	cur_sess->addr = *saddr;
 	ret = handle_client_handshake(thread, cur_sess);
-	if (ret == -EBADMSG) {
-		/* Invalid handshake, drop the client session! */
-		// put_udp_session(thread->state, cur_sess);
-		return 0;
+	if (ret) {
+		/* Handshake failed, drop the client session! */
+		put_udp_session(thread->state, cur_sess);
+		ret = (ret == -EBADMSG) ? 0 : ret;
 	}
 
 	return ret;
@@ -332,7 +332,7 @@ static int handle_new_client(struct epl_thread *thread, uint32_t addr,
 
 static int __handle_event_udp(struct epl_thread *thread, struct udp_sess *cur_sess)
 {
-
+	return 0;
 }
 
 
@@ -356,6 +356,7 @@ static int _handle_event_udp(struct epl_thread *thread, struct sockaddr_in *sadd
 		return (ret == -EAGAIN) ? 0 : ret;
 	}
 
+	udp_sess_tv_update(cur_sess);
 	return __handle_event_udp(thread, cur_sess);
 }
 
@@ -419,6 +420,7 @@ static int handle_event_tun(int tun_fd, struct epl_thread *thread)
  * TL;DR
  * If this function returns non zero, TeaVPN2 process is exiting!
  *
+ * -----------------------------------------------
  * This function should only return error code if
  * the error is fatal and need termination entire
  * process!
@@ -455,7 +457,7 @@ static int _do_epoll_wait(struct epl_thread *thread)
 		ret = errno;
 
 		if (likely(ret == EINTR)) {
-			prl_notice(2, "Interrupted!");
+			prl_notice(2, "[thread=%u] Interrupted!", thread->idx);
 			return 0;
 		}
 
@@ -468,6 +470,42 @@ static int _do_epoll_wait(struct epl_thread *thread)
 }
 
 
+static void reap_zombie_sessions(struct epl_thread *thread)
+{
+	size_t i, n;
+	time_t time_diff = 0;
+	struct udp_sess *sess, *cur;
+	static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+
+	n = (size_t)atomic_load(&thread->state->active_sess);
+	if (!n)
+		return;
+
+	if (pthread_mutex_trylock(&lock))
+		return;
+
+	prl_notice(4, "[thread=%u] Current num of connected client(s): %zu",
+		   thread->idx, n);
+	sess = thread->state->sess;
+	for (i = 0; i < UDP_SESS_NUM; i++) {
+		cur = &sess[i];
+		if (!atomic_load(&cur->is_connected))
+			continue;
+
+		if (get_unix_time(&time_diff))
+			continue;
+
+		time_diff -= cur->last_touch;
+		if (time_diff < UDP_SESS_TIMEOUT)
+			continue;
+
+		prl_notice(2, "Reaping zombie client " PRWIU "...", W_IU(cur));
+		put_udp_session(thread->state, cur);
+	}
+	pthread_mutex_unlock(&lock);
+}
+
+
 static int do_epoll_wait(struct epl_thread *thread)
 {
 	int ret, i, tmp;
@@ -477,6 +515,10 @@ static int do_epoll_wait(struct epl_thread *thread)
 	if (unlikely(ret < 0)) {
 		pr_err("_do_epoll_wait(): " PRERF, PREAR(-ret));
 		return ret;
+	}
+
+	if (ret == 0 && thread->idx > 0) {
+		reap_zombie_sessions(thread);
 	}
 
 	events = thread->events;
@@ -545,6 +587,7 @@ __no_inline static void *_run_event_loop(void *thread_p)
 			break;
 	}
 
+	atomic_fetch_sub(&state->ready_thread, 1);
 	return (void *)((intptr_t)ret);
 }
 
@@ -613,10 +656,42 @@ static void close_epoll_fds(struct epl_thread *threads, uint8_t nn)
 }
 
 
+static bool wait_for_threads_to_exit(struct srv_udp_state *state)
+{
+	unsigned wait_c = 0;
+	uint16_t thread_on = 0, cc;
+
+	thread_on = atomic_load(&state->ready_thread);
+	if (thread_on == 0)
+		return true;
+
+	prl_notice(2, "Waiting for %hu thread(s) to exit...", thread_on);
+	while ((cc = atomic_load(&state->ready_thread)) > 0) {
+
+		if (cc != thread_on) {
+			thread_on = cc;
+			prl_notice(2, "Waiting for %hu thread(s) to exit...", cc);
+		}
+
+		usleep(100000);
+		if (wait_c++ > 1000)
+			return false;
+	}
+	return true;
+}
+
+
 static void destroy_epoll(struct srv_udp_state *state)
 {
 	struct epl_thread *threads;
 	uint8_t nn = (uint8_t)state->cfg->sys.thread_num;
+
+	if (!wait_for_threads_to_exit(state)) {
+		/* Thread(s) won't exit, don't free the heap! */
+		pr_emerg("Thread(s) won't exit!");
+		state->threads_wont_exit = true;
+		return;
+	}
 
 	threads = state->epl_threads;
 	if (threads) {

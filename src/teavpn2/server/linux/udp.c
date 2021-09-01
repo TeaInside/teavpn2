@@ -323,17 +323,68 @@ static void close_udp_fd(struct srv_udp_state *state)
 }
 
 
+static void close_udp_sessions(struct srv_udp_state *state)
+{
+	uint16_t i, len = UDP_SESS_NUM + 1;
+	struct udp_map_bucket (*sess_map)[0x100u] = state->sess_map;
+	struct udp_sess	*sess = state->sess;
+
+	if (!sess)
+		goto free_sess_map;
+
+	for (i = 0; i < len; i++) {
+		if (sess[i].src_addr != 0)
+			put_udp_session(state, &sess[i]);
+	}
+
+	al64_free(sess);
+	state->sess = NULL;
+
+free_sess_map:
+	if (!sess_map)
+		return;
+
+	al64_free(sess_map);
+	state->sess_map = NULL;
+}
+
+
 static void destroy_state(struct srv_udp_state *state)
 {
 	if (state->need_remove_iff) {
 		prl_notice(2, "Removing virtual network interface IP config...");
 		teavpn_iface_down(&state->cfg->iface.iff);
 	}
+
+	if (state->threads_wont_exit) {
+		/*
+		 * WARNING!!!
+		 *
+		 * We are exiting, but the subthreads won't exit.
+		 *
+		 * Having memory leak right before exit is acceptable
+		 * rather than potential UAF since the thread may use
+		 * the freed memory if we free it here.
+		 */
+		pr_emerg("Thread(s) won't exit!");
+		return;
+	}
+
+	close_udp_sessions(state);
 	close_tun_fds(state);
 	close_udp_fd(state);
-	al64_free(state->sess);
+
+	bt_stack_destroy(&state->sess_stk);
+
+	mutex_lock(&state->sess_stk_lock);
+	mutex_unlock(&state->sess_stk_lock);
 	mutex_destroy(&state->sess_stk_lock);
+
+	mutex_lock(&state->sess_stk_lock);
+	mutex_unlock(&state->sess_stk_lock);
 	mutex_destroy(&state->sess_map_lock);
+
+	al64_free(state);
 }
 
 
@@ -369,6 +420,5 @@ int teavpn2_server_udp_run(struct srv_cfg *cfg)
 	ret = run_server_event_loop(state);
 out:
 	destroy_state(state);
-	al64_free(state);
 	return ret;
 }
