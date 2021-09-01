@@ -189,7 +189,7 @@ int put_udp_session(struct srv_udp_state *state, struct udp_sess *cur_sess)
 	__acquires(&state->sess_stk_lock)
 	__releases(&state->sess_stk_lock)
 {
-	int ret;
+	int ret = 0;
 	mutex_lock(&state->sess_stk_lock);
 	BUG_ON(bt_stack_push(&state->sess_stk, cur_sess->idx) == -1);
 	if (state->sess_map)
