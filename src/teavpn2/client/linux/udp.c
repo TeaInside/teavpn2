@@ -295,7 +295,7 @@ static int server_handshake_chk(struct srv_pkt *srv_pkt, size_t len)
 	srv_pkt->len = ntohs(srv_pkt->len);
 	if ((size_t)srv_pkt->len != expected_len) {
 		pr_err("Invalid handshake packet length (expected_len = %zu;"
-		       " srv_pkt->len = %hhu)", expected_len, srv_pkt->len);
+		       " srv_pkt->len = %hu)", expected_len, srv_pkt->len);
 		return -EBADMSG;
 	}
 

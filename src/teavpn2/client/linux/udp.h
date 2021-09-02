@@ -7,6 +7,7 @@
 #define TEAVPN2__CLIENT__LINUX__UDP_H
 
 #include <pthread.h>
+#include <arpa/inet.h>
 #include <teavpn2/packet.h>
 #include <teavpn2/client/common.h>
 
