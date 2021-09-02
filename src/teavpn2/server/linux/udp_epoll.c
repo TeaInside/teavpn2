@@ -517,16 +517,15 @@ static int do_epoll_wait(struct epl_thread *thread)
 		return ret;
 	}
 
-	if (ret == 0 && thread->idx > 0) {
-		reap_zombie_sessions(thread);
-	}
-
 	events = thread->events;
 	for (i = 0; i < ret; i++) {
 		tmp = handle_event(thread, &events[i]);
 		if (unlikely(tmp))
 			return tmp;
 	}
+
+	if (thread->idx > 0)
+		reap_zombie_sessions(thread);
 
 	return 0;
 }
@@ -538,7 +537,6 @@ static void thread_wait_or_add_counter(struct epl_thread *thread,
 	static _Atomic(bool) release_sub_thread = false;
 	uint8_t nn = (uint8_t)state->cfg->sys.thread_num;
 
-	atomic_fetch_add(&state->ready_thread, 1);
 	if (thread->idx != 0) {
 		/*
 		 * We are the sub thread.
@@ -578,8 +576,15 @@ __no_inline static void *_run_event_loop(void *thread_p)
 	struct epl_thread *thread = (struct epl_thread *)thread_p;
 	struct srv_udp_state *state = thread->state;
 
+	atomic_store(&thread->is_online, true);
+	atomic_fetch_add(&state->ready_thread, 1);
 	thread_wait_or_add_counter(thread, state);
-	thread->epoll_timeout = 1000;
+
+	if (thread->idx > 0) {
+		thread->epoll_timeout = 10000;
+	} else {
+		thread->epoll_timeout = 1000;
+	}
 
 	while (likely(!state->stop)) {
 		ret = do_epoll_wait(thread);
@@ -587,6 +592,7 @@ __no_inline static void *_run_event_loop(void *thread_p)
 			break;
 	}
 
+	atomic_store(&thread->is_online, false);
 	atomic_fetch_sub(&state->ready_thread, 1);
 	return (void *)((intptr_t)ret);
 }
@@ -660,10 +666,27 @@ static bool wait_for_threads_to_exit(struct srv_udp_state *state)
 {
 	unsigned wait_c = 0;
 	uint16_t thread_on = 0, cc;
+	uint8_t nn, i;
+	struct epl_thread *threads;
 
 	thread_on = atomic_load(&state->ready_thread);
 	if (thread_on == 0)
 		return true;
+
+	threads = state->epl_threads;
+	nn = (uint8_t)state->cfg->sys.thread_num;
+	for (i = 0; i < nn; i++) {
+		int ret;
+
+		if (!atomic_load(&threads[i].is_online))
+			continue;
+
+		ret = pthread_kill(threads[i].thread, SIGTERM);
+		if (unlikely(ret)) {
+			pr_err("pthread_kill(threads[%hhu].thread, SIGTERM): "
+			       PRERF, i, PREAR(ret));
+		}
+	}
 
 	prl_notice(2, "Waiting for %hu thread(s) to exit...", thread_on);
 	while ((cc = atomic_load(&state->ready_thread)) > 0) {

@@ -44,6 +44,7 @@ struct srv_udp_state;
 
 
 struct epl_thread {
+	_Atomic(bool)				is_online;
 	uint16_t				idx;
 	pthread_t				thread;
 	int					epoll_fd;
