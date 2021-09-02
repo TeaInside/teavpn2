@@ -56,4 +56,46 @@ struct cli_udp_state {
 extern int teavpn2_udp_client_epoll(struct cli_udp_state *state);
 
 
+static inline size_t cli_pprep(struct cli_pkt *cli_pkt, uint8_t type,
+			       uint16_t data_len, uint8_t pad_len)
+{
+	cli_pkt->type    = type;
+	cli_pkt->len     = htons(data_len);
+	cli_pkt->pad_len = pad_len;
+	return data_len + PKT_MIN_LEN;
+}
+
+
+static inline size_t cli_pprep_handshake(struct cli_pkt *cli_pkt)
+{
+	struct pkt_handshake *hand = &cli_pkt->handshake;
+	struct teavpn2_version *cur = &hand->cur;
+
+	memset(hand, 0, sizeof(*hand));
+	cur->ver = VERSION;
+	cur->patch_lvl = PATCHLEVEL;
+	cur->sub_lvl = SUBLEVEL;
+	strncpy(cur->extra, EXTRAVERSION, sizeof(cur->extra));
+	cur->extra[sizeof(cur->extra) - 1] = '\0';
+
+	return cli_pprep(cli_pkt, TCLI_PKT_HANDSHAKE, (uint16_t)sizeof(*hand),
+			 0);
+}
+
+
+static inline size_t cli_pprep_auth(struct cli_pkt *cli_pkt, const char *user,
+				    const char *pass)
+{
+	struct pkt_auth *auth = &cli_pkt->auth;
+
+	strncpy(auth->username, user, sizeof(auth->username));
+	strncpy(auth->password, pass, sizeof(auth->password));
+	auth->username[sizeof(auth->username) - 1] = '\0';
+	auth->password[sizeof(auth->password) - 1] = '\0';
+
+	return cli_pprep(cli_pkt, TCLI_PKT_AUTH, (uint16_t)sizeof(*auth), 0);
+}
+
+
+
 #endif /* #ifndef TEAVPN2__CLIENT__LINUX__UDP_H */

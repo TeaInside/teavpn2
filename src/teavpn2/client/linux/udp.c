@@ -271,23 +271,11 @@ static int _do_handshake(struct cli_udp_state *state)
 	size_t send_len;
 	ssize_t send_ret;
 	int udp_fd = state->udp_fd;
-	struct cli_pkt *pkt = &state->pkt.cli;
-	struct pkt_handshake *hand = &pkt->handshake;
-	struct teavpn2_version *cur = &hand->cur;
-
-	memset(hand, 0, sizeof(*hand));
-	cur->ver = VERSION;
-	cur->patch_lvl = PATCHLEVEL;
-	cur->sub_lvl = SUBLEVEL;
-	strncpy(cur->extra, EXTRAVERSION, sizeof(cur->extra));
-	cur->extra[sizeof(cur->extra) - 1] = '\0';
+	struct cli_pkt *cli_pkt = &state->pkt.cli;
 
 	prl_notice(2, "Initializing protocol handshake...");
-	pkt->type    = TCLI_PKT_HANDSHAKE;
-	pkt->len     = htons(sizeof(*hand));
-	pkt->pad_len = 0u;
-	send_len     = PKT_MIN_LEN + sizeof(*hand);
-	send_ret     = do_send_to(udp_fd, pkt, send_len);
+	send_len = cli_pprep_handshake(cli_pkt);
+	send_ret = do_send_to(udp_fd, cli_pkt, send_len);
 	return (send_ret >= 0) ? 0 : (int)send_ret;
 }
 
@@ -345,8 +333,6 @@ static int wait_for_handshake_response(struct cli_udp_state *state)
 	ssize_t recv_ret;
 	int udp_fd = state->udp_fd;
 	struct srv_pkt *srv_pkt = &state->pkt.srv;
-	struct pkt_handshake *hand = &srv_pkt->handshake;
-	struct teavpn2_version *cur = &hand->cur;
 
 	prl_notice(2, "Waiting for server handshake response...");
 	ret = poll_fd_input(state, udp_fd, 5000);
@@ -384,21 +370,12 @@ static int _do_auth(struct cli_udp_state *state)
 {
 	size_t send_len;
 	ssize_t send_ret;
-	struct cli_pkt *pkt = &state->pkt.cli;
-	struct pkt_auth *auth = &pkt->auth;
+	struct cli_pkt *cli_pkt = &state->pkt.cli;
 	struct cli_cfg_auth *auth_c = &state->cfg->auth;
 
-	strncpy(auth->username, auth_c->username, sizeof(auth->username));
-	strncpy(auth->password, auth_c->password, sizeof(auth->password));
-	auth->username[sizeof(auth->username) - 1] = '\0';
-	auth->password[sizeof(auth->password) - 1] = '\0';
-
-	prl_notice(2, "Authenticating as %s...", auth->username);
-	pkt->type    = TCLI_PKT_AUTH;
-	pkt->len     = htons(sizeof(*auth));
-	pkt->pad_len = 0u;
-	send_len     = PKT_MIN_LEN + sizeof(*auth);
-	send_ret     = do_send_to(state->udp_fd, pkt, send_len);
+	prl_notice(2, "Authenticating as %s...", auth_c->username);
+	send_len = cli_pprep_auth(cli_pkt, auth_c->username, auth_c->password);
+	send_ret = do_send_to(state->udp_fd, cli_pkt, send_len);
 	return (send_ret >= 0) ? 0 : (int)send_ret;
 }
 
