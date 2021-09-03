@@ -198,7 +198,10 @@ static_assert(sizeof(struct if_info) == 16 + (IPV4_L * 4) + sizeof(uint16_t),
 
 #endif  /* #ifdef TEAVPN_IPV6_SUPPORT */
 
+extern const char *data_dir;
 extern void show_version(void);
+extern bool teavpn2_auth(const char *username, const char *password,
+			 struct if_info *iff);
 
 static inline void *calloc_wrp(size_t nmemb, size_t size)
 {

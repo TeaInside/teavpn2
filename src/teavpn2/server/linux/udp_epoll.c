@@ -198,6 +198,18 @@ static ssize_t send_to_client(struct epl_thread *thread,
 }
 
 
+static int close_udp_session(struct epl_thread *thread,
+			     struct udp_sess *cur_sess)
+{
+	size_t send_len;
+	struct srv_pkt *srv_pkt = &thread->pkt.srv;
+
+	send_len = srv_pprep(srv_pkt, TSRV_PKT_CLOSE, 0, 0);
+	send_to_client(thread, cur_sess, srv_pkt, send_len);
+	return put_udp_session(thread->state, cur_sess);
+}
+
+
 static int send_handshake(struct epl_thread *thread, struct udp_sess *cur_sess)
 {
 	size_t send_len;
@@ -322,7 +334,7 @@ static int handle_new_client(struct epl_thread *thread, uint32_t addr,
 	ret = handle_client_handshake(thread, cur_sess);
 	if (ret) {
 		/* Handshake failed, drop the client session! */
-		put_udp_session(thread->state, cur_sess);
+		close_udp_session(thread, cur_sess);
 		ret = (ret == -EBADMSG) ? 0 : ret;
 	}
 
@@ -330,9 +342,130 @@ static int handle_new_client(struct epl_thread *thread, uint32_t addr,
 }
 
 
-static int __handle_event_udp(struct epl_thread *thread, struct udp_sess *cur_sess)
+static int handle_clpkt_auth(struct epl_thread *thread,
+			     struct udp_sess *cur_sess)
 {
-	return 0;
+	int ret = 0;
+	size_t send_len;
+	ssize_t send_ret;
+	struct srv_pkt *srv_pkt = &thread->pkt.srv;
+	struct cli_pkt *cli_pkt = &thread->pkt.cli;
+	struct pkt_auth_res *auth_res = &srv_pkt->auth_res;
+	struct pkt_auth auth = cli_pkt->auth;
+
+	if (cur_sess->is_authenticated) {
+		/*
+		 * If the client has already been authenticated,
+		 * this will be a no-op.
+		 */
+		return 0;
+	}
+
+	/* Ensure we have NUL terminated credentials. */
+	auth.username[sizeof(auth.username) - 1] = '\0';
+	auth.password[sizeof(auth.password) - 1] = '\0';
+
+	prl_notice(2, "Got auth packet from (user: %s) " PRWIU, auth.username,
+		   W_IU(cur_sess));
+
+	if (!teavpn2_auth(auth.username, auth.password, &auth_res->iff))
+		goto reject;
+
+	/*
+	 * Auth ok!
+	 */
+	send_len = srv_pprep(srv_pkt, TSRV_PKT_AUTH_OK, sizeof(*auth_res), 0);
+	send_ret = send_to_client(thread, cur_sess, srv_pkt, send_len);
+	if (unlikely(send_ret < 0)) {
+		ret = (int)send_ret;
+		close_udp_session(thread, cur_sess);
+		goto out;
+	}
+
+	cur_sess->is_authenticated = true;
+	strncpy(cur_sess->username, auth.username, sizeof(cur_sess->username));
+	cur_sess->username[sizeof(cur_sess->username) - 1] = '\0';
+	goto out;
+
+
+reject:
+	/* 
+	 * Auth fails!
+	 */
+	send_len = srv_pprep(srv_pkt, TSRV_PKT_AUTH_REJECT, 0, 0);
+	send_ret = send_to_client(thread, cur_sess, srv_pkt, send_len);
+	if (unlikely(send_ret < 0))
+		ret = (int)send_ret;
+
+	prl_notice(2, "Authentication failed for username \"%s\" " PRWIU,
+		   auth.username, W_IU(cur_sess));
+	close_udp_session(thread, cur_sess);
+
+
+out:
+	memset(auth.password, 0, sizeof(auth.password));
+	__asm__ volatile("":"+m"(auth.password)::"memory");
+	return ret;
+}
+
+
+static int request_sync(struct epl_thread *thread, struct udp_sess *cur_sess)
+{
+	int ret = 0, i;
+	size_t send_len;
+	ssize_t send_ret;
+	struct srv_pkt *srv_pkt = &thread->pkt.srv;
+
+	if (unlikely(cur_sess->err_c++ > UDP_SESS_MAX_ERR)) {
+		close_udp_session(thread, cur_sess);
+		return 0;
+	}
+
+	send_len = srv_pprep(srv_pkt, TSRV_PKT_REQSYNC, 0, 0);
+	for (i = 0; i < 5; i++) {
+		send_ret = send_to_client(thread, cur_sess, srv_pkt, send_len);
+		if (unlikely(send_ret < 0)) {
+			ret = (int)send_ret;
+			break;
+		}
+	}
+	return ret;
+}
+
+
+static int __handle_event_udp(struct epl_thread *thread,
+			      struct udp_sess *cur_sess)
+{
+	struct cli_pkt *cli_pkt = &thread->pkt.cli;
+
+	switch (cli_pkt->type) {
+	case TCLI_PKT_HANDSHAKE:
+		/*
+		 * We have done the protocol handshake, this is a no-op.
+		 */
+		return 0;
+	case TCLI_PKT_AUTH:
+		return handle_clpkt_auth(thread, cur_sess);
+	case TCLI_PKT_TUN_DATA:
+		return 0;
+	case TCLI_PKT_REQSYNC:
+		return 0;
+	case TCLI_PKT_SYNC:
+		return 0;
+	default:
+
+		if (cur_sess->is_authenticated) {
+			/*
+			 * If an authenticated client sends an invalid packet,
+			 * give it a chance to sync. It could be a bit network
+			 * problem.
+			 */
+			return request_sync(thread, cur_sess);
+		}
+
+		/* Bad packet! */
+		return -EBADRQC;
+	}
 }
 
 
@@ -500,7 +633,7 @@ static void reap_zombie_sessions(struct epl_thread *thread)
 			continue;
 
 		prl_notice(2, "Reaping zombie client " PRWIU "...", W_IU(cur));
-		put_udp_session(thread->state, cur);
+		close_udp_session(thread, cur);
 	}
 	pthread_mutex_unlock(&lock);
 }

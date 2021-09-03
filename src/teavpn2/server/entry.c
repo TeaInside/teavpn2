@@ -346,6 +346,7 @@ int run_server(int argc, char *argv[])
 
 	dump_server_cfg(&cfg);
 
+	data_dir = cfg.sys.data_dir;
 	switch (cfg.sock.type) {
 	case SOCK_UDP:
 		return -teavpn2_server_udp_run(&cfg);

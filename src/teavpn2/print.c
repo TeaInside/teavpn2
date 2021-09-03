@@ -100,6 +100,21 @@ void __attribute__((format(printf, 1, 2))) __pr_debug(const char *fmt, ...)
 }
 
 
+void __attribute__((format(printf, 1, 2))) __pr_warn(const char *fmt, ...)
+{
+	va_list vl;
+	char buf[32];
+
+	va_start(vl, fmt);
+	pthread_mutex_lock(&print_lock);
+	printf("[%s] Warning: ", get_time(buf));
+	vprintf(fmt, vl);
+	putchar('\n');
+	pthread_mutex_unlock(&print_lock);
+	va_end(vl);
+}
+
+
 void __attribute__((format(printf, 3, 4)))
 __panic(const char *file, int lineno, const char *fmt, ...)
 {

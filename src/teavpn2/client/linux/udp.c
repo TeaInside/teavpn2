@@ -286,6 +286,11 @@ static int server_handshake_chk(struct srv_pkt *srv_pkt, size_t len)
 	struct teavpn2_version *cur = &hand->cur;
 	const size_t expected_len = sizeof(*hand);
 
+	if (srv_pkt->type == TSRV_PKT_CLOSE) {
+		prl_notice(2, "Server has closed the connection!");
+		return -ECONNRESET;
+	}
+
 	if (len < (PKT_MIN_LEN + expected_len)) {
 		pr_err("Invalid handshake packet length (expected_len = %zu;"
 		       " actual = %zu)", PKT_MIN_LEN + expected_len, len);
@@ -380,16 +385,87 @@ static int _do_auth(struct cli_udp_state *state)
 }
 
 
+static int server_auth_res_chk(struct srv_pkt *srv_pkt, size_t len)
+{
+	struct pkt_auth_res *auth_res = &srv_pkt->auth_res;
+	const size_t expected_len = sizeof(*auth_res);
+
+	if (srv_pkt->type == TSRV_PKT_CLOSE) {
+		prl_notice(2, "Server has closed the connection!");
+		return -ECONNRESET;
+	}
+
+	if (len < (PKT_MIN_LEN + expected_len)) {
+		pr_err("Invalid auth response packet length (expected_len = %zu;"
+		       " actual = %zu)", PKT_MIN_LEN + expected_len, len);
+		return -EBADMSG;
+	}
+
+	srv_pkt->len = ntohs(srv_pkt->len);
+	if ((size_t)srv_pkt->len != expected_len) {
+		pr_err("Invalid auth response packet length (expected_len = %zu;"
+		       " srv_pkt->len = %hu)", expected_len, srv_pkt->len);
+		return -EBADMSG;
+	}
+
+	if (srv_pkt->type == TSRV_PKT_AUTH_REJECT) {
+		pr_err("Server rejected the authentication (TSRV_PKT_AUTH_REJECT)");
+		return -EBADMSG;
+	}
+
+	if (srv_pkt->type != TSRV_PKT_AUTH_OK) {
+		pr_err("Server sends unexpected packet for auth response (%hhu)",
+		       srv_pkt->type);
+		return -EBADMSG;
+	}
+
+	prl_notice(2, "Authentication success (got TSRV_PKT_AUTH_OK)!");
+	return 0;
+}
+
+
+static int bring_up_iface(struct cli_udp_state *state)
+{
+	struct srv_pkt *srv_pkt = &state->pkt.srv;
+	struct if_info *iff = &srv_pkt->auth_res.iff;
+	struct if_info *iff2 = &state->cfg->iface.iff;
+
+	strncpy(iff->dev, state->cfg->iface.dev, sizeof(iff->dev));
+	iff->dev[sizeof(iff->dev) - 1] = '\0';
+
+	*iff2 = *iff;
+	if (unlikely(!teavpn_iface_up(iff2))) {
+		pr_err("teavpn_iface_up(): cannot bring up network interface");
+		return -ENETDOWN;
+	}
+	return 0;
+}
+
+
 static int wait_for_auth_response(struct cli_udp_state *state)
 {
 	int ret;
+	ssize_t recv_ret;
+	int udp_fd = state->udp_fd;
+	struct srv_pkt *srv_pkt = &state->pkt.srv;
 
 	prl_notice(2, "Waiting for server auth response...");
-	ret = poll_fd_input(state, state->udp_fd, 5000);
+	ret = poll_fd_input(state, udp_fd, 5000);
 	if (unlikely(ret < 0))
 		return ret;
 
-	return 0;
+	recv_ret = do_recv_from(udp_fd, srv_pkt, PKT_MAX_LEN);
+	if (unlikely(recv_ret < 0))
+		return (int)recv_ret;
+
+	ret = server_auth_res_chk(srv_pkt, (size_t)recv_ret);
+	if (!ret) {
+		prl_notice(2, "Authenticated as \"%s\"",
+			   state->cfg->auth.username);
+		ret = bring_up_iface(state);
+	}
+
+	return ret;
 }
 
 

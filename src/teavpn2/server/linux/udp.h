@@ -24,6 +24,8 @@
 
 #define UDP_SESS_NUM		(32u)
 
+#define UDP_SESS_MAX_ERR	(10u)
+
 #define W_IP(CLIENT) 		((CLIENT)->str_addr), ((CLIENT)->src_port)
 #define W_UN(CLIENT) 		((CLIENT)->username)
 #define W_IU(CLIENT) 		W_IP(CLIENT), W_UN(CLIENT), ((CLIENT)->idx)
