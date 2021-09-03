@@ -127,8 +127,7 @@ bool teavpn2_auth(const char *username, const char *password,
 	int err = 0;
 	FILE *handle;
 	bool ret = true;
-	char userfile[1024];
-	struct user_parse_ctx ctx;
+	char userfile[512];
 
 	if (unlikely(!data_dir))
 		panic("data_dir is NULL");
@@ -151,7 +150,6 @@ bool teavpn2_auth(const char *username, const char *password,
 		ret = false;
 	}
 
-out:
 	fclose(handle);
 	return ret;
 }

@@ -151,18 +151,61 @@ out:
 }
 
 
+static void thread_wait(struct epl_thread *thread, struct cli_udp_state *state)
+{
+	static _Atomic(bool) release_sub_thread = false;
+	uint8_t nn = (uint8_t)state->cfg->sys.thread_num;
+
+	if (thread->idx != 0) {
+		/*
+		 * We are the sub thread.
+		 * Waiting for the main thread be ready...
+		 */
+		while (!atomic_load(&release_sub_thread)) {
+			if (unlikely(state->stop))
+				return;
+			usleep(100000);
+		}
+		return;
+	}
+
+	/*
+	 * We are the main thread...
+	 */
+	while (atomic_load(&state->ready_thread) != nn) {
+		prl_notice(2, "(thread=%u) "
+			   "Waiting for subthread(s) to be ready...",
+			   thread->idx);
+		if (unlikely(state->stop))
+			return;
+		usleep(100000);
+	}
+
+	if (nn > 1)
+		prl_notice(2, "All threads are ready!");
+
+	prl_notice(2, "Initialization Sequence Completed");
+	atomic_store(&release_sub_thread, true);
+}
+
+
 static void *_run_event_loop(void *thread_p)
 {
 	int ret = 0;
-	struct cli_udp_state *state;
 	struct epl_thread *thread = (struct epl_thread *)thread_p;
+	struct cli_udp_state *state = thread->state;
+
+	atomic_store(&thread->is_online, true);
+	atomic_fetch_add(&state->ready_thread, 1);
+	thread_wait(thread, state);
 
 	state = thread->state;
 	while (likely(!state->stop)) {
-		prl_notice(3, "thread %u", thread->idx);
 		sleep(1);
 	}
 
+	atomic_store(&thread->is_online, false);
+	atomic_fetch_sub(&state->ready_thread, 1);
 	return (void *)((intptr_t)ret);
 }
 
@@ -191,6 +234,7 @@ static int spawn_thread(struct epl_thread *thread)
 static int run_event_loop(struct cli_udp_state *state)
 {
 	int ret = 0;
+	void *ret_p;
 	struct epl_thread *threads = state->epl_threads;
 	uint8_t i, nn = (uint8_t)state->cfg->sys.thread_num;
 
@@ -200,14 +244,8 @@ static int run_event_loop(struct cli_udp_state *state)
 			goto out;
 	}
 
-	{
-		/*
-		 * ret_p is just to shut the clang warning up!
-		 */
-		void *ret_p;
-		ret_p = _run_event_loop(&threads[0]);
-		ret   = (int)((intptr_t)ret_p);
-	}
+	ret_p = _run_event_loop(&threads[0]);
+	ret   = (int)((intptr_t)ret_p);
 out:
 	return ret;
 }
@@ -232,10 +270,59 @@ static void close_epoll_fds(struct epl_thread *threads, uint8_t nn)
 }
 
 
+static bool wait_for_threads_to_exit(struct cli_udp_state *state)
+{
+	unsigned wait_c = 0;
+	uint16_t thread_on = 0, cc;
+	uint8_t nn, i;
+	struct epl_thread *threads;
+
+	thread_on = atomic_load(&state->ready_thread);
+	if (thread_on == 0)
+		return true;
+
+	threads = state->epl_threads;
+	nn = (uint8_t)state->cfg->sys.thread_num;
+	for (i = 0; i < nn; i++) {
+		int ret;
+
+		if (!atomic_load(&threads[i].is_online))
+			continue;
+
+		ret = pthread_kill(threads[i].thread, SIGTERM);
+		if (unlikely(ret)) {
+			pr_err("pthread_kill(threads[%hhu].thread, SIGTERM): "
+			       PRERF, i, PREAR(ret));
+		}
+	}
+
+	prl_notice(2, "Waiting for %hu thread(s) to exit...", thread_on);
+	while ((cc = atomic_load(&state->ready_thread)) > 0) {
+
+		if (cc != thread_on) {
+			thread_on = cc;
+			prl_notice(2, "Waiting for %hu thread(s) to exit...", cc);
+		}
+
+		usleep(100000);
+		if (wait_c++ > 1000)
+			return false;
+	}
+	return true;
+}
+
+
 static void destroy_epoll(struct cli_udp_state *state)
 {
-	uint8_t nn = (uint8_t)state->cfg->sys.thread_num;
 	struct epl_thread *threads;
+	uint8_t nn = (uint8_t)state->cfg->sys.thread_num;
+
+	if (!wait_for_threads_to_exit(state)) {
+		/* Thread(s) won't exit, don't free the heap! */
+		pr_emerg("Thread(s) won't exit!");
+		state->threads_wont_exit = true;
+		return;
+	}
 
 	threads = state->epl_threads;
 	if (threads) {

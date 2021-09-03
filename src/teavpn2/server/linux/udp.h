@@ -114,10 +114,6 @@ extern int teavpn2_udp_server_epoll(struct srv_udp_state *state);
 extern struct udp_sess *map_find_udp_sess(struct srv_udp_state *state,
 					  uint32_t addr, uint16_t port);
 
-extern struct udp_sess *map_insert_udp_sess(struct srv_udp_state *state,
-					    uint32_t addr, uint16_t port,
-					    struct udp_sess *cur_sess);
-
 extern struct udp_sess *get_udp_sess(struct srv_udp_state *state, uint32_t addr,
 				     uint16_t port);
 
@@ -133,7 +129,7 @@ static inline void reset_udp_session(struct udp_sess *sess, uint16_t idx)
 	sess->err_c = 0;
 	sess->last_touch = 0;
 	sess->is_authenticated = false;
-	sess->is_connected = false;
+	atomic_store(&sess->is_connected, false);
 	sess->str_addr[0] = '\0';
 	sess->username[0] = '_';
 	sess->username[1] = '\0';
@@ -160,7 +156,7 @@ static inline size_t srv_pprep_handshake_reject(struct srv_pkt *srv_pkt,
 	if (!msg) {
 		memset(rej->msg, 0, sizeof(rej->msg));
 	} else {
-		strncpy(rej->msg, msg, sizeof(rej->msg));
+		strncpy2(rej->msg, msg, sizeof(rej->msg));
 		rej->msg[sizeof(rej->msg) - 1] = '\0';
 	}
 
@@ -178,7 +174,7 @@ static inline size_t srv_pprep_handshake(struct srv_pkt *srv_pkt)
 	cur->ver = VERSION;
 	cur->patch_lvl = PATCHLEVEL;
 	cur->sub_lvl = SUBLEVEL;
-	strncpy(cur->extra, EXTRAVERSION, sizeof(cur->extra));
+	strncpy2(cur->extra, EXTRAVERSION, sizeof(cur->extra));
 	cur->extra[sizeof(cur->extra) - 1] = '\0';
 
 	return srv_pprep(srv_pkt, TSRV_PKT_HANDSHAKE, (uint16_t)sizeof(*hand),

@@ -216,4 +216,27 @@ static inline void *calloc_wrp(size_t nmemb, size_t size)
 	return ret;
 }
 
+
+#if !defined(__clang__)
+/*
+ * GCC false positive warnings are annoying!
+ */
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Warray-bounds"
+#  pragma GCC diagnostic ignored "-Wstringop-overflow"
+#  pragma GCC diagnostic ignored "-Wstringop-truncation"
+#endif
+static inline char *strncpy2(char *__restrict__ dst,
+			     const char *__restrict__ src,
+			     size_t n)
+{
+	char *ret = strncpy(dst, src, n);
+	ret[n - 1] = '\0';
+	return ret;
+}
+#if !defined(__clang__)
+#  pragma GCC diagnostic pop
+#endif
+
+
 #endif

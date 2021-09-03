@@ -429,15 +429,16 @@ static int bring_up_iface(struct cli_udp_state *state)
 	struct srv_pkt *srv_pkt = &state->pkt.srv;
 	struct if_info *iff = &srv_pkt->auth_res.iff;
 	struct if_info *iff2 = &state->cfg->iface.iff;
+	const char *dev = state->cfg->iface.dev;
 
-	strncpy(iff->dev, state->cfg->iface.dev, sizeof(iff->dev));
-	iff->dev[sizeof(iff->dev) - 1] = '\0';
+	strncpy2(iff->dev, dev, sizeof(iff->dev));
 
 	*iff2 = *iff;
 	if (unlikely(!teavpn_iface_up(iff2))) {
 		pr_err("teavpn_iface_up(): cannot bring up network interface");
 		return -ENETDOWN;
 	}
+	state->need_remove_iff = true;
 	return 0;
 }
 
@@ -534,8 +535,17 @@ static void close_udp_fd(struct cli_udp_state *state)
 
 static void destroy_state(struct cli_udp_state *state)
 {
+	if (state->need_remove_iff) {
+		prl_notice(2, "Removing virtual network interface configuration...");
+		teavpn_iface_down(&state->cfg->iface.iff);
+	}
+
+	if (state->threads_wont_exit)
+		return;
+
 	close_tun_fds(state);
 	close_udp_fd(state);
+	al64_free(state);
 }
 
 
@@ -571,6 +581,5 @@ out:
 		pr_err("teavpn2_client_udp_run(): " PRERF, PREAR(-ret));
 
 	destroy_state(state);
-	al64_free(state);
 	return ret;
 }

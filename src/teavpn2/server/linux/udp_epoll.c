@@ -32,6 +32,7 @@ static int epoll_add(int epoll_fd, int fd, uint32_t events, epoll_data_t data)
 }
 
 
+#if 0
 static int epoll_delete(int epoll_fd, int fd)
 {
 	int ret;
@@ -46,7 +47,7 @@ static int epoll_delete(int epoll_fd, int fd)
 
 	return ret;
 }
-
+#endif
 
 static int init_epoll_user_data(struct srv_udp_state *state)
 {
@@ -383,7 +384,7 @@ static int handle_clpkt_auth(struct epl_thread *thread,
 	}
 
 	cur_sess->is_authenticated = true;
-	strncpy(cur_sess->username, auth.username, sizeof(cur_sess->username));
+	strncpy2(cur_sess->username, auth.username, sizeof(cur_sess->username));
 	cur_sess->username[sizeof(cur_sess->username) - 1] = '\0';
 	goto out;
 
@@ -664,8 +665,7 @@ static int do_epoll_wait(struct epl_thread *thread)
 }
 
 
-static void thread_wait_or_add_counter(struct epl_thread *thread,
-				       struct srv_udp_state *state)
+static void thread_wait(struct epl_thread *thread, struct srv_udp_state *state)
 {
 	static _Atomic(bool) release_sub_thread = false;
 	uint8_t nn = (uint8_t)state->cfg->sys.thread_num;
@@ -696,7 +696,7 @@ static void thread_wait_or_add_counter(struct epl_thread *thread,
 	}
 
 	if (nn > 1)
-		prl_notice(2, "All threads all are ready!");
+		prl_notice(2, "All threads are ready!");
 
 	prl_notice(2, "Initialization Sequence Completed");
 	atomic_store(&release_sub_thread, true);
@@ -711,7 +711,7 @@ __no_inline static void *_run_event_loop(void *thread_p)
 
 	atomic_store(&thread->is_online, true);
 	atomic_fetch_add(&state->ready_thread, 1);
-	thread_wait_or_add_counter(thread, state);
+	thread_wait(thread, state);
 
 	if (thread->idx > 0) {
 		thread->epoll_timeout = 10000;

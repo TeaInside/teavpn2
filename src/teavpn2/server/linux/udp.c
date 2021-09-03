@@ -352,7 +352,7 @@ free_sess_map:
 static void destroy_state(struct srv_udp_state *state)
 {
 	if (state->need_remove_iff) {
-		prl_notice(2, "Removing virtual network interface IP config...");
+		prl_notice(2, "Removing virtual network interface configuration...");
 		teavpn_iface_down(&state->cfg->iface.iff);
 	}
 
