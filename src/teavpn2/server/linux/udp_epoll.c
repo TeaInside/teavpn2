@@ -205,6 +205,9 @@ static int close_udp_session(struct epl_thread *thread,
 	size_t send_len;
 	struct srv_pkt *srv_pkt = &thread->pkt.srv;
 
+	if (cur_sess->ipv4_iff != 0)
+		del_ipv4_route_map(thread->state->ipv4_map, cur_sess->ipv4_iff);
+
 	send_len = srv_pprep(srv_pkt, TSRV_PKT_CLOSE, 0, 0);
 	send_to_client(thread, cur_sess, srv_pkt, send_len);
 	return put_udp_session(thread->state, cur_sess);
@@ -383,6 +386,10 @@ static int handle_clpkt_auth(struct epl_thread *thread,
 		goto out;
 	}
 
+	cur_sess->ipv4_iff = ntohl(inet_addr(auth_res->iff.ipv4));
+	add_ipv4_route_map(thread->state->ipv4_map, cur_sess->ipv4_iff,
+			   cur_sess->idx);
+
 	cur_sess->is_authenticated = true;
 	strncpy2(cur_sess->username, auth.username, sizeof(cur_sess->username));
 	cur_sess->username[sizeof(cur_sess->username) - 1] = '\0';
@@ -434,6 +441,20 @@ static int request_sync(struct epl_thread *thread, struct udp_sess *cur_sess)
 }
 
 
+static int handle_tun_data(struct epl_thread *thread)
+{
+	uint16_t data_len;
+	ssize_t write_ret;
+	int tun_fd = thread->state->tun_fds[0];
+	struct srv_pkt *srv_pkt = &thread->pkt.srv;
+
+	data_len  = ntohs(srv_pkt->len);
+	write_ret = write(tun_fd, srv_pkt->__raw, data_len);
+	pr_debug("tun write, write_ret = %zd", write_ret);
+	return write_ret < 0 ? -errno : 0;
+}
+
+
 static int __handle_event_udp(struct epl_thread *thread,
 			      struct udp_sess *cur_sess)
 {
@@ -448,11 +469,13 @@ static int __handle_event_udp(struct epl_thread *thread,
 	case TCLI_PKT_AUTH:
 		return handle_clpkt_auth(thread, cur_sess);
 	case TCLI_PKT_TUN_DATA:
-		return 0;
+		return handle_tun_data(thread);
 	case TCLI_PKT_REQSYNC:
 		return 0;
 	case TCLI_PKT_SYNC:
 		return 0;
+	case TCLI_PKT_PING:
+		return cur_sess->is_authenticated ? 0 : -EBADRQC;
 	default:
 
 		if (cur_sess->is_authenticated) {
@@ -527,6 +550,28 @@ static int handle_event_udp(int udp_fd, struct epl_thread *thread)
 }
 
 
+static int route_packet(struct epl_thread *thread, ssize_t len)
+{
+	ssize_t send_ret;
+	size_t send_len, i;
+	struct srv_pkt *srv_pkt = &thread->pkt.srv;
+	struct udp_sess	*sess = thread->state->sess;
+
+	send_len = srv_pprep(srv_pkt, TSRV_PKT_TUN_DATA, (uint16_t)len, 0);
+	for (i = 0; i < UDP_SESS_NUM; i++) {
+
+		if (!sess[i].is_authenticated)
+			continue;
+
+		send_ret = send_to_client(thread, &sess[i], srv_pkt, send_len);
+		if (send_ret < 0)
+			return (int)send_ret;
+	}
+
+	return 0;
+}
+
+
 static int handle_event_tun(int tun_fd, struct epl_thread *thread)
 {
 	int ret;
@@ -546,7 +591,7 @@ static int handle_event_tun(int tun_fd, struct epl_thread *thread)
 	thread->pkt.len = (size_t)read_ret;
 
 	pr_debug("read() from tun_fd %zd bytes", read_ret);
-	return 0;
+	return route_packet(thread, read_ret);
 }
 
 

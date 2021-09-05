@@ -9,11 +9,14 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include <arpa/inet.h>
+#include <sys/epoll.h>
 #include <teavpn2/packet.h>
 #include <teavpn2/client/common.h>
 
 #define EPLD_DATA_TUN	(1u << 0u)
 #define EPLD_DATA_UDP	(1u << 1u)
+#define EPOLL_EVT_ARR_NUM	(16)
+
 
 
 /*
@@ -34,7 +37,9 @@ struct epl_thread {
 	uint16_t				idx;
 	pthread_t				thread;
 	int					epoll_fd;
+	int					epoll_timeout;
 	struct cli_udp_state			*state;
+	struct epoll_event			events[EPOLL_EVT_ARR_NUM];
 	alignas(64) struct sc_pkt		pkt;
 };
 

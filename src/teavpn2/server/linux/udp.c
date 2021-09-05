@@ -278,6 +278,19 @@ static int init_udp_session_stack(struct srv_udp_state *state)
 }
 
 
+static int init_ipv4_map(struct srv_udp_state *state)
+{
+	uint16_t (*ipv4_map)[0x100];
+
+	ipv4_map = calloc_wrp(0x100ul * 0x100ul, sizeof(uint16_t));
+	if (unlikely(!ipv4_map))
+		return -errno;
+
+	state->ipv4_map = ipv4_map;
+	return 0;
+}
+
+
 static int run_server_event_loop(struct srv_udp_state *state)
 {
 	switch (state->evt_loop) {
@@ -384,6 +397,7 @@ static void destroy_state(struct srv_udp_state *state)
 	mutex_unlock(&state->sess_stk_lock);
 	mutex_destroy(&state->sess_map_lock);
 
+	al64_free(state->ipv4_map);
 	al64_free(state);
 }
 
@@ -415,6 +429,9 @@ int teavpn2_server_udp_run(struct srv_cfg *cfg)
 	if (unlikely(ret))
 		goto out;
 	ret = init_udp_session_stack(state);
+	if (unlikely(ret))
+		goto out;
+	ret = init_ipv4_map(state);
 	if (unlikely(ret))
 		goto out;
 	ret = run_server_event_loop(state);
