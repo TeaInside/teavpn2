@@ -571,6 +571,12 @@ static int __handle_event_udp(struct epl_thread *thread,
 }
 
 
+static bool is_close_packet(struct epl_thread *thread)
+{
+	return thread->pkt.cli.type == TCLI_PKT_CLOSE;
+}
+
+
 static int _handle_event_udp(struct epl_thread *thread, struct sockaddr_in *saddr)
 {
 	uint16_t port;
@@ -585,7 +591,12 @@ static int _handle_event_udp(struct epl_thread *thread, struct sockaddr_in *sadd
 		 * It's a new client since we don't find it in
 		 * the session entry.
 		 */
-		int ret = handle_new_client(thread, addr, port, saddr);
+		int ret
+
+		if (is_close_packet(thread))
+			return 0;
+
+		ret = handle_new_client(thread, addr, port, saddr);
 		return (ret == -EAGAIN) ? 0 : ret;
 	}
 
