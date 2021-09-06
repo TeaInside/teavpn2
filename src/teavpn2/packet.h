@@ -6,20 +6,28 @@
 #define TEAVPN2__PACKET_H
 
 #include <stdint.h>
+#include <linux/ip.h>
 #include <teavpn2/common.h>
 
-#define TCLI_PKT_HANDSHAKE	(1u << 0u)
-#define TCLI_PKT_AUTH		(1u << 1u)
-#define TCLI_PKT_TUN_DATA	(1u << 2u)
-#define TCLI_PKT_REQSYNC	(1u << 3u)
-#define TCLI_PKT_SYNC		(1u << 4u)
+
+#define TCLI_PKT_HANDSHAKE		0u
+#define TCLI_PKT_AUTH			1u
+#define TCLI_PKT_TUN_DATA		2u
+#define TCLI_PKT_REQSYNC		3u
+#define TCLI_PKT_SYNC			4u
+#define TCLI_PKT_CLOSE			5u
+#define TCLI_PKT_PING			6u
 
 
-#define TSRV_PKT_HANDSHAKE	(1u << 0u)
-#define TSRV_PKT_AUTH		(1u << 1u)
-#define TSRV_PKT_TUN_DATA	(1u << 2u)
-#define TSRV_PKT_REQSYNC	(1u << 3u)
-#define TSRV_PKT_SYNC		(1u << 4u)
+#define TSRV_PKT_HANDSHAKE		0u
+#define TSRV_PKT_AUTH_OK		1u
+#define TSRV_PKT_TUN_DATA		2u
+#define TSRV_PKT_REQSYNC		3u
+#define TSRV_PKT_SYNC			4u
+#define TSRV_PKT_CLOSE			5u
+#define TSRV_PKT_HANDSHAKE_REJECT	6u
+#define TSRV_PKT_AUTH_REJECT		7u
+
 
 
 #define SIZE_ASSERT(TYPE, LEN) 						\
@@ -43,6 +51,17 @@ OFFSET_ASSERT(struct pkt_handshake, max, 64);
 SIZE_ASSERT(struct pkt_handshake, 96);
 
 
+#define TSRV_HREJECT_INVALID			(1u << 0u)
+#define TSRV_HREJECT_VERSION_NOT_SUPPORTED	(1u << 1u)
+struct pkt_handshake_reject {
+	uint8_t					reason;
+	char					msg[511];
+};
+OFFSET_ASSERT(struct pkt_handshake_reject, reason, 0);
+OFFSET_ASSERT(struct pkt_handshake_reject, msg, 1);
+SIZE_ASSERT(struct pkt_handshake_reject, 512);
+
+
 struct pkt_auth {
 	char					username[256];
 	char					password[256];
@@ -63,6 +82,7 @@ SIZE_ASSERT(struct pkt_auth_res, 1 + 1 + sizeof(struct if_info));
 
 struct pkt_tun_data {
 	union {
+		struct iphdr			iphdr;
 		uint8_t				__raw[4096];
 	};
 };
@@ -81,6 +101,7 @@ struct srv_pkt {
 		struct pkt_handshake		handshake;
 		struct pkt_auth_res		auth_res;
 		struct pkt_tun_data		tun_data;
+		struct pkt_handshake_reject	hs_reject;
 		char				__raw[4096];
 	};
 };
