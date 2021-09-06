@@ -571,9 +571,15 @@ static int __handle_event_udp(struct epl_thread *thread,
 }
 
 
-static bool is_close_packet(struct epl_thread *thread)
+static bool packet_doesnt_need_session_init(struct epl_thread *thread)
 {
-	return thread->pkt.cli.type == TCLI_PKT_CLOSE;
+	uint8_t type = thread->pkt.cli.type;
+	return (
+		 type == TCLI_PKT_CLOSE   ||
+		 type == TCLI_PKT_PING    ||
+		 type == TCLI_PKT_REQSYNC ||
+		 type == TCLI_PKT_SYNC
+	);
 }
 
 
@@ -593,9 +599,10 @@ static int _handle_event_udp(struct epl_thread *thread, struct sockaddr_in *sadd
 		 */
 		int ret;
 
-		if (is_close_packet(thread))
+		if (packet_doesnt_need_session_init(thread))
 			return 0;
 
+		pr_debug("%hhu %hhu", thread->pkt.cli.type, (uint8_t)TCLI_PKT_CLOSE);
 		ret = handle_new_client(thread, addr, port, saddr);
 		return (ret == -EAGAIN) ? 0 : ret;
 	}
