@@ -208,6 +208,7 @@ static ssize_t do_send_to(int udp_fd, const void *pkt, size_t send_len)
 }
 
 
+#if 0
 static ssize_t do_recv_from(int udp_fd, void *pkt, size_t recv_len)
 {
 	int ret;
@@ -221,6 +222,7 @@ static ssize_t do_recv_from(int udp_fd, void *pkt, size_t recv_len)
 	pr_debug("recvfrom() %zd bytes", recv_ret);
 	return recv_ret;
 }
+#endif
 
 
 static int handle_tun_data(struct epl_thread *thread)
