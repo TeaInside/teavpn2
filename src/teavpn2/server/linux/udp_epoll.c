@@ -591,7 +591,7 @@ static int _handle_event_udp(struct epl_thread *thread, struct sockaddr_in *sadd
 		 * It's a new client since we don't find it in
 		 * the session entry.
 		 */
-		int ret
+		int ret;
 
 		if (is_close_packet(thread))
 			return 0;
