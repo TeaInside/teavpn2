@@ -242,8 +242,20 @@ static int _handle_event_udp(struct epl_thread *thread)
 	struct srv_pkt *srv_pkt = &thread->pkt.srv;
 
 	switch (srv_pkt->type) {
+	case TSRV_PKT_HANDSHAKE:
+	case TSRV_PKT_AUTH_OK:
+		return 0;
 	case TSRV_PKT_TUN_DATA:
 		return handle_tun_data(thread);
+	case TSRV_PKT_REQSYNC:
+		return 0;
+	case TSRV_PKT_SYNC:
+		return 0;
+	case TSRV_PKT_CLOSE:
+	case TSRV_PKT_HANDSHAKE_REJECT:
+	case TSRV_PKT_AUTH_REJECT:
+		prl_notice(2, "Server has closed the connection!");
+		return -EHOSTDOWN;
 	}
 	return 0;
 }
@@ -357,7 +369,7 @@ static int _do_epoll_wait(struct epl_thread *thread)
 }
 
 
-static int send_ping(struct epl_thread *thread)
+static int send_ping_packet(struct epl_thread *thread)
 {
 	size_t send_len;
 	ssize_t send_ret;
@@ -365,6 +377,21 @@ static int send_ping(struct epl_thread *thread)
 	send_len = cli_pprep(cli_pkt, TCLI_PKT_PING, 0, 0);
 	send_ret = do_send_to(thread->state->udp_fd, cli_pkt, send_len);
 	return (send_ret < 0) ? (int)send_ret : 0;
+}
+
+
+static int send_close_packet(struct epl_thread *thread)
+{
+	int i;
+	size_t send_len;
+	struct cli_pkt *cli_pkt = &thread->pkt.cli;
+
+	prl_notice(2, "Sending close packet to server...");
+	send_len = cli_pprep(cli_pkt, TCLI_PKT_CLOSE, 0, 0);
+	for (i = 0; i < 5; i++)
+		do_send_to(thread->state->udp_fd, cli_pkt, send_len);
+
+	return 0;
 }
 
 
@@ -380,7 +407,7 @@ static int do_epoll_wait(struct epl_thread *thread)
 	}
 
 	if (ret == 0)
-		return send_ping(thread);
+		return send_ping_packet(thread);
 
 	events = thread->events;
 	for (i = 0; i < ret; i++) {
@@ -453,6 +480,7 @@ static int run_event_loop(struct cli_udp_state *state)
 
 	ret_p = _run_event_loop(&threads[0]);
 	ret   = (int)((intptr_t)ret_p);
+	send_close_packet(&threads[0]);
 out:
 	return ret;
 }

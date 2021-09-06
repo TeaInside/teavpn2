@@ -6,6 +6,7 @@
 #define TEAVPN2__PACKET_H
 
 #include <stdint.h>
+#include <linux/ip.h>
 #include <teavpn2/common.h>
 
 
@@ -81,6 +82,7 @@ SIZE_ASSERT(struct pkt_auth_res, 1 + 1 + sizeof(struct if_info));
 
 struct pkt_tun_data {
 	union {
+		struct iphdr			iphdr;
 		uint8_t				__raw[4096];
 	};
 };

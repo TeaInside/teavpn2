@@ -20,7 +20,7 @@
 #define EPLD_DATA_UDP		(1u << 1u)
 #define EPOLL_EVT_ARR_NUM	(16)
 
-#define UDP_SESS_TIMEOUT	(10u)
+#define UDP_SESS_TIMEOUT	(10)
 
 #define UDP_SESS_NUM		(32u)
 
@@ -83,6 +83,7 @@ struct udp_map_bucket {
 
 struct srv_udp_state {
 	volatile bool				stop;
+	volatile bool				in_emergency;
 	bool					threads_wont_exit;
 	bool					need_remove_iff;
 	int					sig;

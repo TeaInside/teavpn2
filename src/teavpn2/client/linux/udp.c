@@ -129,6 +129,8 @@ static int init_socket(struct cli_udp_state *state)
 		type |= SOCK_NONBLOCK;
 
 	state->udp_fd = -1;
+
+	prl_notice(2, "Initializing UDP socket...");
 	udp_fd = socket(AF_INET, type, 0);
 	if (unlikely(udp_fd < 0)) {
 		ret = errno;
@@ -137,11 +139,15 @@ static int init_socket(struct cli_udp_state *state)
 		       PREAR(ret));
 		return -ret;
 	}
+	prl_notice(2, "UDP socket initialized successfully (fd=%d)", udp_fd);
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(sock->server_port);
 	addr.sin_addr.s_addr = inet_addr(sock->server_addr);
+
+	prl_notice(2, "Connecting to server %s:%hu... (stateless)",
+		   sock->server_addr, sock->server_port);
 
 	ret = connect(udp_fd, (struct sockaddr *)&addr, sizeof(addr));
 	if (unlikely(ret < 0)) {

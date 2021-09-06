@@ -174,27 +174,54 @@ static ssize_t send_to_client(struct epl_thread *thread,
 			      struct udp_sess *cur_sess, const void *buf,
 			      size_t pkt_len)
 {
-	int ret;
+	int err;
 	ssize_t send_ret;
+	uint32_t emergency_count = 0;
+	socklen_t len = sizeof(cur_sess->addr);
+	struct sockaddr *dst_addr = (struct sockaddr *)&cur_sess->addr;
 
-	send_ret = sendto(thread->state->udp_fd, buf, pkt_len, 0,
-			  &cur_sess->addr, sizeof(cur_sess->addr));
+send_again:
+	send_ret = sendto(thread->state->udp_fd, buf, pkt_len, 0, dst_addr, len);
 	if (unlikely(send_ret <= 0)) {
 
 		if (send_ret == 0) {
+			if (pkt_len == 0)
+				return 0;
+
 			pr_err("UDP socket disconnected!");
 			return -ENETDOWN;
 		}
 
-		ret = errno;
-		if (ret != EAGAIN)
-			pr_err("sendto(): " PRERF, PREAR(ret));
+		err = errno;
+		if (err == EAGAIN) {
+			thread->state->in_emergency = true;
 
-		return (ssize_t)-ret;
+			if (emergency_count++ == 0) {
+				pr_emerg("UDP buffer is full, cannot send!");
+				pr_emerg("Initiate soft loop on sys_sendto...");
+			}
+
+			if (emergency_count > 5000) {
+				pr_emerg("Giving up, cannot write to UDP fd...");
+				return -ENETDOWN;
+			}
+
+			/* Calm down a bit... */
+			usleep(100000);
+			goto send_again;
+		}
+
+		pr_err("sendto(): " PRERF, PREAR(err));
+		return (ssize_t)-err;
 	}
 
-	pr_debug("sendto(): %zd bytes %x:%hx", send_ret, cur_sess->src_addr,
-		 cur_sess->src_port);
+	pr_debug("sendto(): %zd bytes " PRWIU, send_ret, W_IU(cur_sess));
+
+	if (unlikely(emergency_count > 0)) {
+		thread->state->in_emergency = false;
+		pr_emerg("Recovered from EAGAIN!");
+	}
+
 	return send_ret;
 }
 
@@ -424,7 +451,7 @@ static int request_sync(struct epl_thread *thread, struct udp_sess *cur_sess)
 	ssize_t send_ret;
 	struct srv_pkt *srv_pkt = &thread->pkt.srv;
 
-	if (unlikely(cur_sess->err_c++ > UDP_SESS_MAX_ERR)) {
+	if (unlikely(++cur_sess->err_c > UDP_SESS_MAX_ERR)) {
 		close_udp_session(thread, cur_sess);
 		return 0;
 	}
@@ -441,17 +468,65 @@ static int request_sync(struct epl_thread *thread, struct udp_sess *cur_sess)
 }
 
 
-static int handle_tun_data(struct epl_thread *thread)
+static int handle_tun_data(struct epl_thread *thread, struct udp_sess *cur_sess)
 {
 	uint16_t data_len;
 	ssize_t write_ret;
+	uint32_t emergency_count = 0;
 	int tun_fd = thread->state->tun_fds[0];
 	struct srv_pkt *srv_pkt = &thread->pkt.srv;
 
 	data_len  = ntohs(srv_pkt->len);
+
+write_again:
 	write_ret = write(tun_fd, srv_pkt->__raw, data_len);
-	pr_debug("tun write, write_ret = %zd", write_ret);
-	return write_ret < 0 ? -errno : 0;
+	if (unlikely(write_ret <= 0)) {
+		int err = errno;
+
+		if (write_ret == 0) {
+			if (data_len == 0)
+				return 0;
+
+			pr_err("write() to TUN fd returned zero");
+			return -ENETDOWN;
+		}
+
+		if (err == EAGAIN) {
+			thread->state->in_emergency = true;
+
+			if (emergency_count++ == 0) {
+				pr_emerg("TUN buffer is full, cannot write!");
+				pr_emerg("Initiate soft loop on sys_write...");
+			}
+
+			if (emergency_count > 5000) {
+				pr_emerg("Giving up, cannot write to TUN fd...");
+				return -ENETDOWN;
+			}
+
+			/* Calm down a bit... */
+			usleep(100000);
+			goto write_again;
+		}
+
+		prl_notice(4, "Bad packet from " PRWIU ", write(): " PRERF,
+			   W_IU(cur_sess), PREAR(err));
+
+		if (++cur_sess->err_c > UDP_SESS_MAX_ERR)
+			close_udp_session(thread, cur_sess);
+
+		return 0;
+	}
+
+	pr_debug("[thread=%u] TUN write(%d, buf, %hu) = %zd bytes", thread->idx,
+		 tun_fd, data_len, write_ret);
+
+	if (unlikely(emergency_count > 0)) {
+		thread->state->in_emergency = false;
+		pr_emerg("Recovered from EAGAIN!");
+	}
+
+	return 0;
 }
 
 
@@ -469,7 +544,7 @@ static int __handle_event_udp(struct epl_thread *thread,
 	case TCLI_PKT_AUTH:
 		return handle_clpkt_auth(thread, cur_sess);
 	case TCLI_PKT_TUN_DATA:
-		return handle_tun_data(thread);
+		return handle_tun_data(thread, cur_sess);
 	case TCLI_PKT_REQSYNC:
 		return 0;
 	case TCLI_PKT_SYNC:
@@ -503,15 +578,16 @@ static int _handle_event_udp(struct epl_thread *thread, struct sockaddr_in *sadd
 	addr = ntohl(saddr->sin_addr.s_addr);
 	cur_sess = map_find_udp_sess(thread->state, addr, port);
 	if (unlikely(!cur_sess)) {
-		int ret;
-
 		/*
 		 * It's a new client since we don't find it in
 		 * the session entry.
 		 */
-		ret = handle_new_client(thread, addr, port, saddr);
+		int ret = handle_new_client(thread, addr, port, saddr);
 		return (ret == -EAGAIN) ? 0 : ret;
 	}
+
+	pr_debug("recvfrom() %zu bytes from " PRWIU, thread->pkt.len,
+		 W_IU(cur_sess));
 
 	udp_sess_tv_update(cur_sess);
 	return __handle_event_udp(thread, cur_sess);
@@ -524,14 +600,17 @@ static int handle_event_udp(int udp_fd, struct epl_thread *thread)
 	ssize_t recv_ret;
 	struct sockaddr_in saddr;
 	char *buf = thread->pkt.__raw;
-	socklen_t addrlen = sizeof(saddr);
+	socklen_t len = sizeof(saddr);
+	struct sockaddr *src_addr = (struct sockaddr *)&saddr;
 	size_t recv_size = sizeof(thread->pkt.cli.__raw);
 
-	recv_ret = recvfrom(udp_fd, buf, recv_size, 0, (struct sockaddr *)&saddr,
-			    &addrlen);
+	recv_ret = recvfrom(udp_fd, buf, recv_size, 0, src_addr, &len);
 	if (unlikely(recv_ret <= 0)) {
 
 		if (recv_ret == 0) {
+			if (recv_size == 0)
+				return 0;
+
 			pr_err("UDP socket disconnected!");
 			return -ENETDOWN;
 		}
@@ -543,23 +622,59 @@ static int handle_event_udp(int udp_fd, struct epl_thread *thread)
 		pr_err("recvfrom(udp_fd) (fd=%d): " PRERF, udp_fd, PREAR(ret));
 		return -ret;
 	}
-	thread->pkt.len = (size_t)recv_ret;
 
-	pr_debug("recvfrom() client %zd bytes", recv_ret);
+	thread->pkt.len = (size_t)recv_ret;
 	return _handle_event_udp(thread, &saddr);
+}
+
+
+/*
+ * return -ENOENT if cannot find the destination.
+ * return 0 if it finds the destination.
+ * return -errno if it errors.
+ */
+static int route_ipv4_packet(struct epl_thread *thread, __be32 dst_addr,
+			     size_t send_len)
+{
+	uint16_t idx;
+	int32_t find;
+	ssize_t send_ret;
+	struct udp_sess *dst_sess;
+
+	find = get_route_map(thread->state->ipv4_map, dst_addr);
+	if (unlikely(find == -1))
+		return -ENOENT;
+
+	idx      = (uint16_t)find;
+	dst_sess = &thread->state->sess[idx];
+	send_ret = send_to_client(thread, dst_sess, &thread->pkt.srv, send_len);
+	if (send_ret < 0)
+		return (int)send_ret;
+
+	return 0;
 }
 
 
 static int route_packet(struct epl_thread *thread, ssize_t len)
 {
+	int ret;
 	ssize_t send_ret;
 	size_t send_len, i;
 	struct srv_pkt *srv_pkt = &thread->pkt.srv;
 	struct udp_sess	*sess = thread->state->sess;
+	struct iphdr *iphdr = &srv_pkt->tun_data.iphdr;
 
 	send_len = srv_pprep(srv_pkt, TSRV_PKT_TUN_DATA, (uint16_t)len, 0);
-	for (i = 0; i < UDP_SESS_NUM; i++) {
+	if (likely(iphdr->version == 4)) {
+		ret = route_ipv4_packet(thread, ntohl(iphdr->daddr), send_len);
+		if (ret != -ENOENT)
+			return ret;
+	}
 
+	/*
+	 * Broadcast this to all authenticated clients.
+	 */
+	for (i = 0; i < UDP_SESS_NUM; i++) {
 		if (!sess[i].is_authenticated)
 			continue;
 
@@ -665,8 +780,11 @@ static void reap_zombie_sessions(struct epl_thread *thread)
 
 	prl_notice(4, "[thread=%u] Current num of connected client(s): %zu",
 		   thread->idx, n);
+
 	sess = thread->state->sess;
 	for (i = 0; i < UDP_SESS_NUM; i++) {
+		time_t timeout = UDP_SESS_TIMEOUT;
+
 		cur = &sess[i];
 		if (!atomic_load(&cur->is_connected))
 			continue;
@@ -674,11 +792,15 @@ static void reap_zombie_sessions(struct epl_thread *thread)
 		if (get_unix_time(&time_diff))
 			continue;
 
+		if (cur->is_authenticated)
+			timeout *= 10;
+
 		time_diff -= cur->last_touch;
-		if (time_diff < UDP_SESS_TIMEOUT)
+		if (time_diff < timeout)
 			continue;
 
-		prl_notice(2, "Reaping zombie client " PRWIU "...", W_IU(cur));
+		prl_notice(2, "[thread=%u] Closing zombie client " PRWIU "...",
+			   thread->idx, W_IU(cur));
 		close_udp_session(thread, cur);
 	}
 	pthread_mutex_unlock(&lock);
@@ -696,15 +818,17 @@ static int do_epoll_wait(struct epl_thread *thread)
 		return ret;
 	}
 
+	if (ret == 0) {
+		reap_zombie_sessions(thread);
+		return 0;
+	}
+
 	events = thread->events;
 	for (i = 0; i < ret; i++) {
 		tmp = handle_event(thread, &events[i]);
 		if (unlikely(tmp))
 			return tmp;
 	}
-
-	if (thread->idx > 0)
-		reap_zombie_sessions(thread);
 
 	return 0;
 }
