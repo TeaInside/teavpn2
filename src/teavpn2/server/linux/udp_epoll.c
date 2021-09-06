@@ -778,7 +778,7 @@ static void reap_zombie_sessions(struct epl_thread *thread)
 	if (pthread_mutex_trylock(&lock))
 		return;
 
-	prl_notice(4, "[thread=%u] Current num of connected client(s): %zu",
+	prl_notice(6, "[thread=%u] Current num of connected client(s): %zu",
 		   thread->idx, n);
 
 	sess = thread->state->sess;
