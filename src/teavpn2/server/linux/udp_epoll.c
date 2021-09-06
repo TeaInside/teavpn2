@@ -551,6 +551,9 @@ static int __handle_event_udp(struct epl_thread *thread,
 		return 0;
 	case TCLI_PKT_PING:
 		return cur_sess->is_authenticated ? 0 : -EBADRQC;
+	case TCLI_PKT_CLOSE:
+		close_udp_session(thread, cur_sess);
+		return 0;
 	default:
 
 		if (cur_sess->is_authenticated) {
@@ -1006,10 +1009,24 @@ static bool wait_for_threads_to_exit(struct srv_udp_state *state)
 }
 
 
+static void close_clients(struct srv_udp_state *state)
+{
+	uint16_t i, len = UDP_SESS_NUM;
+	struct udp_sess *sess = state->sess;
+
+	for (i = 0; i < len; i++) {
+		if (sess[i].is_authenticated)
+			close_udp_session(&state->epl_threads[0], &sess[i]);
+	}
+}
+
+
 static void destroy_epoll(struct srv_udp_state *state)
 {
 	struct epl_thread *threads;
 	uint8_t nn = (uint8_t)state->cfg->sys.thread_num;
+
+	close_clients(state);
 
 	if (!wait_for_threads_to_exit(state)) {
 		/* Thread(s) won't exit, don't free the heap! */
