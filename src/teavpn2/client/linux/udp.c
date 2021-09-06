@@ -116,6 +116,65 @@ sig_err:
 }
 
 
+static int socket_setup(int udp_fd, struct cli_udp_state *state)
+{
+	int y;
+	int err;
+	int ret;
+	const char *lv, *on; /* level and optname */
+	socklen_t len = sizeof(y);
+	struct cli_cfg *cfg = state->cfg;
+	const void *py = (const void *)&y;
+
+
+	y = 6;
+	ret = setsockopt(udp_fd, SOL_SOCKET, SO_PRIORITY, py, len);
+	if (unlikely(ret)) {
+		lv = "SOL_SOCKET";
+		on = "SO_PRIORITY";
+		goto out_err;
+	}
+
+
+	y = 1024 * 1024 * 50;
+	ret = setsockopt(udp_fd, SOL_SOCKET, SO_RCVBUFFORCE, py, len);
+	if (unlikely(ret)) {
+		lv = "SOL_SOCKET";
+		on = "SO_RCVBUFFORCE";
+		goto out_err;
+	}
+
+
+	y = 1024 * 1024 * 50;
+	ret = setsockopt(udp_fd, SOL_SOCKET, SO_SNDBUFFORCE, py, len);
+	if (unlikely(ret)) {
+		lv = "SOL_SOCKET";
+		on = "SO_SNDBUFFORCE";
+		goto out_err;
+	}
+
+
+	y = 50000;
+	ret = setsockopt(udp_fd, SOL_SOCKET, SO_BUSY_POLL, py, len);
+	if (unlikely(ret)) {
+		lv = "SOL_SOCKET";
+		on = "SO_BUSY_POLL";
+		goto out_err;
+	}
+
+
+	/*
+	 * TODO: Use cfg to set some socket options.
+	 */
+	(void)cfg;
+	return ret;
+out_err:
+	err = errno;
+	pr_err("setsockopt(udp_fd, %s, %s): " PRERF, lv, on, PREAR(err));
+	return ret;
+}
+
+
 static int init_socket(struct cli_udp_state *state)
 {
 	int ret;
@@ -140,6 +199,11 @@ static int init_socket(struct cli_udp_state *state)
 		return -ret;
 	}
 	prl_notice(2, "UDP socket initialized successfully (fd=%d)", udp_fd);
+
+	prl_notice(2, "Setting up socket configuration...");
+	ret = socket_setup(udp_fd, state);
+	if (unlikely(ret))
+		goto out_err;
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
