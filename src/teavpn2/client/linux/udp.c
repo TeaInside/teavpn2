@@ -438,8 +438,12 @@ static int bring_up_iface(struct cli_udp_state *state)
 	const char *dev = state->cfg->iface.dev;
 
 	strncpy2(iff->dev, dev, sizeof(iff->dev));
-
 	*iff2 = *iff;
+
+	if (state->cfg->iface.override_default)
+		strncpy2(iff2->ipv4_pub, state->cfg->sock.server_addr,
+			 sizeof(iff2->ipv4_pub));
+
 	if (unlikely(!teavpn_iface_up(iff2))) {
 		pr_err("teavpn_iface_up(): cannot bring up network interface");
 		return -ENETDOWN;
