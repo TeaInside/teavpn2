@@ -465,6 +465,18 @@ static int server_auth_res_chk(struct srv_pkt *srv_pkt, size_t len)
 		return -ECONNRESET;
 	}
 
+	if (srv_pkt->type == TSRV_PKT_AUTH_REJECT) {
+		pr_err("Server rejected the authentication (TSRV_PKT_AUTH_REJECT)");
+		pr_warn("Could be wrong username or password");
+		return -EBADMSG;
+	}
+
+	if (srv_pkt->type != TSRV_PKT_AUTH_OK) {
+		pr_err("Server sends unexpected packet for auth response (%hhu)",
+		       srv_pkt->type);
+		return -EBADMSG;
+	}
+
 	if (len < (PKT_MIN_LEN + expected_len)) {
 		pr_err("Invalid auth response packet length (expected_len = %zu;"
 		       " actual = %zu)", PKT_MIN_LEN + expected_len, len);
@@ -475,17 +487,6 @@ static int server_auth_res_chk(struct srv_pkt *srv_pkt, size_t len)
 	if ((size_t)srv_pkt->len != expected_len) {
 		pr_err("Invalid auth response packet length (expected_len = %zu;"
 		       " srv_pkt->len = %hu)", expected_len, srv_pkt->len);
-		return -EBADMSG;
-	}
-
-	if (srv_pkt->type == TSRV_PKT_AUTH_REJECT) {
-		pr_err("Server rejected the authentication (TSRV_PKT_AUTH_REJECT)");
-		return -EBADMSG;
-	}
-
-	if (srv_pkt->type != TSRV_PKT_AUTH_OK) {
-		pr_err("Server sends unexpected packet for auth response (%hhu)",
-		       srv_pkt->type);
 		return -EBADMSG;
 	}
 
