@@ -22,7 +22,6 @@ static inline int32_t bt_stack_pop(struct bt_stack *stk)
 	int32_t ret;
 	uint16_t sp;
 
-	pr_debug("bt_stack_pop");
 	if (BUG_ON(stk == NULL))
 		return -1;
 
@@ -41,7 +40,6 @@ static inline int32_t bt_stack_push(struct bt_stack *stk, uint16_t n)
 {
 	uint16_t sp;
 
-	pr_debug("bt_stack_push");
 	if (BUG_ON(stk == NULL))
 		return -1;
 

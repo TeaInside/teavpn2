@@ -31,13 +31,19 @@ extern void __attribute__((format(printf, 1, 2)))
 __pr_debug(const char *fmt, ...);
 
 
+extern void __attribute__((format(printf, 1, 2)))
+__pr_warn(const char *fmt, ...);
+
+
 extern void __attribute__((format(printf, 3, 4))) __attribute__((noreturn))
 __panic(const char *file, int lineno, const char *fmt, ...);
+
 
 static inline void set_notice_level(uint8_t level)
 {
 	__notice_level = level;
 }
+
 
 #define PRERF "(errno=%d) %s"
 #define PREAR(NUM) NUM, strerror(NUM)
@@ -47,12 +53,14 @@ static inline void set_notice_level(uint8_t level)
 #define pr_notice	__pr_notice
 #define pr_emerg	__pr_emerg
 #define pr_dbg		__pr_debug
+#define pr_warn		__pr_warn
 #define panic(...)					\
 do {							\
 	__emerg_release_bug = true;			\
 	BUG_ON(1);					\
 	__panic(__FILE__, __LINE__, __VA_ARGS__);	\
 } while (0)
+
 
 #ifdef NDEBUG
 	/* No debug */
