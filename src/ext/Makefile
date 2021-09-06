@@ -19,11 +19,12 @@ LIB_LDFLAGS += -ldl
 $(BASE_DIR)/src/ext/hpc_emerg/src/emerg/arch/x64/emerg.o:
 	+$(Q)$(MAKE) -s --no-print-directory -C $(BASE_DIR)/src/ext/hpc_emerg $(@)
 
-OBJ_PRE_CC += $(BASE_DIR)/src/ext/hpc_emerg/src/emerg/arch/x64/emerg.o
+OBJ_PRE_CC += \
+	$(BASE_DIR)/src/ext/hpc_emerg/src/emerg/arch/x64/emerg.o
 
 hpc_emerg_clean:
 	+$(Q)$(MAKE) --no-print-directory -C $(BASE_DIR)/src/ext/hpc_emerg clean
 
 clean: hpc_emerg_clean
 
-.PHONY: hpc_emerg_clean $(BASE_DIR)/src/ext/hpc_emerg/src/emerg/arch/x64/emerg.o
+.PHONY: hpc_emerg_clean

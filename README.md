@@ -7,28 +7,27 @@ welcomed).
 
 # Build Requirements
 - GNU Make 4.3
-- libgnutls30
 - gcc 9.3+ or clang 11+
 
 
 # Build
 ```
-git clone https://github.com/TeaInside/teavpn2
-cd teavpn2
-make RELEASE_MODE=1 -j$(nproc)
+git clone https://github.com/TeaInside/teavpn2;
+cd teavpn2;
+make -j$(nproc) RELEASE_MODE=1;
 ```
 
 # Issues
 We welcome bug reports, feature requests and questions through GitHub
-repository https://github.com/TeaInside/teavpn2.
+repository https://github.com/TeaInside/teavpn2 (kindly to open an issue).
 
 
-# Project Maintainers
+# Project Maintainer
 - Ammar Faizi ([@ammarfaizi2](https://github.com/ammarfaizi2))
 
 
 # Community
-We are online on Telegram, see: https://t.me/TeaInside
+We are online on Telegram, see https://t.me/TeaInside
 
 
 # Third Party Libraries
@@ -39,64 +38,121 @@ We are online on Telegram, see: https://t.me/TeaInside
 | 3.    | https://www.gnutls.org/download.html    | libgnutls30           | LGPLv2.1+                 |
 
 
-
 # Contributing
-Please note we have a code of conduct, please follow it in all your
-interactions with the project.
+We accept pull request on the GitHub repository. Please note we have a
+code of conduct, please follow it in all your interactions with the
+project.
 
 
-## Pull Request
-- We follow the Linux Kernel Coding Style, read here:
+# Code of Conduct
+1. We follow the Linux kernel coding style, please read:
 https://www.kernel.org/doc/html/v5.10/process/coding-style.html
 
-- Commits in pull request MUST contain a real email address.
+2. A commit author must be a real email address. We strictly refuse a
+GitHub noreply email like `xxxxxxx+username@users.noreply.github.com`.
 
-- Commits in pull request MUST contain "Signed-Off-By" sign with
-corresponding email address. This can be done with `git commit -s` or
-manually write it at the end of commit message. Example of the sign:
+3. Commit is highly recommended to be signed with GPG. For further information, see:
+  - https://docs.github.com/en/github/authenticating-to-github/telling-git-about-your-signing-key
+  - https://docs.github.com/en/github/authenticating-to-github/signing-commits
+
+4. Commit message SHOULD contain explanation about the changes.
+
+5. Commit MUST always contain "Signed-off-by" tag with corresponding
+name and email address (Except for merge commit. Merge commit may not
+have sign-off, but better to have).
+
+6. Expected commit message format is like this:
+First line is title, empty line, description, empty line, then a
+`Signed-off-by` with your name and email, can add more tags if necessary.
+
+Commit message example:
 ```
-commit b0979d16ec3357d03a3396b8c0658f7bcaceb943
+commit 45333fead9c829b7b80b33a1b1b9be8bafa31355
 Author: Ammar Faizi <ammarfaizi2@gmail.com>
-Date:   Thu Dec 17 09:06:44 2020 +0700
+Date:   Mon Aug 30 21:12:38 2021 +0700
 
-    [server] Fix wrong size of memset
+    packet.h: new packet type TSRV_PKT_HANDSHAKE_REJECT
+
+    This commit introduces a new packet type `TSRV_PKT_HANDSHAKE_REJECT`
+    for server response. This packet type is supposed to be sent to the
+    client when the server detects invalid handshake from the client.
+
+    `TSRV_PKT_HANDSHAKE_REJECT` represents `struct pkt_handshake_reject`
+    being sent by the server. The client then can see the reason of
+    rejection by reading the `uint8_t reason`. Furthermore, the server
+    may give human readable message which contains more information
+    about the rejection reason, it is stored in `char msg[255]` (NUL
+    terminated C string).
+
+    The packet structure looks like this:
+    \```
+      #define TSRV_HREJECT_INVALID (1u << 0u)
+      #define TSRV_HREJECT_VERSION_NOT_SUPPORTED (1u << 1u)
+      struct pkt_handshake_reject {
+        uint8_t  reason;
+        char     msg[255];
+      };
+      OFFSET_ASSERT(struct pkt_handshake_reject, reason, 0);
+      OFFSET_ASSERT(struct pkt_handshake_reject, msg, 1);
+      SIZE_ASSERT(struct pkt_handshake_reject, 256);
+    \```
+
+    Currently, we have 2 valid values for the `uint8_t reason`:
+
+     1) `TSRV_HREJECT_INVALID`
+        The client sends invalid handshake packet (wrong length or wrong
+        type or wrong format).
     
-    Signed-off-by: Ammar Faizi <ammarfaizi2@gmail.com>
+     2) `TSRV_HREJECT_VERSION_NOT_SUPPORTED`
+        The client software version is not compatible with the server.
 
+    We may add more types in the future :)
+
+    Signed-off-by: Ammar Faizi <ammarfaizi2@gmail.com>
 ```
 
-- Commit message SHOULD be word-wrapped 72 chars per line and has a
-newline between paragraphs. Except for message that has its own format
-like compiler error messages, valgrind output, long URL, etc.
 
-- Pull request SHOULD contain explanation about the changes.
+# Frequently Used Tags
+- `Signed-off-by:` certifies that you wrote it or otherwise have the
+right to pass it on as a open-source patch.
 
-- Pull request that fixes a bug may contain extra sign-off rule
-"Reported-by", "Acked-by" to give credit to people who have been
-involved in other ways than just moving the patch around.
+- `Acked-by:` tag indicates if a person was not directly involved in the
+preparation or handling of a patch but wishes to signify and record
+their approval of it then they can arrange to have an `Acked-by:` line.
+`Acked-by:` does not necessarily indicate acknowledgement of the entire
+patch.
 
+- `Tested-by:` tag indicates that the commit has been successfully
+tested (in some environment) by the person named. This tag informs
+maintainers that some testing has been performed, provides a means to
+locate testers for future patches, and ensures credit for the testers.
 
-## Our Responsibility
-Project maintainers are responsible for clarifying the standards of
-acceptable behavior and are expected to take appropriate and fair
-corrective action in response to any instances of unacceptable behavior.
+- `Reviewed-by`: tag is a statement of opinion that the commit is an
+appropriate modification of the software without any remaining serious
+technical issues. Any interested reviewer (who has done the work) can
+offer a `Reviewed-by:` tag for a patch.
 
-Project maintainers have the right and responsibility to remove, edit,
-or reject comments, commits, code, wiki edits, issues, and other
-contributions that are not aligned to this Code of Conduct, or to ban
-temporarily or permanently any contributor for other behaviors that they
-deem inappropriate, threatening, offensive, or harmful.
+- `Reported-by:` tag gives credit to people who find bugs and report
+them and it hopefully inspires them to help us again in the future.
+Please note that if the bug was reported in private, then ask for
+permission first before using the `Reported-by:` tag.
 
+- `Co-authored-by:` or `Co-developed-by:` tag states that the commit was
+co-created by multiple developers; it is a used to give attribution to
+co-authors (in addition to the author attributed by the `From:` tag)
+when several people work on a single patch.
 
-## Scope
-This Code of Conduct applies both within project spaces and in public
-spaces when an individual is representing the project or its community.
-Examples of representing a project or community include using an
-official project e-mail address, posting via an official social media
-account, or acting as an appointed representative at an online or
-offline event. Representation of a project may be further defined and
-clarified by project maintainers.
+- `Suggested-by:` tag indicates that the commit idea is suggested by the
+person named and ensures credit to the person for the idea.
 
+- `Fixes:` tag indicates that the commit fixes an issue in a previous
+commit, issue, or discussion.
+
+- `Link:` tag indicates relevant reference of the commit.
+
+- `Cc:` indicates that the commit author want to notify the CC'ed party.
+
+Other similar tags may be used as well.
 
 # License
 This software is licensed under the GNU GPL-v2 license.

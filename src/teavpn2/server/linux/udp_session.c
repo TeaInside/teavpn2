@@ -50,8 +50,9 @@ out:
 }
 
 
-struct udp_sess *map_insert_udp_sess(struct srv_udp_state *state, uint32_t addr,
-				     uint16_t port, struct udp_sess *cur_sess)
+static struct udp_sess *map_insert_udp_sess(struct srv_udp_state *state,
+					    uint32_t addr,
+					    struct udp_sess *cur_sess)
 	__acquires(&state->sess_map_lock)
 	__releases(&state->sess_map_lock)
 {
@@ -109,7 +110,7 @@ struct udp_sess *get_udp_sess(struct srv_udp_state *state, uint32_t addr,
 	cur_sess = &state->sess[idx];
 	cur_sess->src_addr = addr;
 	cur_sess->src_port = port;
-	ret = map_insert_udp_sess(state, addr, port, cur_sess);
+	ret = map_insert_udp_sess(state, addr, cur_sess);
 	if (unlikely(!ret)) {
 		BUG_ON(bt_stack_push(&state->sess_stk, idx) == -1);
 		pr_err("Cannot allocate memory on map_insert_udp_sess()!");

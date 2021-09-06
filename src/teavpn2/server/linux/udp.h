@@ -20,9 +20,11 @@
 #define EPLD_DATA_UDP		(1u << 1u)
 #define EPOLL_EVT_ARR_NUM	(16)
 
-#define UDP_SESS_TIMEOUT	(10u)
+#define UDP_SESS_TIMEOUT	(10)
 
 #define UDP_SESS_NUM		(32u)
+
+#define UDP_SESS_MAX_ERR	(10u)
 
 #define W_IP(CLIENT) 		((CLIENT)->str_addr), ((CLIENT)->src_port)
 #define W_UN(CLIENT) 		((CLIENT)->username)
@@ -59,6 +61,7 @@ struct udp_map_bucket;
 
 
 struct udp_sess {
+	uint32_t				ipv4_iff;
 	uint32_t				src_addr;
 	uint16_t				src_port;
 	uint16_t				idx;
@@ -80,6 +83,7 @@ struct udp_map_bucket {
 
 struct srv_udp_state {
 	volatile bool				stop;
+	volatile bool				in_emergency;
 	bool					threads_wont_exit;
 	bool					need_remove_iff;
 	int					sig;
@@ -98,6 +102,8 @@ struct srv_udp_state {
 	struct udp_map_bucket			(*sess_map)[0x100];
 	struct tmutex				sess_map_lock;
 
+	uint16_t				(*ipv4_map)[0x100];
+
 	union {
 		struct {
 			struct epld_struct	*epl_udata;
@@ -112,10 +118,6 @@ extern int teavpn2_udp_server_epoll(struct srv_udp_state *state);
 extern struct udp_sess *map_find_udp_sess(struct srv_udp_state *state,
 					  uint32_t addr, uint16_t port);
 
-extern struct udp_sess *map_insert_udp_sess(struct srv_udp_state *state,
-					    uint32_t addr, uint16_t port,
-					    struct udp_sess *cur_sess);
-
 extern struct udp_sess *get_udp_sess(struct srv_udp_state *state, uint32_t addr,
 				     uint16_t port);
 
@@ -125,16 +127,18 @@ extern int put_udp_session(struct srv_udp_state *state,
 
 static inline void reset_udp_session(struct udp_sess *sess, uint16_t idx)
 {
+	sess->ipv4_iff = 0;
 	sess->src_addr = 0;
 	sess->src_port = 0;
 	sess->idx = idx;
 	sess->err_c = 0;
 	sess->last_touch = 0;
 	sess->is_authenticated = false;
-	sess->is_connected = false;
+	atomic_store(&sess->is_connected, false);
 	sess->str_addr[0] = '\0';
 	sess->username[0] = '_';
 	sess->username[1] = '\0';
+	memset(&sess->addr, 0, sizeof(sess->addr));
 }
 
 
@@ -158,7 +162,7 @@ static inline size_t srv_pprep_handshake_reject(struct srv_pkt *srv_pkt,
 	if (!msg) {
 		memset(rej->msg, 0, sizeof(rej->msg));
 	} else {
-		strncpy(rej->msg, msg, sizeof(rej->msg));
+		strncpy2(rej->msg, msg, sizeof(rej->msg));
 		rej->msg[sizeof(rej->msg) - 1] = '\0';
 	}
 
@@ -176,7 +180,7 @@ static inline size_t srv_pprep_handshake(struct srv_pkt *srv_pkt)
 	cur->ver = VERSION;
 	cur->patch_lvl = PATCHLEVEL;
 	cur->sub_lvl = SUBLEVEL;
-	strncpy(cur->extra, EXTRAVERSION, sizeof(cur->extra));
+	strncpy2(cur->extra, EXTRAVERSION, sizeof(cur->extra));
 	cur->extra[sizeof(cur->extra) - 1] = '\0';
 
 	return srv_pprep(srv_pkt, TSRV_PKT_HANDSHAKE, (uint16_t)sizeof(*hand),
@@ -202,6 +206,60 @@ static inline int get_unix_time(time_t *tm)
 static inline int udp_sess_tv_update(struct udp_sess *cur_sess)
 {
 	return get_unix_time(&cur_sess->last_touch);
+}
+
+
+static inline void add_ipv4_route_map(uint16_t (*ipv4_map)[0x100], uint32_t addr,
+				      uint16_t idx)
+{
+	/*
+	 * IPv4 looks like this:
+	 *     AA.BB.CC.DD
+	 *
+	 * DD is the byte0
+	 * CC is the byte1
+	 */
+
+	uint16_t byte0, byte1;
+
+	byte0 = (addr >> 0u) & 0xffu;
+	byte1 = (addr >> 8u) & 0xffu;
+	ipv4_map[byte0][byte1] = idx + 1u;
+}
+
+
+static inline void del_ipv4_route_map(uint16_t (*ipv4_map)[0x100], uint32_t addr)
+{
+	/*
+	 * IPv4 looks like this:
+	 *     AA.BB.CC.DD
+	 *
+	 * DD is the byte0
+	 * CC is the byte1
+	 */
+
+	uint16_t byte0, byte1;
+
+	byte0 = (addr >> 0u) & 0xffu;
+	byte1 = (addr >> 8u) & 0xffu;
+	ipv4_map[byte0][byte1] = 0;
+}
+
+
+static inline int32_t get_route_map(uint16_t (*ipv4_map)[0x100], uint32_t addr)
+{
+	uint16_t ret, byte0, byte1;
+
+	byte0 = (addr >> 0u) & 0xffu;
+	byte1 = (addr >> 8u) & 0xffu;
+	ret   = ipv4_map[byte0][byte1];
+
+	if (ret == 0) {
+		/* Unmapped address. */
+		return -1;
+	}
+
+	return (int32_t)(ret - 1);
 }
 
 

@@ -44,7 +44,7 @@ LDFLAGS		:= -ggdb3 -rdynamic
 
 # Flag to link any library to $(TARGET_BIN)
 # (end arguments)
-LIB_LDFLAGS	:= -lasan -lpthread
+LIB_LDFLAGS	:= -lpthread
 
 # Flags that only apply to C
 CFLAGS		:= -std=c11
@@ -71,8 +71,7 @@ C_CXX_FLAGS := \
 	-DPATCHLEVEL=$(PATCHLEVEL) \
 	-DSUBLEVEL=$(SUBLEVEL) \
 	-DEXTRAVERSION="\"$(EXTRAVERSION)\"" \
-	-DNAME="\"$(NAME)\"" \
-	-fsanitize=address
+	-DNAME="\"$(NAME)\""
 
 C_CXX_FLAGS_RELEASE := -DNDEBUG
 C_CXX_FLAGS_DEBUG :=

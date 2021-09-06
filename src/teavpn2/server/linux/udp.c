@@ -115,6 +115,65 @@ sig_err:
 }
 
 
+static int socket_setup(int udp_fd, struct srv_udp_state *state)
+{
+	int y;
+	int err;
+	int ret;
+	const char *lv, *on; /* level and optname */
+	socklen_t len = sizeof(y);
+	struct srv_cfg *cfg = state->cfg;
+	const void *py = (const void *)&y;
+
+
+	y = 6;
+	ret = setsockopt(udp_fd, SOL_SOCKET, SO_PRIORITY, py, len);
+	if (unlikely(ret)) {
+		lv = "SOL_SOCKET";
+		on = "SO_PRIORITY";
+		goto out_err;
+	}
+
+
+	y = 1024 * 1024 * 200;
+	ret = setsockopt(udp_fd, SOL_SOCKET, SO_RCVBUFFORCE, py, len);
+	if (unlikely(ret)) {
+		lv = "SOL_SOCKET";
+		on = "SO_RCVBUFFORCE";
+		goto out_err;
+	}
+
+
+	y = 1024 * 1024 * 200;
+	ret = setsockopt(udp_fd, SOL_SOCKET, SO_SNDBUFFORCE, py, len);
+	if (unlikely(ret)) {
+		lv = "SOL_SOCKET";
+		on = "SO_SNDBUFFORCE";
+		goto out_err;
+	}
+
+
+	y = 50000;
+	ret = setsockopt(udp_fd, SOL_SOCKET, SO_BUSY_POLL, py, len);
+	if (unlikely(ret)) {
+		lv = "SOL_SOCKET";
+		on = "SO_BUSY_POLL";
+		goto out_err;
+	}
+
+
+	/*
+	 * TODO: Use cfg to set some socket options.
+	 */
+	(void)cfg;
+	return ret;
+out_err:
+	err = errno;
+	pr_err("setsockopt(udp_fd, %s, %s): " PRERF, lv, on, PREAR(err));
+	return ret;
+}
+
+
 static int init_socket(struct srv_udp_state *state)
 {
 	int ret;
@@ -140,6 +199,10 @@ static int init_socket(struct srv_udp_state *state)
 	}
 	prl_notice(2, "UDP socket initialized successfully (fd=%d)", udp_fd);
 
+	prl_notice(2, "Setting up socket configuration...");
+	ret = socket_setup(udp_fd, state);
+	if (unlikely(ret))
+		goto out_err;
 
 	prl_notice(2, "Binding UDP socket to %s:%u...", sock->bind_addr,
 		   sock->bind_port);
@@ -278,6 +341,19 @@ static int init_udp_session_stack(struct srv_udp_state *state)
 }
 
 
+static int init_ipv4_map(struct srv_udp_state *state)
+{
+	uint16_t (*ipv4_map)[0x100];
+
+	ipv4_map = calloc_wrp(0x100ul * 0x100ul, sizeof(uint16_t));
+	if (unlikely(!ipv4_map))
+		return -errno;
+
+	state->ipv4_map = ipv4_map;
+	return 0;
+}
+
+
 static int run_server_event_loop(struct srv_udp_state *state)
 {
 	switch (state->evt_loop) {
@@ -352,7 +428,7 @@ free_sess_map:
 static void destroy_state(struct srv_udp_state *state)
 {
 	if (state->need_remove_iff) {
-		prl_notice(2, "Removing virtual network interface IP config...");
+		prl_notice(2, "Removing virtual network interface configuration...");
 		teavpn_iface_down(&state->cfg->iface.iff);
 	}
 
@@ -384,6 +460,7 @@ static void destroy_state(struct srv_udp_state *state)
 	mutex_unlock(&state->sess_stk_lock);
 	mutex_destroy(&state->sess_map_lock);
 
+	al64_free(state->ipv4_map);
 	al64_free(state);
 }
 
@@ -415,6 +492,9 @@ int teavpn2_server_udp_run(struct srv_cfg *cfg)
 	if (unlikely(ret))
 		goto out;
 	ret = init_udp_session_stack(state);
+	if (unlikely(ret))
+		goto out;
+	ret = init_ipv4_map(state);
 	if (unlikely(ret))
 		goto out;
 	ret = run_server_event_loop(state);

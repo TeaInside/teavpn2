@@ -109,8 +109,7 @@ static int parse_argv(int argc, char *argv[], struct srv_cfg *cfg)
 			sys->cfg_file = optarg;
 			break;
 		case 'd':
-			strncpy(sys->data_dir, optarg, sizeof(sys->data_dir));
-			sys->data_dir[sizeof(sys->data_dir) - 1] = '\0';
+			strncpy2(sys->data_dir, optarg, sizeof(sys->data_dir));
 			break;
 		case 't': {
 			int tmp = atoi(optarg);
@@ -129,7 +128,7 @@ static int parse_argv(int argc, char *argv[], struct srv_cfg *cfg)
 		case 's': {
 			char tmp[5], *p = tmp;
 
-			strncpy(tmp, optarg, sizeof(tmp));
+			strncpy2(tmp, optarg, sizeof(tmp));
 			tmp[sizeof(tmp) - 1] = '\0';
 
 			while (*p) {
@@ -148,8 +147,7 @@ static int parse_argv(int argc, char *argv[], struct srv_cfg *cfg)
 			break;
 		}
 		case 'H':
-			strncpy(sock->bind_addr, optarg, sizeof(sock->bind_addr));
-			sock->bind_addr[sizeof(sock->bind_addr) - 1] = '\0';
+			strncpy2(sock->bind_addr, optarg, sizeof(sock->bind_addr));
 			break;
 		case 'P':
 			sock->bind_port = (uint16_t)atoi(optarg);
@@ -162,8 +160,7 @@ static int parse_argv(int argc, char *argv[], struct srv_cfg *cfg)
 		 * Iface config
 		 */
 		case 'D':
-			strncpy(iface->dev, optarg, sizeof(iface->dev));
-			iface->dev[sizeof(iface->dev) - 1] = '\0';
+			strncpy2(iface->dev, optarg, sizeof(iface->dev));
 			break;
 		default:
 			return -EINVAL;
@@ -185,8 +182,7 @@ static int cfg_parse_section_sys(struct cfg_parse_ctx *ctx, const char *name,
 		set_notice_level(level);
 		cfg->sys.verbose_level = level;
 	} else if (!strcmp(name, "data_dir")) {
-		strncpy(cfg->sys.data_dir, val, sizeof(cfg->sys.data_dir));
-		cfg->sys.data_dir[sizeof(cfg->sys.data_dir) - 1] = '\0';
+		strncpy2(cfg->sys.data_dir, val, sizeof(cfg->sys.data_dir));
 	} else {
 		pr_err("Unknown name \"%s\" in section \"%s\" at %s:%d", name,
 			"sys", cfg->sys.cfg_file, lineno);
@@ -203,13 +199,10 @@ static int cfg_parse_section_socket(struct cfg_parse_ctx *ctx, const char *name,
 	if (!strcmp(name, "use_encryption")) {
 		cfg->sock.use_encryption = atoi(val) ? true : false;
 	} else if (!strcmp(name, "event_loop")) {
-		strncpy(cfg->sock.event_loop, val, sizeof(cfg->sock.event_loop));
-		cfg->sock.event_loop[sizeof(cfg->sock.event_loop) - 1] = '\0';
+		strncpy2(cfg->sock.event_loop, val, sizeof(cfg->sock.event_loop));
 	} else if (!strcmp(name, "sock_type")) {
 		char tmp[8], *p = tmp;
-		strncpy(tmp, val, sizeof(tmp));
-
-		tmp[sizeof(tmp) - 1] = '\0';
+		strncpy2(tmp, val, sizeof(tmp));
 		while (*p) {
 			*p = (char)tolower((int)((unsigned)*p));
 			p++;
@@ -225,8 +218,7 @@ static int cfg_parse_section_socket(struct cfg_parse_ctx *ctx, const char *name,
 			return 0;
 		}
 	} else if (!strcmp(name, "bind_addr")) {
-		strncpy(cfg->sock.bind_addr, val, sizeof(cfg->sock.bind_addr));
-		cfg->sock.bind_addr[sizeof(cfg->sock.bind_addr) - 1] = '\0';
+		strncpy2(cfg->sock.bind_addr, val, sizeof(cfg->sock.bind_addr));
 	} else if (!strcmp(name, "bind_port")) {
 		cfg->sock.bind_port = (uint16_t)strtoul(val, NULL, 10);
 	} else if (!strcmp(name, "backlog")) {
@@ -234,11 +226,9 @@ static int cfg_parse_section_socket(struct cfg_parse_ctx *ctx, const char *name,
 	} else if (!strcmp(name, "max_conn")) {
 		cfg->sock.max_conn = (uint16_t)strtoul(val, NULL, 10);
 	} else if (!strcmp(name, "ssl_cert")) {
-		strncpy(cfg->sock.ssl_cert, val, sizeof(cfg->sock.ssl_cert));
-		cfg->sock.ssl_cert[sizeof(cfg->sock.ssl_cert) - 1] = '\0';
+		strncpy2(cfg->sock.ssl_cert, val, sizeof(cfg->sock.ssl_cert));
 	} else if (!strcmp(name, "ssl_priv_key")) {
-		strncpy(cfg->sock.ssl_priv_key, val, sizeof(cfg->sock.ssl_priv_key));
-		cfg->sock.ssl_priv_key[sizeof(cfg->sock.ssl_priv_key) - 1] = '\0';
+		strncpy2(cfg->sock.ssl_priv_key, val, sizeof(cfg->sock.ssl_priv_key));
 	} else {
 		pr_err("Unknown name \"%s\" in section \"%s\" at %s:%d", name,
 			"socket", cfg->sys.cfg_file, lineno);
@@ -253,18 +243,18 @@ static int cfg_parse_section_iface(struct cfg_parse_ctx *ctx, const char *name,
 {
 	struct srv_cfg *cfg = ctx->cfg;
 	if (!strcmp(name, "dev")) {
-		strncpy(cfg->iface.dev, val, sizeof(cfg->iface.dev));
+		strncpy2(cfg->iface.dev, val, sizeof(cfg->iface.dev));
 		cfg->iface.dev[sizeof(cfg->iface.dev) - 1] = '\0';
-		strncpy(cfg->iface.iff.dev, val, sizeof(cfg->iface.iff.dev));
+		strncpy2(cfg->iface.iff.dev, val, sizeof(cfg->iface.iff.dev));
 		cfg->iface.iff.dev[sizeof(cfg->iface.iff.dev) - 1] = '\0';
 	} else if (!strcmp(name, "mtu")) {
 		cfg->iface.mtu = (uint16_t)strtoul(val, NULL, 10);
 		cfg->iface.iff.ipv4_mtu = cfg->iface.mtu;
 	} else if (!strcmp(name, "ipv4")) {
-		strncpy(cfg->iface.iff.ipv4, val, sizeof(cfg->iface.iff.ipv4));
+		strncpy2(cfg->iface.iff.ipv4, val, sizeof(cfg->iface.iff.ipv4));
 		cfg->iface.iff.ipv4[sizeof(cfg->iface.iff.ipv4) - 1] = '\0';
 	} else if (!strcmp(name, "ipv4_netmask")) {
-		strncpy(cfg->iface.iff.ipv4_netmask, val, sizeof(cfg->iface.iff.ipv4_netmask));
+		strncpy2(cfg->iface.iff.ipv4_netmask, val, sizeof(cfg->iface.iff.ipv4_netmask));
 		cfg->iface.iff.ipv4_netmask[sizeof(cfg->iface.iff.ipv4_netmask) - 1] = '\0';
 	} else {
 		pr_err("Unknown name \"%s\" in section \"%s\" at %s:%d", name,
@@ -346,6 +336,7 @@ int run_server(int argc, char *argv[])
 
 	dump_server_cfg(&cfg);
 
+	data_dir = cfg.sys.data_dir;
 	switch (cfg.sock.type) {
 	case SOCK_UDP:
 		return -teavpn2_server_udp_run(&cfg);
