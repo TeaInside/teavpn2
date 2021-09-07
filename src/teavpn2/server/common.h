@@ -32,10 +32,6 @@ struct srv_cfg_sock {
 struct srv_cfg_iface {
 	char			dev[IFACENAMESIZ];
 	uint16_t		mtu;
-	/*
-	 * Only used when net down and reconnect
-	 * (this is filled by the server).
-	 */
 	struct if_info		iff;
 };
 
