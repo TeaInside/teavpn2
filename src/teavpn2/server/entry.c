@@ -44,7 +44,7 @@ static void show_help(void)
 #define PR_CFG(C, FMT) printf("   " #C " = " FMT "\n", C)
 
 
-static void dump_server_cfg(struct srv_cfg *cfg)
+static __maybe_unused void dump_server_cfg(struct srv_cfg *cfg)
 {
 	puts("=============================================");
 	puts("   Config dump   ");
@@ -325,7 +325,6 @@ int run_server(int argc, char *argv[])
 	struct srv_cfg cfg;
 	memset(&cfg, 0, sizeof(cfg));
 
-	pr_debug("Parsing argv...");
 	ret = parse_argv(argc, argv, &cfg);
 	if (ret)
 		return -ret;
@@ -334,7 +333,10 @@ int run_server(int argc, char *argv[])
 	if (ret)
 		return -ret;
 
+
+#ifndef NDEBUG
 	dump_server_cfg(&cfg);
+#endif
 
 	data_dir = cfg.sys.data_dir;
 	switch (cfg.sock.type) {
