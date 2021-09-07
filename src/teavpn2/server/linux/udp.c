@@ -199,10 +199,9 @@ static int init_socket(struct srv_udp_state *state)
 	prl_notice(2, "Initializing UDP socket...");
 	udp_fd = socket(AF_INET, type, 0);
 	if (unlikely(udp_fd < 0)) {
+		const char *q = (type & SOCK_NONBLOCK) ? " | SOCK_NONBLOCK" : "";
 		ret = errno;
-		pr_err("socket(AF_INET, SOCK_DGRAM%s, 0): " PRERF,
-		       ((type & SOCK_NONBLOCK) ? " | SOCK_NONBLOCK" : ""),
-		       PREAR(ret));
+		pr_err("socket(AF_INET, SOCK_DGRAM%s, 0): " PRERF, q, PREAR(ret));
 		return -ret;
 	}
 	prl_notice(2, "UDP socket initialized successfully (fd=%d)", udp_fd);
@@ -218,7 +217,7 @@ static int init_socket(struct srv_udp_state *state)
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(sock->bind_port);
 	addr.sin_addr.s_addr = inet_addr(sock->bind_addr);
-	prl_notice(2, "Binding UDP socket to %s:%hu", sock->bind_addr,
+	prl_notice(2, "Binding UDP socket to %s:%hu...", sock->bind_addr,
 		   sock->bind_port);
 
 
@@ -306,18 +305,154 @@ static int init_udp_session_array(struct srv_udp_state *state)
 {
 	int ret = 0;
 	struct udp_sess *sess_arr;
-	uint16_t i, len = state->cfg->sock.max_conn;
+	uint16_t i, max_conn = state->cfg->sock.max_conn;
 
 	prl_notice(4, "Initializing UDP session array...");
-	sess_arr = calloc_wrp((size_t)len, sizeof(*sess_arr));
+	sess_arr = calloc_wrp((size_t)max_conn, sizeof(*sess_arr));
 	if (unlikely(!sess_arr))
 		return -errno;
 
 	state->sess_arr = sess_arr;
-	for (i = 0; i < len; i++)
+	for (i = 0; i < max_conn; i++)
 		reset_udp_session(&sess_arr[i], i);
 
 	return ret;
+}
+
+
+static int init_udp_session_map(struct srv_udp_state *state)
+{
+	int ret;
+	size_t len = 0x100u * 0x100u;
+	struct udp_map_bucket (*sess_map)[0x100u];
+
+	prl_notice(4, "Initializing UDP session map...");
+	sess_map = calloc_wrp(len, sizeof(struct udp_map_bucket));
+	if (unlikely(!sess_map))
+		return -errno;
+
+	ret = mutex_init(&state->sess_map_lock, NULL);
+	if (unlikely(ret))
+		return -ret;
+
+	state->sess_map = sess_map;
+	return ret;
+}
+
+
+static int init_udp_session_stack(struct srv_udp_state *state)
+{
+	int ret;
+	uint16_t i, max_conn = state->cfg->sock.max_conn;
+
+	prl_notice(4, "Initializing UDP session stack...");
+	if (unlikely(!bt_stack_init(&state->sess_stk, max_conn)))
+		return -errno;
+
+	ret = mutex_init(&state->sess_stk_lock, NULL);
+	if (unlikely(ret))
+		return -ret;
+
+	for (i = max_conn; i--;) {
+		int32_t tmp = bt_stack_push(&state->sess_stk, (uint16_t)i);
+		if (unlikely(tmp == -1)) {
+			panic("Fatal bug in init_udp_session_stack!");
+			__builtin_unreachable();
+		}
+	}
+
+	return 0;
+}
+
+
+static int init_ipv4_map(struct srv_udp_state *state)
+{
+	uint16_t (*ipv4_map)[0x100];
+
+	ipv4_map = calloc_wrp(0x100ul * 0x100ul, sizeof(uint16_t));
+	if (unlikely(!ipv4_map))
+		return -errno;
+
+	state->ipv4_map = ipv4_map;
+	return 0;
+}
+
+
+static int run_server_event_loop(struct srv_udp_state *state)
+{
+	switch (state->evt_loop) {
+	case EVTL_EPOLL:
+		return teavpn2_udp_server_epoll(state);
+	case EVTL_IO_URING:
+		pr_err("run_client_event_loop() with io_uring: " PRERF,
+			PREAR(EOPNOTSUPP));
+		return -EOPNOTSUPP;
+	case EVTL_NOP:
+	default:
+		panic("Aiee... invalid event loop value (%u)", state->evt_loop);
+		__builtin_unreachable();
+	}
+}
+
+
+static void close_udp_fd(struct srv_udp_state *state)
+{
+	int udp_fd = state->udp_fd;
+
+	if (udp_fd != -1) {
+		prl_notice(2, "Closing udp_fd (fd=%d)...", udp_fd);
+		close(udp_fd);
+	}
+}
+
+
+static void close_tun_fds(struct srv_udp_state *state)
+{
+	uint8_t i, nn;
+	int *tun_fds = state->tun_fds;
+
+	if (!tun_fds)
+		return;
+
+	nn = state->cfg->sys.thread_num;
+	for (i = 0; i < nn; i++) {
+		int tun_fd = tun_fds[i];
+		if (tun_fd == -1)
+			continue;
+		prl_notice(2, "Closing tun_fds[%hhu] (fd=%d)...", i, tun_fd);
+		close(tun_fd);
+	}
+}
+
+
+static void close_fds_state(struct srv_udp_state *state)
+{
+	close_udp_fd(state);
+	close_tun_fds(state);
+}
+
+
+static void destroy_state(struct srv_udp_state *state)
+{
+
+	if (state->threads_wont_exit)
+		/*
+		 * When we're exiting, the main thread will wait for
+		 * the subthreads to exit for the given timeout. If
+		 * the subthreads won't exit, @threads_wont_exit is
+		 * set to true. This is an indicator that we are not
+		 * allowed to free() and close() the resources as it
+		 * may lead to UAF bug.
+		 */
+		return;
+
+	close_fds_state(state);
+	bt_stack_destroy(&state->sess_stk);
+	al64_free(state->sess_arr);
+	al64_free(state->sess_map);
+	al64_free(state->ipv4_map);
+	al64_free(state->tun_fds);
+	al64_free(state);
 }
 
 
@@ -343,6 +478,17 @@ int teavpn2_server_udp_run(struct srv_cfg *cfg)
 	ret = init_udp_session_array(state);
 	if (unlikely(ret))
 		goto out;
+	ret = init_udp_session_map(state);
+	if (unlikely(ret))
+		goto out;
+	ret = init_udp_session_stack(state);
+	if (unlikely(ret))
+		goto out;
+	ret = init_ipv4_map(state);
+	if (unlikely(ret))
+		goto out;
+	ret = run_server_event_loop(state);
 out:
+	destroy_state(state);
 	return ret;
 }

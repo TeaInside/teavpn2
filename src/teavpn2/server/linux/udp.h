@@ -17,6 +17,9 @@
 #include <teavpn2/client/common.h>
 
 
+#define EPOLL_EVT_ARR_NUM 3u
+#define UDP_SESS_MAX_ERR 5u
+
 /*
  * UDP session struct.
  *
@@ -65,6 +68,11 @@ struct udp_sess {
 	 */
 	char					username[0x100];
 
+	/*
+	 * Human readable of @src_addr.
+	 */
+	char					str_src_addr[IPV4_L];
+
 	bool					is_authenticated;
 	_Atomic(bool)				is_connected;
 };
@@ -78,6 +86,34 @@ struct udp_map_bucket;
 struct udp_map_bucket {
 	struct udp_map_bucket			*next;
 	struct udp_sess				*sess;
+};
+
+
+struct srv_udp_state;
+
+
+struct epl_thread {
+	/*
+	 * Pointer to the UDP state struct.
+	 */
+	struct srv_udp_state			*state;
+
+	/*
+	 * pthread reference.
+	 */
+	pthread_t				thread;
+
+	int					epoll_fd;
+	int					epoll_timeout;
+	struct epoll_event			events[EPOLL_EVT_ARR_NUM];
+
+	/*
+	 * Is this thread online?
+	 */
+	_Atomic(bool)				is_online;
+
+	uint16_t				idx;
+	struct sc_pkt				*pkt;
 };
 
 
@@ -147,6 +183,10 @@ struct srv_udp_state {
 	 */
 	_Atomic(uint16_t)			n_on_sess;
 
+
+	_Atomic(uint16_t)			n_on_threads;
+
+
 	/*
 	 * @tun_fds is an array of TUN file descriptors.
 	 * Number of TUN file descriptor can be more than
@@ -179,15 +219,19 @@ struct srv_udp_state {
 };
 
 
+#define W_IP(CLIENT) 	((CLIENT)->str_src_addr), ((CLIENT)->src_port)
+#define W_UN(CLIENT) 	((CLIENT)->username)
+#define W_IU(CLIENT) 	W_IP(CLIENT), W_UN(CLIENT), ((CLIENT)->idx)
+#define PRWIU 		"%s:%d (%s) (cli_idx=%hu)"
+
+
 extern int teavpn2_udp_server_epoll(struct srv_udp_state *state);
 extern int teavpn2_udp_server_io_uring(struct srv_udp_state *state);
 extern struct udp_sess *map_find_udp_sess(struct srv_udp_state *state,
 					  uint32_t addr, uint16_t port);
 extern struct udp_sess *get_udp_sess(struct srv_udp_state *state, uint32_t addr,
 				     uint16_t port);
-extern int put_udp_session(struct srv_udp_state *state,
-			   struct udp_sess *cur_sess);
-
+extern int put_udp_session(struct srv_udp_state *state, struct udp_sess *sess);
 
 
 static __always_inline void reset_udp_session(struct udp_sess *sess, uint16_t idx)
@@ -262,6 +306,66 @@ static __always_inline int get_unix_time(time_t *tm)
 	}
 	*tm = tv.tv_sec;
 	return ret;
+}
+
+
+static __always_inline int udp_sess_tv_update(struct udp_sess *cur_sess)
+{
+	return get_unix_time(&cur_sess->last_act);
+}
+
+
+static inline void add_ipv4_route_map(uint16_t (*ipv4_map)[0x100], uint32_t addr,
+				      uint16_t idx)
+{
+	/*
+	 * IPv4 looks like this:
+	 *     AA.BB.CC.DD
+	 *
+	 * DD is the byte0
+	 * CC is the byte1
+	 */
+
+	uint16_t byte0, byte1;
+
+	byte0 = (addr >> 0u) & 0xffu;
+	byte1 = (addr >> 8u) & 0xffu;
+	ipv4_map[byte0][byte1] = idx + 1u;
+}
+
+
+static inline void del_ipv4_route_map(uint16_t (*ipv4_map)[0x100], uint32_t addr)
+{
+	/*
+	 * IPv4 looks like this:
+	 *     AA.BB.CC.DD
+	 *
+	 * DD is the byte0
+	 * CC is the byte1
+	 */
+
+	uint16_t byte0, byte1;
+
+	byte0 = (addr >> 0u) & 0xffu;
+	byte1 = (addr >> 8u) & 0xffu;
+	ipv4_map[byte0][byte1] = 0;
+}
+
+
+static inline int32_t get_route_map(uint16_t (*ipv4_map)[0x100], uint32_t addr)
+{
+	uint16_t ret, byte0, byte1;
+
+	byte0 = (addr >> 0u) & 0xffu;
+	byte1 = (addr >> 8u) & 0xffu;
+	ret   = ipv4_map[byte0][byte1];
+
+	if (ret == 0) {
+		/* Unmapped address. */
+		return -1;
+	}
+
+	return (int32_t)(ret - 1);
 }
 
 
