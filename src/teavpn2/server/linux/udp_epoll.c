@@ -449,8 +449,9 @@ out:
 
 
 static int handle_new_client(struct epl_thread *thread,
-			     struct srv_udp_state *state, uint32_t addr,
-			     uint16_t port, struct sockaddr_in *saddr)
+			     struct srv_udp_state __maybe_unused *state,
+			     uint32_t addr, uint16_t port,
+			     struct sockaddr_in *saddr)
 {
 	int ret;
 	struct udp_sess *sess;
@@ -844,7 +845,7 @@ static void thread_wait(struct epl_thread *thread, struct srv_udp_state *state)
 }
 
 
-__no_inline static void *_run_event_loop(void *thread_p)
+static __no_inline void *_run_event_loop(void *thread_p)
 {
 	int ret = 0;
 	struct epl_thread *thread;
