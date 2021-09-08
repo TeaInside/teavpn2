@@ -1,15 +1,15 @@
+#
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# @author Ammar Faizi <ammarfaizi2@gmail.com> https://www.facebook.com/ammarfaizi2
+# @license GPL-2.0-only
+#
+# Copyright (C) 2021  Ammar Faizi
+#
 
-DEP_DIRS	+= $(BASE_DEP_DIR)/src/teavpn2/net
+DEP_DIRS += $(BASE_DEP_DIR)/src/teavpn2/net
+
 
 ifeq ($(UNAME_S),Linux)
 	include $(BASE_DIR)/src/teavpn2/net/linux/Makefile
 endif
-
-OBJ_TMP_CC	:= \
-	$(BASE_DIR)/src/teavpn2/net/iface.o
-
-OBJ_PRE_CC	+= $(OBJ_TMP_CC)
-
-$(OBJ_TMP_CC):
-	@echo "   CC		" "$(@:$(BASE_DIR)/%=%)"
-	@$(CC) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)

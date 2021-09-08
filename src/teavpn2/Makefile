@@ -1,29 +1,26 @@
+#
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# @author Ammar Faizi <ammarfaizi2@gmail.com> https://www.facebook.com/ammarfaizi2
+# @license GPL-2.0-only
+#
+# Copyright (C) 2021  Ammar Faizi
+#
 
-INCLUDE_DIR += -I$(BASE_DIR)/src/teavpn2/include
-DEP_DIRS	+= $(BASE_DEP_DIR)/src/teavpn2
+DEP_DIRS += $(BASE_DEP_DIR)/src/teavpn2
 
-ifeq ($(USE_SERVER),1)
-	include $(BASE_DIR)/src/teavpn2/server/Makefile
-endif
-
-ifeq ($(USE_CLIENT),1)
-	include $(BASE_DIR)/src/teavpn2/client/Makefile
-endif
-
-include $(BASE_DIR)/src/teavpn2/lib/Makefile
+include $(BASE_DIR)/src/teavpn2/client/Makefile
+include $(BASE_DIR)/src/teavpn2/server/Makefile
 include $(BASE_DIR)/src/teavpn2/net/Makefile
 
-OBJ_TMP_CC	:= \
-	$(BASE_DIR)/src/teavpn2/cpu.o \
-	$(BASE_DIR)/src/teavpn2/license.o \
+OBJ_TMP_CC := \
+	$(BASE_DIR)/src/teavpn2/allocator.o \
+	$(BASE_DIR)/src/teavpn2/auth.o \
+	$(BASE_DIR)/src/teavpn2/main.o \
 	$(BASE_DIR)/src/teavpn2/print.o
 
-ifneq ($(DO_TEST),1)
-	OBJ_TMP_CC += $(BASE_DIR)/src/teavpn2/main.o
-endif
-
-OBJ_PRE_CC	+= $(OBJ_TMP_CC)
+OBJ_PRE_CC += $(OBJ_TMP_CC)
 
 $(OBJ_TMP_CC):
-	@echo "   CC		" "$(@:$(BASE_DIR)/%=%)"
-	@$(CC) $(DEPFLAGS) $(CFLAGS) -c $(@:.o=.c) -o $(@)
+	$(CC_PRINT)
+	$(Q)$(CC) $(PIE_FLAGS) $(DEPFLAGS) $(CFLAGS) -c $(O_TO_C) -o $(@)
