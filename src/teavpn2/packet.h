@@ -94,9 +94,9 @@ SIZE_ASSERT(struct pkt_tun_data, 4096);
  * Packet structure which is sent by the server.
  */
 struct srv_pkt {
-	uint16_t				len;
-	uint8_t					pad_len;
 	uint8_t					type;
+	uint8_t					pad_len;
+	uint16_t				len;
 	union {
 		struct pkt_handshake		handshake;
 		struct pkt_auth_res		auth_res;
@@ -105,9 +105,9 @@ struct srv_pkt {
 		char				__raw[4096];
 	};
 };
-OFFSET_ASSERT(struct srv_pkt, len, 0);
-OFFSET_ASSERT(struct srv_pkt, pad_len, 2);
-OFFSET_ASSERT(struct srv_pkt, type, 3);
+OFFSET_ASSERT(struct srv_pkt, type, 0);
+OFFSET_ASSERT(struct srv_pkt, pad_len, 1);
+OFFSET_ASSERT(struct srv_pkt, len, 2);
 OFFSET_ASSERT(struct srv_pkt, handshake, 4);
 OFFSET_ASSERT(struct srv_pkt, auth_res, 4);
 OFFSET_ASSERT(struct srv_pkt, __raw, 4);
@@ -118,9 +118,9 @@ SIZE_ASSERT(struct srv_pkt, 2 + 1 + 1 + 4096);
  * Packet structure which is sent by the client.
  */
 struct cli_pkt {
-	uint16_t				len;
-	uint8_t					pad_len;
 	uint8_t					type;
+	uint8_t					pad_len;
+	uint16_t				len;
 	union {
 		struct pkt_handshake		handshake;
 		struct pkt_auth			auth;
@@ -128,9 +128,9 @@ struct cli_pkt {
 		char				__raw[4096];
 	};
 };
-OFFSET_ASSERT(struct cli_pkt, len, 0);
-OFFSET_ASSERT(struct cli_pkt, pad_len, 2);
-OFFSET_ASSERT(struct cli_pkt, type, 3);
+OFFSET_ASSERT(struct cli_pkt, type, 0);
+OFFSET_ASSERT(struct cli_pkt, pad_len, 1);
+OFFSET_ASSERT(struct cli_pkt, len, 2);
 OFFSET_ASSERT(struct cli_pkt, handshake, 4);
 OFFSET_ASSERT(struct cli_pkt, __raw, 4);
 SIZE_ASSERT(struct cli_pkt, 2 + 1 + 1 + 4096);

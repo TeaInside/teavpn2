@@ -4,70 +4,11 @@
  */
 
 #include <unistd.h>
-#include <sys/epoll.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <teavpn2/server/common.h>
+#include <teavpn2/net/linux/iface.h>
 #include <teavpn2/server/linux/udp.h>
-
-
-static int epoll_add(int epoll_fd, int fd, uint32_t events, epoll_data_t data)
-{
-	int ret;
-	struct epoll_event evt;
-
-	memset(&evt, 0, sizeof(evt));
-	evt.events = events;
-	evt.data = data;
-
-	ret = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &evt);
-	if (unlikely(ret < 0)) {
-		ret = errno;
-		pr_err("epoll_ctl(%d, EPOLL_CTL_ADD, %d, events): " PRERF,
-			epoll_fd, fd, PREAR(ret));
-		ret = -ret;
-	}
-
-	return ret;
-}
-
-
-#if 0
-static int epoll_delete(int epoll_fd, int fd)
-{
-	int ret;
-
-	ret = epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
-	if (unlikely(ret < 0)) {
-		ret = errno;
-		pr_err("epoll_ctl(%d, EPOLL_CTL_ADD, %d, events): " PRERF,
-			epoll_fd, fd, PREAR(ret));
-		ret = -ret;
-	}
-
-	return ret;
-}
-#endif
-
-static int init_epoll_user_data(struct srv_udp_state *state)
-{
-	struct epld_struct *epl_udata, *udata;
-	size_t i, nn = (size_t)state->cfg->sys.thread_num + 10u;
-
-	epl_udata = calloc_wrp(nn, sizeof(*epl_udata));
-	if (unlikely(!epl_udata))
-		return -errno;
-
-	for (i = 0; i < nn; i++) {
-		udata = &epl_udata[i];
-		udata->fd = -1;
-		udata->type = 0;
-		udata->idx = (uint16_t)i;
-	}
-
-	state->epl_udata = epl_udata;
-	return 0;
-}
 
 
 static int create_epoll_fd(void)
@@ -86,31 +27,122 @@ static int create_epoll_fd(void)
 }
 
 
-static int register_fd_in_to_epoll(struct epl_thread *thread, int fd)
+static int epoll_add(struct epl_thread *thread, int fd, uint32_t events,
+		     epoll_data_t data)
 {
-	epoll_data_t data;
-	const uint32_t events = EPOLLIN | EPOLLPRI;
+	int ret;
+	struct epoll_event evt;
 	int epoll_fd = thread->epoll_fd;
 
-	memset(&data, 0, sizeof(data));
-	data.fd = fd;
-	prl_notice(4, "Registering fd (%d) to epoll (for thread %u)...",
-		   fd, thread->idx);
-	return epoll_add(epoll_fd, fd, events, data);
+	memset(&evt, 0, sizeof(evt));
+	evt.events = events;
+	evt.data = data;
+
+	prl_notice(4, "[for thread %u] Adding fd (%d) to epoll_fd (%d)",
+		   thread->idx, fd, epoll_fd);
+
+	ret = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &evt);
+	if (unlikely(ret < 0)) {
+		ret = errno;
+		pr_err("epoll_ctl(%d, EPOLL_CTL_ADD, %d, events): " PRERF,
+			epoll_fd, fd, PREAR(ret));
+		ret = -ret;
+	}
+
+	return ret;
 }
 
 
-static int init_epoll_thread_data(struct srv_udp_state *state)
+static int do_epoll_fd_registration(struct srv_udp_state *state,
+				    struct epl_thread *thread)
+{
+	int ret;
+	epoll_data_t data;
+	int *tun_fds = state->tun_fds;
+	const uint32_t events = EPOLLIN | EPOLLPRI;
+
+	memset(&data, 0, sizeof(data));
+
+	if (unlikely(state->cfg->sys.thread_num < 1)) {
+		panic("Invalid thread num (%hhu)", state->cfg->sys.thread_num);
+		__builtin_unreachable();
+	}
+
+	if (thread->idx == 0) {
+
+		/*
+		 * Main thread is responsible to handle data
+		 * from UDP socket.
+		 */
+		data.fd = state->udp_fd;
+		ret = epoll_add(thread, data.fd, events, data);
+		if (unlikely(ret))
+			return ret;
+
+		if (state->cfg->sys.thread_num == 1) {
+			/*
+			 * If we are singlethreaded, the main thread
+			 * is also responsible to read from TUN fd.
+			 */
+			data.fd = tun_fds[0];
+			ret = epoll_add(thread, data.fd, events, data);
+			if (unlikely(ret))
+				return ret;
+		}
+	} else {
+		data.fd = tun_fds[thread->idx];
+		ret = epoll_add(thread, data.fd, events, data);
+		if (unlikely(ret))
+			return ret;
+
+		if (thread->idx == 1) {
+			/*
+			 * If we are multithreaded, the subthread is responsible
+			 * to read from tun_fds[0]. Don't give this work to the
+			 * main thread for better concurrency.
+			 */
+			data.fd = tun_fds[0];
+			ret = epoll_add(thread, data.fd, events, data);
+			if (unlikely(ret))
+				return ret;
+		}
+	}
+
+	return 0;
+}
+
+
+static int init_epoll_thread(struct srv_udp_state *state,
+			     struct epl_thread *thread)
+{
+	int ret;
+
+	ret = create_epoll_fd();
+	if (unlikely(ret < 0))
+		return ret;
+
+	thread->epoll_fd = ret;
+	thread->epoll_timeout = 10000;
+
+	ret = do_epoll_fd_registration(state, thread);
+	if (unlikely(ret))
+		return ret;
+
+	return 0;
+}
+
+
+static int init_epoll_thread_array(struct srv_udp_state *state)
 {
 	int ret = 0;
-	int *tun_fds = state->tun_fds;
-	struct epl_thread *threads, *thread;
-	uint8_t i, nn = (uint8_t)state->cfg->sys.thread_num;
+	struct epl_thread *threads;
+	uint8_t i, nn = state->cfg->sys.thread_num;
 
 	state->epl_threads = NULL;
-	threads = calloc_wrp(nn, sizeof(*threads));
+	threads = calloc_wrp((size_t)nn, sizeof(*threads));
 	if (unlikely(!threads))
 		return -errno;
+
 
 	state->epl_threads = threads;
 
@@ -119,66 +151,63 @@ static int init_epoll_thread_data(struct srv_udp_state *state)
 	 * case we fail to create the epoll instance.
 	 */
 	for (i = 0; i < nn; i++) {
+		threads[i].idx = i;
 		threads[i].state = state;
 		threads[i].epoll_fd = -1;
 	}
 
 	for (i = 0; i < nn; i++) {
-		thread = &threads[i];
-		thread->idx = i;
+		struct sc_pkt *pkt;
 
-		ret = create_epoll_fd();
-		if (unlikely(ret < 0))
-			goto out;
+		ret = init_epoll_thread(state, &threads[i]);
+		if (unlikely(ret))
+			return ret;
 
-		thread->epoll_fd = ret;
+		pkt = calloc_wrp(1ul, sizeof(*pkt));
+		if (unlikely(!pkt))
+			return -errno;
 
-		if (i == 0) {
-			/*
-			 * Main thread is at index 0.
-			 *
-			 * Main thread is responsible to handle packet from UDP
-			 * socket, decapsulate it and write it to tun_fd.
-			 */
-			ret = register_fd_in_to_epoll(thread, state->udp_fd);
-		} else {
-			ret = register_fd_in_to_epoll(thread, tun_fds[i]);
+		threads[i].pkt = pkt;
+	}
+
+	return ret;
+}
+
+
+static int _do_epoll_wait(struct epl_thread *thread)
+{
+	int ret;
+	int epoll_fd = thread->epoll_fd;
+	int timeout = thread->epoll_timeout;
+	struct epoll_event *events = thread->events;
+
+	ret = epoll_wait(epoll_fd, events, EPOLL_EVT_ARR_NUM, timeout);
+	if (unlikely(ret < 0)) {
+		ret = errno;
+
+		if (likely(ret == EINTR)) {
+			prl_notice(2, "[thread=%u] Interrupted!", thread->idx);
+			return 0;
 		}
 
-		if (unlikely(ret))
-			goto out;
+		pr_err("[thread=%u] epoll_wait(): " PRERF, thread->idx,
+		       PREAR(ret));
+		return -ret;
 	}
 
-
-	if (nn == 1) {
-		/*
-		 * If we are single-threaded, the main thread is also
-		 * responsible to read from TUN fd, encapsulate it and
-		 * send it via UDP.
-		 */
-		ret = register_fd_in_to_epoll(&threads[0], tun_fds[0]);
-	} else {
-		/*
-		 * If we are multithreaded, the subthread is responsible
-		 * to read from tun_fds[0]. Don't give this work to the
-		 * main thread for better concurrency.
-		 */
-		ret = register_fd_in_to_epoll(&threads[1], tun_fds[0]);
-	}
-out:
 	return ret;
 }
 
 
 static ssize_t send_to_client(struct epl_thread *thread,
-			      struct udp_sess *cur_sess, const void *buf,
+			      struct udp_sess *sess, const void *buf,
 			      size_t pkt_len)
 {
 	int err;
 	ssize_t send_ret;
 	uint32_t emergency_count = 0;
-	socklen_t len = sizeof(cur_sess->addr);
-	struct sockaddr *dst_addr = (struct sockaddr *)&cur_sess->addr;
+	socklen_t len = sizeof(sess->addr);
+	struct sockaddr *dst_addr = (struct sockaddr *)&sess->addr;
 
 send_again:
 	send_ret = sendto(thread->state->udp_fd, buf, pkt_len, 0, dst_addr, len);
@@ -215,7 +244,8 @@ send_again:
 		return (ssize_t)-err;
 	}
 
-	pr_debug("sendto(): %zd bytes " PRWIU, send_ret, W_IU(cur_sess));
+	pr_debug("[thread=%hu] sendto() %zd bytes to " PRWIU, thread->idx,
+		 send_ret, W_IU(sess));
 
 	if (unlikely(emergency_count > 0)) {
 		thread->state->in_emergency = false;
@@ -226,29 +256,28 @@ send_again:
 }
 
 
-static int close_udp_session(struct epl_thread *thread,
-			     struct udp_sess *cur_sess)
+static int close_udp_session(struct epl_thread *thread, struct udp_sess *sess)
 {
 	size_t send_len;
-	struct srv_pkt *srv_pkt = &thread->pkt.srv;
+	struct srv_pkt *srv_pkt = &thread->pkt->srv;
 
-	if (cur_sess->ipv4_iff != 0)
-		del_ipv4_route_map(thread->state->ipv4_map, cur_sess->ipv4_iff);
+	if (sess->ipv4_iff != 0)
+		del_ipv4_route_map(thread->state->ipv4_map, sess->ipv4_iff);
 
 	send_len = srv_pprep(srv_pkt, TSRV_PKT_CLOSE, 0, 0);
-	send_to_client(thread, cur_sess, srv_pkt, send_len);
-	return put_udp_session(thread->state, cur_sess);
+	send_to_client(thread, sess, srv_pkt, send_len);
+	return put_udp_session(thread->state, sess);
 }
 
 
-static int send_handshake(struct epl_thread *thread, struct udp_sess *cur_sess)
+static int send_handshake(struct epl_thread *thread, struct udp_sess *sess)
 {
 	size_t send_len;
 	ssize_t send_ret;
-	struct srv_pkt *srv_pkt = &thread->pkt.srv;
+	struct srv_pkt *srv_pkt = &thread->pkt->srv;
 
 	send_len = srv_pprep_handshake(srv_pkt);
-	send_ret = send_to_client(thread, cur_sess, srv_pkt, send_len);
+	send_ret = send_to_client(thread, sess, srv_pkt, send_len);
 	if (unlikely(send_ret < 0))
 		return (int)send_ret;
 
@@ -257,15 +286,15 @@ static int send_handshake(struct epl_thread *thread, struct udp_sess *cur_sess)
 
 
 static int send_handshake_reject(struct epl_thread *thread,
-				 struct udp_sess *cur_sess, uint8_t reason,
+				 struct udp_sess *sess, uint8_t reason,
 				 const char *msg)
 {
 	size_t send_len;
 	ssize_t send_ret;
-	struct srv_pkt *srv_pkt = &thread->pkt.srv;
+	struct srv_pkt *srv_pkt = &thread->pkt->srv;
 
 	send_len = srv_pprep_handshake_reject(srv_pkt, reason, msg);
-	send_ret = send_to_client(thread, cur_sess, srv_pkt, send_len);
+	send_ret = send_to_client(thread, sess, srv_pkt, send_len);
 	if (unlikely(send_ret < 0))
 		return (int)send_ret;
 
@@ -274,13 +303,13 @@ static int send_handshake_reject(struct epl_thread *thread,
 
 
 static int handle_client_handshake(struct epl_thread *thread,
-				   struct udp_sess *cur_sess)
+				   struct udp_sess *sess)
 {
 	int ret;
 	char rej_msg[512];
 	uint8_t rej_reason = 0;
-	size_t len = thread->pkt.len;
-	struct cli_pkt *cli_pkt = &thread->pkt.cli;
+	size_t len = thread->pkt->len;
+	struct cli_pkt *cli_pkt = &thread->pkt->cli;
 	struct pkt_handshake *hand = &cli_pkt->handshake;
 	struct teavpn2_version *cur = &hand->cur;
 	const size_t expected_len = sizeof(*hand);
@@ -289,7 +318,7 @@ static int handle_client_handshake(struct epl_thread *thread,
 		snprintf(rej_msg, sizeof(rej_msg),
 			 "Invalid handshake packet length from " PRWIU
 			 " (expected at least %zu bytes; actual = %zu bytes)",
-			 W_IU(cur_sess), (PKT_MIN_LEN + expected_len), len);
+			 W_IU(sess), (PKT_MIN_LEN + expected_len), len);
 
 		ret = -EBADMSG;
 		rej_reason = TSRV_HREJECT_INVALID;
@@ -301,7 +330,7 @@ static int handle_client_handshake(struct epl_thread *thread,
 		snprintf(rej_msg, sizeof(rej_msg),
 			 "Invalid handshake packet length from " PRWIU
 			 " (expected = %zu; actual: cli_pkt->len = %hu)",
-			 W_IU(cur_sess), expected_len, cli_pkt->len);
+			 W_IU(sess), expected_len, cli_pkt->len);
 
 		ret = -EBADMSG;
 		rej_reason = TSRV_HREJECT_INVALID;
@@ -312,7 +341,7 @@ static int handle_client_handshake(struct epl_thread *thread,
 		snprintf(rej_msg, sizeof(rej_msg),
 			 "Invalid first packet type from " PRWIU
 			 " (expected = TCLI_PKT_HANDSHAKE (%u); actual = %hhu)",
-			 W_IU(cur_sess), TCLI_PKT_HANDSHAKE, cli_pkt->type);
+			 W_IU(sess), TCLI_PKT_HANDSHAKE, cli_pkt->type);
 
 		ret = -EBADMSG;
 		rej_reason = TSRV_HREJECT_INVALID;
@@ -323,7 +352,7 @@ static int handle_client_handshake(struct epl_thread *thread,
 	cur->extra[sizeof(cur->extra) - 1] = '\0';
 	prl_notice(2, "New connection from " PRWIU
 		   " (client version: TeaVPN2-%hhu.%hhu.%hhu%s)",
-		   W_IU(cur_sess),
+		   W_IU(sess),
 		   cur->ver,
 		   cur->patch_lvl,
 		   cur->sub_lvl,
@@ -334,7 +363,7 @@ static int handle_client_handshake(struct epl_thread *thread,
 		ret = -EBADMSG;
 		rej_reason = TSRV_HREJECT_VERSION_NOT_SUPPORTED;
 		prl_notice(2, "Dropping connection from " PRWIU
-			   " (version not supported)...", W_IU(cur_sess));
+			   " (version not supported)...", W_IU(sess));
 		goto reject;
 	}
 
@@ -342,49 +371,26 @@ static int handle_client_handshake(struct epl_thread *thread,
 	/*
 	 * Good handshake packet, send back.
 	 */
-	return send_handshake(thread, cur_sess);
+	return send_handshake(thread, sess);
 
 reject:
 	prl_notice(2, "%s", rej_msg);
-	send_handshake_reject(thread, cur_sess, rej_reason, rej_msg);
+	send_handshake_reject(thread, sess, rej_reason, rej_msg);
 	return ret;
 }
 
 
-static int handle_new_client(struct epl_thread *thread, uint32_t addr,
-			     uint16_t port, struct sockaddr_in *saddr)
-{
-	int ret;
-	struct udp_sess *cur_sess;
-
-	cur_sess = get_udp_sess(thread->state, addr, port);
-	if (unlikely(!cur_sess))
-		return -errno;
-
-	cur_sess->addr = *saddr;
-	ret = handle_client_handshake(thread, cur_sess);
-	if (ret) {
-		/* Handshake failed, drop the client session! */
-		close_udp_session(thread, cur_sess);
-		ret = (ret == -EBADMSG) ? 0 : ret;
-	}
-
-	return ret;
-}
-
-
-static int handle_clpkt_auth(struct epl_thread *thread,
-			     struct udp_sess *cur_sess)
+static int handle_clpkt_auth(struct epl_thread *thread, struct udp_sess *sess)
 {
 	int ret = 0;
 	size_t send_len;
 	ssize_t send_ret;
-	struct srv_pkt *srv_pkt = &thread->pkt.srv;
-	struct cli_pkt *cli_pkt = &thread->pkt.cli;
+	struct srv_pkt *srv_pkt = &thread->pkt->srv;
+	struct cli_pkt *cli_pkt = &thread->pkt->cli;
 	struct pkt_auth_res *auth_res = &srv_pkt->auth_res;
 	struct pkt_auth auth = cli_pkt->auth;
 
-	if (cur_sess->is_authenticated) {
+	if (sess->is_authenticated) {
 		/*
 		 * If the client has already been authenticated,
 		 * this will be a no-op.
@@ -397,7 +403,7 @@ static int handle_clpkt_auth(struct epl_thread *thread,
 	auth.password[sizeof(auth.password) - 1] = '\0';
 
 	prl_notice(2, "Got auth packet from (user: %s) " PRWIU, auth.username,
-		   W_IU(cur_sess));
+		   W_IU(sess));
 
 	if (!teavpn2_auth(auth.username, auth.password, &auth_res->iff))
 		goto reject;
@@ -406,20 +412,18 @@ static int handle_clpkt_auth(struct epl_thread *thread,
 	 * Auth ok!
 	 */
 	send_len = srv_pprep(srv_pkt, TSRV_PKT_AUTH_OK, sizeof(*auth_res), 0);
-	send_ret = send_to_client(thread, cur_sess, srv_pkt, send_len);
+	send_ret = send_to_client(thread, sess, srv_pkt, send_len);
 	if (unlikely(send_ret < 0)) {
 		ret = (int)send_ret;
-		close_udp_session(thread, cur_sess);
+		close_udp_session(thread, sess);
 		goto out;
 	}
 
-	cur_sess->ipv4_iff = ntohl(inet_addr(auth_res->iff.ipv4));
-	add_ipv4_route_map(thread->state->ipv4_map, cur_sess->ipv4_iff,
-			   cur_sess->idx);
+	sess->ipv4_iff = ntohl(inet_addr(auth_res->iff.ipv4));
+	add_ipv4_route_map(thread->state->ipv4_map, sess->ipv4_iff, sess->idx);
 
-	cur_sess->is_authenticated = true;
-	strncpy2(cur_sess->username, auth.username, sizeof(cur_sess->username));
-	cur_sess->username[sizeof(cur_sess->username) - 1] = '\0';
+	sess->is_authenticated = true;
+	strncpy2(sess->username, auth.username, sizeof(sess->username));
 	goto out;
 
 
@@ -428,13 +432,13 @@ reject:
 	 * Auth fails!
 	 */
 	send_len = srv_pprep(srv_pkt, TSRV_PKT_AUTH_REJECT, 0, 0);
-	send_ret = send_to_client(thread, cur_sess, srv_pkt, send_len);
+	send_ret = send_to_client(thread, sess, srv_pkt, send_len);
 	if (unlikely(send_ret < 0))
 		ret = (int)send_ret;
 
 	prl_notice(2, "Authentication failed for username \"%s\" " PRWIU,
-		   auth.username, W_IU(cur_sess));
-	close_udp_session(thread, cur_sess);
+		   auth.username, W_IU(sess));
+	close_udp_session(thread, sess);
 
 
 out:
@@ -444,37 +448,48 @@ out:
 }
 
 
-static int request_sync(struct epl_thread *thread, struct udp_sess *cur_sess)
+static int handle_new_client(struct epl_thread *thread,
+			     struct srv_udp_state __maybe_unused *state,
+			     uint32_t addr, uint16_t port,
+			     struct sockaddr_in *saddr)
 {
-	int ret = 0, i;
-	size_t send_len;
-	ssize_t send_ret;
-	struct srv_pkt *srv_pkt = &thread->pkt.srv;
+	int ret;
+	struct udp_sess *sess;
 
-	if (unlikely(++cur_sess->err_c > UDP_SESS_MAX_ERR)) {
-		close_udp_session(thread, cur_sess);
-		return 0;
+	sess = get_udp_sess(thread->state, addr, port);
+	if (unlikely(!sess))
+		return -errno;
+
+	sess->addr = *saddr;
+
+#ifndef NDEBUG
+	/*
+	 * After calling get_udp_sess(), we must have it
+	 * on the map. If we don't, then it's a bug!
+	 */
+	BUG_ON(map_find_udp_sess(state, addr, port) != sess);
+#endif
+
+	ret = handle_client_handshake(thread, sess);
+	if (ret) {
+		/*
+		 * Handshake failed, drop the client session!
+		 */
+		close_udp_session(thread, sess);
+		ret = (ret == -EBADMSG) ? 0 : ret;
 	}
 
-	send_len = srv_pprep(srv_pkt, TSRV_PKT_REQSYNC, 0, 0);
-	for (i = 0; i < 5; i++) {
-		send_ret = send_to_client(thread, cur_sess, srv_pkt, send_len);
-		if (unlikely(send_ret < 0)) {
-			ret = (int)send_ret;
-			break;
-		}
-	}
 	return ret;
 }
 
 
-static int handle_tun_data(struct epl_thread *thread, struct udp_sess *cur_sess)
+static int handle_tun_data(struct epl_thread *thread, struct udp_sess *sess)
 {
 	uint16_t data_len;
 	ssize_t write_ret;
 	uint32_t emergency_count = 0;
 	int tun_fd = thread->state->tun_fds[0];
-	struct srv_pkt *srv_pkt = &thread->pkt.srv;
+	struct srv_pkt *srv_pkt = &thread->pkt->srv;
 
 	data_len  = ntohs(srv_pkt->len);
 
@@ -510,10 +525,10 @@ write_again:
 		}
 
 		prl_notice(4, "Bad packet from " PRWIU ", write(): " PRERF,
-			   W_IU(cur_sess), PREAR(err));
+			   W_IU(sess), PREAR(err));
 
-		if (++cur_sess->err_c > UDP_SESS_MAX_ERR)
-			close_udp_session(thread, cur_sess);
+		if (++sess->err_c > UDP_SESS_MAX_ERR)
+			close_udp_session(thread, sess);
 
 		return 0;
 	}
@@ -531,9 +546,11 @@ write_again:
 
 
 static int __handle_event_udp(struct epl_thread *thread,
-			      struct udp_sess *cur_sess)
+			      struct srv_udp_state *state,
+			      struct udp_sess *sess)
 {
-	struct cli_pkt *cli_pkt = &thread->pkt.cli;
+	struct cli_pkt *cli_pkt = &thread->pkt->cli;
+	(void)state;
 
 	switch (cli_pkt->type) {
 	case TCLI_PKT_HANDSHAKE:
@@ -542,27 +559,28 @@ static int __handle_event_udp(struct epl_thread *thread,
 		 */
 		return 0;
 	case TCLI_PKT_AUTH:
-		return handle_clpkt_auth(thread, cur_sess);
+		return handle_clpkt_auth(thread, sess);
 	case TCLI_PKT_TUN_DATA:
-		return handle_tun_data(thread, cur_sess);
+		return handle_tun_data(thread, sess);
 	case TCLI_PKT_REQSYNC:
 		return 0;
 	case TCLI_PKT_SYNC:
 		return 0;
 	case TCLI_PKT_PING:
-		return cur_sess->is_authenticated ? 0 : -EBADRQC;
+		return sess->is_authenticated ? 0 : -EBADRQC;
 	case TCLI_PKT_CLOSE:
-		close_udp_session(thread, cur_sess);
+		close_udp_session(thread, sess);
 		return 0;
 	default:
 
-		if (cur_sess->is_authenticated) {
+		if (sess->is_authenticated) {
 			/*
 			 * If an authenticated client sends an invalid packet,
 			 * give it a chance to sync. It could be a bit network
 			 * problem.
 			 */
-			return request_sync(thread, cur_sess);
+			// return request_sync(thread, sess);
+			return 0;
 		}
 
 		/* Bad packet! */
@@ -571,61 +589,51 @@ static int __handle_event_udp(struct epl_thread *thread,
 }
 
 
-static bool packet_doesnt_need_session_init(struct epl_thread *thread)
+static int _handle_event_udp(struct epl_thread *thread,
+			     struct srv_udp_state *state,
+			     struct sockaddr_in *saddr)
 {
-	uint8_t type = thread->pkt.cli.type;
-	return (
-		 type == TCLI_PKT_CLOSE   ||
-		 type == TCLI_PKT_PING    ||
-		 type == TCLI_PKT_REQSYNC ||
-		 type == TCLI_PKT_SYNC
-	);
-}
-
-
-static int _handle_event_udp(struct epl_thread *thread, struct sockaddr_in *saddr)
-{
+	int ret;
 	uint16_t port;
 	uint32_t addr;
-	struct udp_sess *cur_sess;
+	struct udp_sess *sess;
 
 	port = ntohs(saddr->sin_port);
 	addr = ntohl(saddr->sin_addr.s_addr);
-	cur_sess = map_find_udp_sess(thread->state, addr, port);
-	if (unlikely(!cur_sess)) {
+	sess = map_find_udp_sess(state, addr, port);
+	if (unlikely(!sess)) {
 		/*
 		 * It's a new client since we don't find it in
-		 * the session entry.
+		 * the session map.
 		 */
-		int ret;
-
-		if (packet_doesnt_need_session_init(thread))
-			return 0;
-
-		pr_debug("%hhu %hhu", thread->pkt.cli.type, (uint8_t)TCLI_PKT_CLOSE);
-		ret = handle_new_client(thread, addr, port, saddr);
+		ret = handle_new_client(thread, state, addr, port, saddr);
 		return (ret == -EAGAIN) ? 0 : ret;
 	}
 
-	pr_debug("recvfrom() %zu bytes from " PRWIU, thread->pkt.len,
-		 W_IU(cur_sess));
+	ret = __handle_event_udp(thread, state, sess);
+	if (unlikely(ret)) {
+		if (ret == -EBADRQC) {
+			close_udp_session(thread, sess);
+			return 0;
+		}
+		return ret;
+	}
 
-	udp_sess_tv_update(cur_sess);
-	return __handle_event_udp(thread, cur_sess);
+	return 0;
 }
 
 
-static int handle_event_udp(int udp_fd, struct epl_thread *thread)
+static ssize_t do_recvfrom(struct epl_thread *thread,
+			   int udp_fd, struct sockaddr_in *saddr,
+			   socklen_t *saddr_len)
 {
 	int ret;
 	ssize_t recv_ret;
-	struct sockaddr_in saddr;
-	char *buf = thread->pkt.__raw;
-	socklen_t len = sizeof(saddr);
-	struct sockaddr *src_addr = (struct sockaddr *)&saddr;
-	size_t recv_size = sizeof(thread->pkt.cli.__raw);
+	char *buf = thread->pkt->__raw;
+	struct sockaddr *src_addr = (struct sockaddr *)saddr;
+	const size_t recv_size = sizeof(thread->pkt->cli.__raw);
 
-	recv_ret = recvfrom(udp_fd, buf, recv_size, 0, src_addr, &len);
+	recv_ret = recvfrom(udp_fd, buf, recv_size, 0, src_addr, saddr_len);
 	if (unlikely(recv_ret <= 0)) {
 
 		if (recv_ret == 0) {
@@ -644,8 +652,25 @@ static int handle_event_udp(int udp_fd, struct epl_thread *thread)
 		return -ret;
 	}
 
-	thread->pkt.len = (size_t)recv_ret;
-	return _handle_event_udp(thread, &saddr);
+	thread->pkt->len = (size_t)recv_ret;
+	pr_debug("[thread=%hu] recvfrom() %zd bytes", thread->idx, recv_ret);
+
+	return recv_ret;
+}
+
+
+static int handle_event_udp(struct epl_thread *thread,
+			    struct srv_udp_state *state, int udp_fd)
+{
+	ssize_t recv_ret;
+	struct sockaddr_in saddr;
+	socklen_t saddr_len = sizeof(saddr);
+
+	recv_ret = do_recvfrom(thread, udp_fd, &saddr, &saddr_len);
+	if (unlikely(recv_ret <= 0))
+		return (int)recv_ret;
+
+	return _handle_event_udp(thread, state, &saddr);
 }
 
 
@@ -655,7 +680,7 @@ static int handle_event_udp(int udp_fd, struct epl_thread *thread)
  * return -errno if it errors.
  */
 static int route_ipv4_packet(struct epl_thread *thread, __be32 dst_addr,
-			     size_t send_len)
+			     struct udp_sess *sess_arr, size_t send_len)
 {
 	uint16_t idx;
 	int32_t find;
@@ -667,8 +692,8 @@ static int route_ipv4_packet(struct epl_thread *thread, __be32 dst_addr,
 		return -ENOENT;
 
 	idx      = (uint16_t)find;
-	dst_sess = &thread->state->sess[idx];
-	send_ret = send_to_client(thread, dst_sess, &thread->pkt.srv, send_len);
+	dst_sess = &sess_arr[idx];
+	send_ret = send_to_client(thread, dst_sess, &thread->pkt->srv, send_len);
 	if (send_ret < 0)
 		return (int)send_ret;
 
@@ -676,18 +701,21 @@ static int route_ipv4_packet(struct epl_thread *thread, __be32 dst_addr,
 }
 
 
-static int route_packet(struct epl_thread *thread, ssize_t len)
+static int route_packet(struct epl_thread *thread, struct srv_udp_state *state,
+			ssize_t len)
 {
 	int ret;
 	ssize_t send_ret;
 	size_t send_len, i;
-	struct srv_pkt *srv_pkt = &thread->pkt.srv;
-	struct udp_sess	*sess = thread->state->sess;
+	struct srv_pkt *srv_pkt = &thread->pkt->srv;
+	struct udp_sess	*sess_arr = state->sess_arr;
+	uint16_t max_conn = state->cfg->sock.max_conn;
 	struct iphdr *iphdr = &srv_pkt->tun_data.iphdr;
 
 	send_len = srv_pprep(srv_pkt, TSRV_PKT_TUN_DATA, (uint16_t)len, 0);
 	if (likely(iphdr->version == 4)) {
-		ret = route_ipv4_packet(thread, ntohl(iphdr->daddr), send_len);
+		ret = route_ipv4_packet(thread, ntohl(iphdr->daddr), sess_arr,
+					send_len);
 		if (ret != -ENOENT)
 			return ret;
 	}
@@ -695,11 +723,13 @@ static int route_packet(struct epl_thread *thread, ssize_t len)
 	/*
 	 * Broadcast this to all authenticated clients.
 	 */
-	for (i = 0; i < UDP_SESS_NUM; i++) {
-		if (!sess[i].is_authenticated)
+	for (i = 0; i < max_conn; i++) {
+		struct udp_sess	*sess = &sess_arr[i];
+
+		if (!sess->is_authenticated)
 			continue;
 
-		send_ret = send_to_client(thread, &sess[i], srv_pkt, send_len);
+		send_ret = send_to_client(thread, sess, srv_pkt, send_len);
 		if (send_ret < 0)
 			return (int)send_ret;
 	}
@@ -708,12 +738,13 @@ static int route_packet(struct epl_thread *thread, ssize_t len)
 }
 
 
-static int handle_event_tun(int tun_fd, struct epl_thread *thread)
+static int handle_event_tun(struct epl_thread *thread,
+			    struct srv_udp_state *state, int tun_fd)
 {
 	int ret;
 	ssize_t read_ret;
-	char *buf = thread->pkt.srv.__raw;
-	size_t read_size = sizeof(thread->pkt.srv.__raw);
+	char *buf = thread->pkt->srv.__raw;
+	const size_t read_size = sizeof(thread->pkt->srv.__raw);
 
 	read_ret = read(tun_fd, buf, read_size);
 	if (unlikely(read_ret < 0)) {
@@ -724,111 +755,32 @@ static int handle_event_tun(int tun_fd, struct epl_thread *thread)
 		pr_err("read(tun_fd) (fd=%d): " PRERF, tun_fd, PREAR(ret));
 		return -ret;
 	}
-	thread->pkt.len = (size_t)read_ret;
 
-	pr_debug("read() from tun_fd %zd bytes", read_ret);
-	return route_packet(thread, read_ret);
+	thread->pkt->len = (size_t)read_ret;
+	pr_debug("[thread=%hu] TUN read(%d, buf, %zu) = %zd bytes",
+		 thread->idx, tun_fd, read_size, read_ret);
+
+	return route_packet(thread, state, read_ret);
 }
 
 
-/*
- * TL;DR
- * If this function returns non zero, TeaVPN2 process is exiting!
- *
- * -----------------------------------------------
- * This function should only return error code if
- * the error is fatal and need termination entire
- * process!
- *
- * If the error is not fatal, this function must
- * return 0.
- *
- */
-static int handle_event(struct epl_thread *thread, struct epoll_event *evt)
+static int handle_event(struct epl_thread *thread, struct srv_udp_state *state,
+			struct epoll_event *event)
 {
 	int ret = 0;
-	int fd = evt->data.fd;
+	int fd = event->data.fd;
 
 	if (fd == thread->state->udp_fd) {
-		ret = handle_event_udp(fd, thread);
+		ret = handle_event_udp(thread, state, fd);
 	} else {
-		/* It's a TUN fd. */
-		ret = handle_event_tun(fd, thread);
+		ret = handle_event_tun(thread, state, fd);
 	}
 
 	return ret;
 }
 
 
-static int _do_epoll_wait(struct epl_thread *thread)
-{
-	int ret;
-	int epoll_fd = thread->epoll_fd;
-	int timeout = thread->epoll_timeout;
-	struct epoll_event *events = thread->events;
-
-	ret = epoll_wait(epoll_fd, events, EPOLL_EVT_ARR_NUM, timeout);
-	if (unlikely(ret < 0)) {
-		ret = errno;
-
-		if (likely(ret == EINTR)) {
-			prl_notice(2, "[thread=%u] Interrupted!", thread->idx);
-			return 0;
-		}
-
-		pr_err("[thread=%u] epoll_wait(): " PRERF, thread->idx,
-		       PREAR(ret));
-		return -ret;
-	}
-
-	return ret;
-}
-
-
-static void reap_zombie_sessions(struct epl_thread *thread)
-{
-	size_t i, n;
-	time_t time_diff = 0;
-	struct udp_sess *sess, *cur;
-	static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-
-	n = (size_t)atomic_load(&thread->state->active_sess);
-	if (!n)
-		return;
-
-	if (pthread_mutex_trylock(&lock))
-		return;
-
-	prl_notice(6, "[thread=%u] Current num of connected client(s): %zu",
-		   thread->idx, n);
-
-	sess = thread->state->sess;
-	for (i = 0; i < UDP_SESS_NUM; i++) {
-		time_t timeout = UDP_SESS_TIMEOUT;
-
-		cur = &sess[i];
-		if (!atomic_load(&cur->is_connected))
-			continue;
-
-		if (get_unix_time(&time_diff))
-			continue;
-
-		if (cur->is_authenticated)
-			timeout *= 10;
-
-		time_diff -= cur->last_touch;
-		if (time_diff < timeout)
-			continue;
-
-		prl_notice(2, "[thread=%u] Closing zombie client " PRWIU "...",
-			   thread->idx, W_IU(cur));
-		close_udp_session(thread, cur);
-	}
-	pthread_mutex_unlock(&lock);
-}
-
-
-static int do_epoll_wait(struct epl_thread *thread)
+static int do_epoll_wait(struct epl_thread *thread, struct srv_udp_state *state)
 {
 	int ret, i, tmp;
 	struct epoll_event *events;
@@ -839,14 +791,9 @@ static int do_epoll_wait(struct epl_thread *thread)
 		return ret;
 	}
 
-	if (ret == 0) {
-		reap_zombie_sessions(thread);
-		return 0;
-	}
-
 	events = thread->events;
 	for (i = 0; i < ret; i++) {
-		tmp = handle_event(thread, &events[i]);
+		tmp = handle_event(thread, state, &events[i]);
 		if (unlikely(tmp))
 			return tmp;
 	}
@@ -858,7 +805,7 @@ static int do_epoll_wait(struct epl_thread *thread)
 static void thread_wait(struct epl_thread *thread, struct srv_udp_state *state)
 {
 	static _Atomic(bool) release_sub_thread = false;
-	uint8_t nn = (uint8_t)state->cfg->sys.thread_num;
+	uint8_t nn = state->cfg->sys.thread_num;
 
 	if (thread->idx != 0) {
 		/*
@@ -868,20 +815,25 @@ static void thread_wait(struct epl_thread *thread, struct srv_udp_state *state)
 		while (!atomic_load(&release_sub_thread)) {
 			if (unlikely(state->stop))
 				return;
+
 			usleep(100000);
 		}
 		return;
 	}
 
 	/*
-	 * We are the main thread...
+	 * We are the main thread. Wait for all threads
+	 * to be spawned properly.
 	 */
-	while (atomic_load(&state->ready_thread) != nn) {
+	while (atomic_load(&state->n_on_threads) != nn) {
+
 		prl_notice(2, "(thread=%u) "
 			   "Waiting for subthread(s) to be ready...",
 			   thread->idx);
+
 		if (unlikely(state->stop))
 			return;
+
 		usleep(100000);
 	}
 
@@ -893,30 +845,29 @@ static void thread_wait(struct epl_thread *thread, struct srv_udp_state *state)
 }
 
 
-__no_inline static void *_run_event_loop(void *thread_p)
+static __no_inline void *_run_event_loop(void *thread_p)
 {
 	int ret = 0;
-	struct epl_thread *thread = (struct epl_thread *)thread_p;
-	struct srv_udp_state *state = thread->state;
+	struct epl_thread *thread;
+	struct srv_udp_state *state;
+
+	thread = (struct epl_thread *)thread_p;
+	state  = thread->state;
 
 	atomic_store(&thread->is_online, true);
-	atomic_fetch_add(&state->ready_thread, 1);
+	atomic_fetch_add(&state->n_on_threads, 1);
 	thread_wait(thread, state);
 
-	if (thread->idx > 0) {
-		thread->epoll_timeout = 10000;
-	} else {
-		thread->epoll_timeout = 1000;
-	}
-
 	while (likely(!state->stop)) {
-		ret = do_epoll_wait(thread);
-		if (unlikely(ret))
+		ret = do_epoll_wait(thread, state);
+		if (unlikely(ret)) {
+			state->stop = true;
 			break;
+		}
 	}
 
 	atomic_store(&thread->is_online, false);
-	atomic_fetch_sub(&state->ready_thread, 1);
+	atomic_fetch_sub(&state->n_on_threads, 1);
 	return (void *)((intptr_t)ret);
 }
 
@@ -944,21 +895,24 @@ static int spawn_thread(struct epl_thread *thread)
 
 static int run_event_loop(struct srv_udp_state *state)
 {
+	int ret;
 	void *ret_p;
-	int ret = 0;
+	uint8_t i, nn = state->cfg->sys.thread_num;
 	struct epl_thread *threads = state->epl_threads;
-	uint8_t i, nn = (uint8_t)state->cfg->sys.thread_num;
 
-	atomic_store(&state->ready_thread, 0);
+	atomic_store(&state->n_on_threads, 0);
 	for (i = 1; i < nn; i++) {
+		/*
+		 * Spawn the subthreads.
+		 * 
+		 * For @i == 0, it is the main thread,
+		 * don't spawn pthread for it.
+		 */
 		ret = spawn_thread(&threads[i]);
 		if (unlikely(ret))
 			goto out;
 	}
 
-	/*
-	 * ret_p is just to shut the clang warning up!
-	 */
 	ret_p = _run_event_loop(&threads[0]);
 	ret   = (int)((intptr_t)ret_p);
 out:
@@ -966,38 +920,22 @@ out:
 }
 
 
-static void close_epoll_fds(struct epl_thread *threads, uint8_t nn)
-{
-	uint8_t i;
-	struct epl_thread *thread;
-	for (i = 0; i < nn; i++) {
-		int epoll_fd;
-		thread = &threads[i];
-
-		epoll_fd = thread->epoll_fd;
-		if (epoll_fd == -1)
-			continue;
-
-		close(epoll_fd);
-		prl_notice(2, "Closing threads[%hhu].epoll_fd (fd=%d)", i,
-			   epoll_fd);
-	}
-}
-
-
 static bool wait_for_threads_to_exit(struct srv_udp_state *state)
 {
+	uint8_t nn, i;
 	unsigned wait_c = 0;
 	uint16_t thread_on = 0, cc;
-	uint8_t nn, i;
 	struct epl_thread *threads;
 
-	thread_on = atomic_load(&state->ready_thread);
+	thread_on = atomic_load(&state->n_on_threads);
 	if (thread_on == 0)
+		/*
+		 * All threads have exited, it's good.
+		 */
 		return true;
 
 	threads = state->epl_threads;
-	nn = (uint8_t)state->cfg->sys.thread_num;
+	nn = state->cfg->sys.thread_num;
 	for (i = 0; i < nn; i++) {
 		int ret;
 
@@ -1012,11 +950,12 @@ static bool wait_for_threads_to_exit(struct srv_udp_state *state)
 	}
 
 	prl_notice(2, "Waiting for %hu thread(s) to exit...", thread_on);
-	while ((cc = atomic_load(&state->ready_thread)) > 0) {
+	while ((cc = atomic_load(&state->n_on_threads)) > 0) {
 
 		if (cc != thread_on) {
 			thread_on = cc;
-			prl_notice(2, "Waiting for %hu thread(s) to exit...", cc);
+			prl_notice(2, "Waiting for %hu thread(s) to exit...",
+				   cc);
 		}
 
 		usleep(100000);
@@ -1027,49 +966,80 @@ static bool wait_for_threads_to_exit(struct srv_udp_state *state)
 }
 
 
-static void close_clients(struct srv_udp_state *state)
+static void close_epoll_fds(struct srv_udp_state *state)
 {
-	uint16_t i, len = UDP_SESS_NUM;
-	struct udp_sess *sess = state->sess;
+	uint8_t i, nn = state->cfg->sys.thread_num;
+	struct epl_thread *threads = state->epl_threads;
 
-	for (i = 0; i < len; i++) {
-		if (sess[i].is_authenticated)
-			close_udp_session(&state->epl_threads[0], &sess[i]);
+	if (unlikely(!threads))
+		return;
+
+	for (i = 0; i < nn; i++) {
+		int epoll_fd = threads[i].epoll_fd;
+
+		if (epoll_fd == -1)
+			continue;
+
+		prl_notice(2, "Closing epoll_fd (fd=%d)...", epoll_fd);
+		close(epoll_fd);
 	}
+}
+
+
+static void close_client_sess(struct srv_udp_state *state)
+{
+	struct udp_sess *sess_arr = state->sess_arr;
+	uint16_t i, max_conn = state->cfg->sock.max_conn;
+
+	if (unlikely(!sess_arr))
+		return;
+
+	for (i = 0; i < max_conn; i++) {
+
+		if (!atomic_load(&sess_arr[i].is_connected))
+			continue;
+
+		close_udp_session(&state->epl_threads[0], &sess_arr[i]);
+	}
+}
+
+
+static void free_pkt_buffer(struct srv_udp_state *state)
+{
+	uint8_t i, nn = state->cfg->sys.thread_num;
+	struct epl_thread *threads = state->epl_threads;
+
+	if (unlikely(!threads))
+		return;
+
+	for (i = 0; i < nn; i++)
+		al64_free(threads[i].pkt);
 }
 
 
 static void destroy_epoll(struct srv_udp_state *state)
 {
-	struct epl_thread *threads;
-	uint8_t nn = (uint8_t)state->cfg->sys.thread_num;
-
-	close_clients(state);
-
 	if (!wait_for_threads_to_exit(state)) {
-		/* Thread(s) won't exit, don't free the heap! */
+		/*
+		 * Thread(s) won't exit, don't free the heap!
+		 */
 		pr_emerg("Thread(s) won't exit!");
 		state->threads_wont_exit = true;
 		return;
 	}
 
-	threads = state->epl_threads;
-	if (threads) {
-		close_epoll_fds(threads, nn);
-		al64_free(threads);
-	}
-	al64_free(state->epl_udata);
+	close_epoll_fds(state);
+	close_client_sess(state);
+	free_pkt_buffer(state);
+	al64_free(state->epl_threads);
 }
 
 
 int teavpn2_udp_server_epoll(struct srv_udp_state *state)
 {
-	int ret = 0;
+	int ret;
 
-	ret = init_epoll_user_data(state);
-	if (unlikely(ret))
-		goto out;
-	ret = init_epoll_thread_data(state);
+	ret = init_epoll_thread_array(state);
 	if (unlikely(ret))
 		goto out;
 

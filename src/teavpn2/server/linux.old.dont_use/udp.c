@@ -14,15 +14,13 @@
 static struct srv_udp_state *g_state = NULL;
 
 
-static void signal_intr_handler(int sig)
+static void interrupt_handler(int sig)
 {
 	struct srv_udp_state *state;
 
 	state = g_state;
-	if (unlikely(!state)) {
-		panic("signal_intr_handler is called when g_state is NULL");
-		__builtin_unreachable();
-	}
+	if (unlikely(!state))
+		panic("interrupt_handler is called when g_state is NULL");
 
 	if (state->sig == -1) {
 		state->stop = true;
@@ -32,13 +30,11 @@ static void signal_intr_handler(int sig)
 }
 
 
-static int alloc_tun_fds_array(struct srv_udp_state *state)
+static int init_tun_fds(struct srv_udp_state *state)
 {
-	int *tun_fds;
-	uint8_t i, nn;
+	uint8_t i, nn = (uint8_t)state->cfg->sys.thread_num;
+	int *tun_fds = calloc_wrp((size_t)nn, sizeof(*tun_fds));
 
-	nn      = state->cfg->sys.thread_num;
-	tun_fds = calloc_wrp(nn, sizeof(*tun_fds));
 	if (unlikely(!tun_fds))
 		return -errno;
 
@@ -59,25 +55,12 @@ static int select_event_loop(struct srv_udp_state *state)
 		state->evt_loop = EVTL_EPOLL;
 	} else if (!strcmp(evtl, "io_uring") ||
 		   !strcmp(evtl, "io uring") ||
-		   !strcmp(evtl, "iouring")  ||
+		   !strcmp(evtl, "iouring") ||
 		   !strcmp(evtl, "uring")) {
 		state->evt_loop = EVTL_IO_URING;
 	} else {
 		pr_err("Invalid socket event loop: \"%s\"", evtl);
 		return -EINVAL;
-	}
-
-	switch (state->evt_loop) {
-	case EVTL_EPOLL:
-		state->epl_threads = NULL;
-		break;
-	case EVTL_IO_URING:
-		state->iou_threads = NULL;
-		break;
-	case EVTL_NOP:
-	default:
-		panic("Aiee... invalid event loop value (%u)", state->evt_loop);
-		__builtin_unreachable();
 	}
 	return 0;
 }
@@ -88,12 +71,11 @@ static int init_state(struct srv_udp_state *state)
 	int ret;
 
 	prl_notice(2, "Initializing server state...");
-
-	g_state       = state;
+	g_state = state;
 	state->udp_fd = -1;
-	state->sig    = -1;
+	state->sig = -1;
 
-	ret = alloc_tun_fds_array(state);
+	ret = init_tun_fds(state);
 	if (unlikely(ret))
 		return ret;
 
@@ -101,17 +83,29 @@ static int init_state(struct srv_udp_state *state)
 	if (unlikely(ret))
 		return ret;
 
-	prl_notice(2, "Setting up signal interrupt handler...");
-	if (unlikely(signal(SIGINT, signal_intr_handler) == SIG_ERR))
+	switch (state->evt_loop) {
+	case EVTL_EPOLL:
+		state->epl_threads = NULL;
+		break;
+	case EVTL_IO_URING:
+		break;
+	case EVTL_NOP:
+	default:
+		panic("Aiee... invalid event loop value (%u)", state->evt_loop);
+		__builtin_unreachable();
+	}
+
+	prl_notice(2, "Setting up interrupt handler...");
+	if (signal(SIGINT, interrupt_handler) == SIG_ERR)
 		goto sig_err;
-	if (unlikely(signal(SIGTERM, signal_intr_handler) == SIG_ERR))
+	if (signal(SIGTERM, interrupt_handler) == SIG_ERR)
 		goto sig_err;
-	if (unlikely(signal(SIGHUP, signal_intr_handler) == SIG_ERR))
+	if (signal(SIGHUP, interrupt_handler) == SIG_ERR)
 		goto sig_err;
-	if (unlikely(signal(SIGPIPE, SIG_IGN) == SIG_ERR))
+	if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
 		goto sig_err;
 
-	prl_notice(2, "Server state is initialized successfully!");
+	prl_notice(2, "Client state initialized successfully!");
 	return ret;
 
 sig_err:
@@ -150,7 +144,7 @@ static int socket_setup(int udp_fd, struct srv_udp_state *state)
 	}
 
 
-	y = 1024 * 1024 * 50;
+	y = 1024 * 1024 * 200;
 	ret = setsockopt(udp_fd, SOL_SOCKET, SO_SNDBUFFORCE, py, len);
 	if (unlikely(ret)) {
 		lv = "SOL_SOCKET";
@@ -173,11 +167,9 @@ static int socket_setup(int udp_fd, struct srv_udp_state *state)
 	 */
 	(void)cfg;
 	return ret;
-
-
 out_err:
 	err = errno;
-	pr_err("setsockopt(udp_fd, %s, %s, %d): " PRERF, lv, on, y, PREAR(err));
+	pr_err("setsockopt(udp_fd, %s, %s): " PRERF, lv, on, PREAR(err));
 	return ret;
 }
 
@@ -190,37 +182,35 @@ static int init_socket(struct srv_udp_state *state)
 	struct sockaddr_in addr;
 	struct srv_cfg_sock *sock = &state->cfg->sock;
 
-
 	type = SOCK_DGRAM;
 	if (state->evt_loop != EVTL_IO_URING)
 		type |= SOCK_NONBLOCK;
 
-
 	prl_notice(2, "Initializing UDP socket...");
+	prl_notice(4, "Calling socket(AF_INET, SOCK_DGRAM%s, 0)...",
+		   (type & SOCK_NONBLOCK) ? " | SOCK_NONBLOCK" : "");
 	udp_fd = socket(AF_INET, type, 0);
 	if (unlikely(udp_fd < 0)) {
-		const char *q = (type & SOCK_NONBLOCK) ? " | SOCK_NONBLOCK" : "";
 		ret = errno;
-		pr_err("socket(AF_INET, SOCK_DGRAM%s, 0): " PRERF, q, PREAR(ret));
+		pr_err("socket(AF_INET, SOCK_DGRAM%s, 0): " PRERF,
+		       (type & SOCK_NONBLOCK) ? " | SOCK_NONBLOCK" : "",
+		       PREAR(ret));
 		return -ret;
 	}
 	prl_notice(2, "UDP socket initialized successfully (fd=%d)", udp_fd);
-
 
 	prl_notice(2, "Setting up socket configuration...");
 	ret = socket_setup(udp_fd, state);
 	if (unlikely(ret))
 		goto out_err;
 
+	prl_notice(2, "Binding UDP socket to %s:%u...", sock->bind_addr,
+		   sock->bind_port);
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(sock->bind_port);
 	addr.sin_addr.s_addr = inet_addr(sock->bind_addr);
-	prl_notice(2, "Binding UDP socket to %s:%hu...", sock->bind_addr,
-		   sock->bind_port);
-
-
 	ret = bind(udp_fd, (struct sockaddr *)&addr, sizeof(addr));
 	if (unlikely(ret < 0)) {
 		ret = errno;
@@ -228,11 +218,8 @@ static int init_socket(struct srv_udp_state *state)
 		goto out_err;
 	}
 
-
 	state->udp_fd = udp_fd;
 	return 0;
-
-
 out_err:
 	close(udp_fd);
 	return -ret;
@@ -241,30 +228,24 @@ out_err:
 
 static int init_iface(struct srv_udp_state *state)
 {
-	uint8_t i, nn;
-	int ret = 0, tun_fd, *tun_fds;
 	const char *dev = state->cfg->iface.dev;
+	int ret = 0, tun_fd, *tun_fds = state->tun_fds;
+	uint8_t i, nn = (uint8_t)state->cfg->sys.thread_num;
 	short flags = IFF_TUN | IFF_NO_PI | IFF_MULTI_QUEUE;
-
 
 	if (unlikely(!dev || !*dev)) {
 		pr_err("iface dev cannot be empty!");
 		return -EINVAL;
 	}
 
-
 	prl_notice(2, "Initializing virtual network interface (%s)...", dev);
-
-
-	tun_fds = state->tun_fds;
-	nn = state->cfg->sys.thread_num;
 	for (i = 0; i < nn; i++) {
 		prl_notice(4, "Initializing tun_fds[%hhu]...", i);
 
 		tun_fd = tun_alloc(dev, flags);
 		if (unlikely(tun_fd < 0)) {
 			pr_err("tun_alloc(\"%s\", %d): " PRERF, dev, flags,
-			       PREAR(-tun_fd));
+				PREAR(-tun_fd));
 			ret = tun_fd;
 			goto err;
 		}
@@ -273,7 +254,7 @@ static int init_iface(struct srv_udp_state *state)
 			ret = fd_set_nonblock(tun_fd);
 			if (unlikely(ret < 0)) {
 				pr_err("fd_set_nonblock(%d): " PRERF, tun_fd,
-				       PREAR(-ret));
+					PREAR(-ret));
 				close(tun_fd);
 				goto err;
 			}
@@ -304,17 +285,17 @@ err:
 static int init_udp_session_array(struct srv_udp_state *state)
 {
 	int ret = 0;
-	struct udp_sess *sess_arr;
-	uint16_t i, max_conn = state->cfg->sock.max_conn;
+	struct udp_sess *sess;
+	uint16_t i, len = UDP_SESS_NUM + 1;
 
 	prl_notice(4, "Initializing UDP session array...");
-	sess_arr = calloc_wrp((size_t)max_conn, sizeof(*sess_arr));
-	if (unlikely(!sess_arr))
+	sess = calloc_wrp((size_t)len, sizeof(*sess));
+	if (unlikely(!sess))
 		return -errno;
 
-	state->sess_arr = sess_arr;
-	for (i = 0; i < max_conn; i++)
-		reset_udp_session(&sess_arr[i], i);
+	state->sess = sess;
+	for (i = 0; i < len; i++)
+		reset_udp_session(&sess[i], i);
 
 	return ret;
 }
@@ -327,7 +308,7 @@ static int init_udp_session_map(struct srv_udp_state *state)
 	struct udp_map_bucket (*sess_map)[0x100u];
 
 	prl_notice(4, "Initializing UDP session map...");
-	sess_map = calloc_wrp(len, sizeof(struct udp_map_bucket));
+	sess_map = calloc_wrp((size_t)len, sizeof(struct udp_map_bucket));
 	if (unlikely(!sess_map))
 		return -errno;
 
@@ -343,23 +324,18 @@ static int init_udp_session_map(struct srv_udp_state *state)
 static int init_udp_session_stack(struct srv_udp_state *state)
 {
 	int ret;
-	uint16_t i, max_conn = state->cfg->sock.max_conn;
+	size_t i;
 
 	prl_notice(4, "Initializing UDP session stack...");
-	if (unlikely(!bt_stack_init(&state->sess_stk, max_conn)))
+	if (unlikely(!bt_stack_init(&state->sess_stk, UDP_SESS_NUM)))
 		return -errno;
 
 	ret = mutex_init(&state->sess_stk_lock, NULL);
 	if (unlikely(ret))
 		return -ret;
 
-	for (i = max_conn; i--;) {
-		int32_t tmp = bt_stack_push(&state->sess_stk, (uint16_t)i);
-		if (unlikely(tmp == -1)) {
-			panic("Fatal bug in init_udp_session_stack!");
-			__builtin_unreachable();
-		}
-	}
+	for (i = UDP_SESS_NUM; i--;)
+		bt_stack_push(&state->sess_stk, (uint16_t)i);
 
 	return 0;
 }
@@ -395,17 +371,6 @@ static int run_server_event_loop(struct srv_udp_state *state)
 }
 
 
-static void close_udp_fd(struct srv_udp_state *state)
-{
-	int udp_fd = state->udp_fd;
-
-	if (udp_fd != -1) {
-		prl_notice(2, "Closing udp_fd (fd=%d)...", udp_fd);
-		close(udp_fd);
-	}
-}
-
-
 static void close_tun_fds(struct srv_udp_state *state)
 {
 	uint8_t i, nn;
@@ -414,56 +379,101 @@ static void close_tun_fds(struct srv_udp_state *state)
 	if (!tun_fds)
 		return;
 
-	nn = state->cfg->sys.thread_num;
+	nn = (uint8_t)state->cfg->sys.thread_num;
 	for (i = 0; i < nn; i++) {
-		int tun_fd = tun_fds[i];
-		if (tun_fd == -1)
+		if (tun_fds[i] == -1)
 			continue;
-		prl_notice(2, "Closing tun_fds[%hhu] (fd=%d)...", i, tun_fd);
-		close(tun_fd);
+		prl_notice(2, "Closing tun_fds[%hhu] (fd=%d)...", i, tun_fds[i]);
+	}
+	al64_free(tun_fds);
+}
+
+
+static void close_udp_fd(struct srv_udp_state *state)
+{
+	if (state->udp_fd != -1) {
+		prl_notice(2, "Closing udp_fd (fd=%d)...", state->udp_fd);
+		close(state->udp_fd);
+		state->udp_fd = -1;
 	}
 }
 
 
-static void close_fds_state(struct srv_udp_state *state)
+static void close_udp_sessions(struct srv_udp_state *state)
 {
-	close_udp_fd(state);
-	close_tun_fds(state);
+	uint16_t i, len = UDP_SESS_NUM + 1;
+	struct udp_map_bucket (*sess_map)[0x100u] = state->sess_map;
+	struct udp_sess	*sess = state->sess;
+
+	if (!sess)
+		goto free_sess_map;
+
+	for (i = 0; i < len; i++) {
+		if (sess[i].src_addr != 0)
+			put_udp_session(state, &sess[i]);
+	}
+
+	al64_free(sess);
+	state->sess = NULL;
+
+free_sess_map:
+	if (!sess_map)
+		return;
+
+	al64_free(sess_map);
+	state->sess_map = NULL;
 }
 
 
 static void destroy_state(struct srv_udp_state *state)
 {
+	if (state->need_remove_iff) {
+		prl_notice(2, "Removing virtual network interface configuration...");
+		teavpn_iface_down(&state->cfg->iface.iff);
+	}
 
-	if (state->threads_wont_exit)
+	if (state->threads_wont_exit) {
 		/*
-		 * When we're exiting, the main thread will wait for
-		 * the subthreads to exit for the given timeout. If
-		 * the subthreads won't exit, @threads_wont_exit is
-		 * set to true. This is an indicator that we are not
-		 * allowed to free() and close() the resources as it
-		 * may lead to UAF bug.
+		 * WARNING!!!
+		 *
+		 * We are exiting, but the subthreads won't exit.
+		 *
+		 * Having memory leak right before exit is acceptable
+		 * rather than potential UAF since the thread may use
+		 * the freed memory if we free it here.
 		 */
+		pr_emerg("Thread(s) won't exit!");
 		return;
+	}
 
-	close_fds_state(state);
+	close_udp_sessions(state);
+	close_tun_fds(state);
+	close_udp_fd(state);
+
 	bt_stack_destroy(&state->sess_stk);
-	al64_free(state->sess_arr);
-	al64_free(state->sess_map);
+
+	mutex_lock(&state->sess_stk_lock);
+	mutex_unlock(&state->sess_stk_lock);
+	mutex_destroy(&state->sess_stk_lock);
+
+	mutex_lock(&state->sess_stk_lock);
+	mutex_unlock(&state->sess_stk_lock);
+	mutex_destroy(&state->sess_map_lock);
+
 	al64_free(state->ipv4_map);
-	al64_free(state->tun_fds);
 	al64_free(state);
 }
 
 
 int teavpn2_server_udp_run(struct srv_cfg *cfg)
 {
-	int ret;
+	int ret = 0;
 	struct srv_udp_state *state;
 
+	/* This is a large struct, don't use stack. */
 	state = calloc_wrp(1ul, sizeof(*state));
 	if (unlikely(!state))
-		return -errno;
+		return -ENOMEM;
 
 	state->cfg = cfg;
 	ret = init_state(state);
