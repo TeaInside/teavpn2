@@ -12,7 +12,9 @@
 
 
 static __always_inline struct udp_map_bucket *addr_to_bkt(
-	struct udp_map_bucket (*sess_map)[0x100u], uint32_t addr)
+	struct udp_map_bucket (*sess_map)[0x100u],
+	uint32_t addr
+)
 {
 	size_t idx1, idx2;
 	idx1 = (addr >> 0u) & 0xffu;
@@ -50,17 +52,17 @@ out:
 
 static struct udp_sess *map_insert_udp_sess(struct srv_udp_state *state,
 					    uint32_t addr,
-					    struct udp_sess *sess)
+					    struct udp_sess *cur_sess)
 	__acquires(&state->sess_map_lock)
 	__releases(&state->sess_map_lock)
 {
-	struct udp_sess *ret = sess;
+	struct udp_sess *ret = cur_sess;
 	struct udp_map_bucket *bkt, *new_bkt;
 
 	bkt = addr_to_bkt(state->sess_map, addr);
 	mutex_lock(&state->sess_map_lock);
 	if (!bkt->sess) {
-		bkt->sess = sess;
+		bkt->sess = cur_sess;
 		/* If first entry is empty, there should be no next! */
 		if (WARN_ON(bkt->next != NULL))
 			bkt->next = NULL;
@@ -74,7 +76,7 @@ static struct udp_sess *map_insert_udp_sess(struct srv_udp_state *state,
 	}
 
 	new_bkt->next = NULL;
-	new_bkt->sess = sess;
+	new_bkt->sess = cur_sess;
 
 	while (bkt->next)
 		bkt = bkt->next;
@@ -94,7 +96,7 @@ struct udp_sess *get_udp_sess(struct srv_udp_state *state, uint32_t addr,
 	int err = 0;
 	uint16_t idx;
 	int32_t stk_ret;
-	struct udp_sess *sess, *ret = NULL;
+	struct udp_sess *cur_sess, *ret = NULL;
 
 	mutex_lock(&state->sess_stk_lock);
 	stk_ret = bt_stack_pop(&state->sess_stk);
@@ -105,10 +107,10 @@ struct udp_sess *get_udp_sess(struct srv_udp_state *state, uint32_t addr,
 	}
 
 	idx = (uint16_t)stk_ret;
-	sess = &state->sess_arr[idx];
-	sess->src_addr = addr;
-	sess->src_port = port;
-	ret = map_insert_udp_sess(state, addr, sess);
+	cur_sess = &state->sess[idx];
+	cur_sess->src_addr = addr;
+	cur_sess->src_port = port;
+	ret = map_insert_udp_sess(state, addr, cur_sess);
 	if (unlikely(!ret)) {
 		BUG_ON(bt_stack_push(&state->sess_stk, idx) == -1);
 		pr_err("Cannot allocate memory on map_insert_udp_sess()!");
@@ -117,12 +119,12 @@ struct udp_sess *get_udp_sess(struct srv_udp_state *state, uint32_t addr,
 	}
 
 	addr = htonl(addr);
-	WARN_ON(!inet_ntop(AF_INET, &addr, sess->str_src_addr,
-			   sizeof(sess->str_src_addr)));
+	WARN_ON(!inet_ntop(AF_INET, &addr, cur_sess->str_addr,
+			   sizeof(cur_sess->str_addr)));
 
-	udp_sess_tv_update(sess);
-	atomic_store(&sess->is_connected, true);
-	atomic_fetch_add(&state->n_on_sess, 1);
+	udp_sess_tv_update(cur_sess);
+	atomic_store(&cur_sess->is_connected, true);
+	atomic_fetch_add(&state->active_sess, 1);
 out:
 	mutex_unlock(&state->sess_stk_lock);
 	errno = err;
@@ -184,17 +186,17 @@ out:
 }
 
 
-int put_udp_session(struct srv_udp_state *state, struct udp_sess *sess)
+int put_udp_session(struct srv_udp_state *state, struct udp_sess *cur_sess)
 	__acquires(&state->sess_stk_lock)
 	__releases(&state->sess_stk_lock)
 {
 	int ret = 0;
 	mutex_lock(&state->sess_stk_lock);
-	BUG_ON(bt_stack_push(&state->sess_stk, sess->idx) == -1);
+	BUG_ON(bt_stack_push(&state->sess_stk, cur_sess->idx) == -1);
 	if (state->sess_map)
-		ret = remove_sess_from_bkt(state, sess);
-	reset_udp_session(sess, sess->idx);
+		ret = remove_sess_from_bkt(state, cur_sess);
+	reset_udp_session(cur_sess, cur_sess->idx);
 	mutex_unlock(&state->sess_stk_lock);
-	atomic_fetch_sub(&state->n_on_sess, 1);
+	atomic_fetch_sub(&state->active_sess, 1);
 	return ret;
 }

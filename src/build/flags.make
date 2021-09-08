@@ -70,8 +70,10 @@ endif
 ifeq ($(SANITIZE),1)
 	C_CXX_FLAGS += \
 		-fsanitize=undefined \
-		-fno-sanitize-recover=undefined
-	LIB_LDFLAGS += -lubsan
+		-fno-sanitize-recover=undefined \
+		-fsanitize=address
+
+	LIB_LDFLAGS := -lasan -lubsan $(LIB_LDFLAGS)
 endif
 
 
