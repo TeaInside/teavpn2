@@ -119,7 +119,9 @@ void __attribute__((format(printf, 3, 4)))
 __panic(const char *file, int lineno, const char *fmt, ...)
 {
 	va_list vl;
+#if defined(__x86_64__)
 	__emerg_release_bug = true;
+#endif
 	pthread_mutex_trylock(&print_lock);
 	pthread_mutex_trylock(&get_time_lock);
 	puts("=======================================================");

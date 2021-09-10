@@ -81,7 +81,7 @@ __no_inline void *al64_realloc(void *user, size_t new_size)
 	if (unlikely(!user))
 		return al64_malloc(new_size);
 
-	memcpy(&shift, (void *)((uintptr_t)user - 1ull), sizeof(shift));
+	memcpy(&shift, (void *)((uintptr_t)user - 1ul), sizeof(shift));
 	orig = (void *)((uintptr_t)user - (uintptr_t)shift);
 
 	tmp = realloc(orig, new_size + extra_size);
