@@ -56,11 +56,12 @@
 #  pragma clang diagnostic pop
 #endif
 
+#undef __x86_64__
 #define IN_THE_MAIN_EMERG_H
 #if defined(__x86_64__)
 #include "arch/x64/emerg.h"
 #else
-#error "Arch is not supported yet!"
+#include "arch_not_implemented.h"
 #endif
 #undef IN_THE_MAIN_EMERG_H
 
