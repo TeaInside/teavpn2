@@ -448,6 +448,20 @@ out:
 }
 
 
+static inline bool skip_session_creation(struct epl_thread *thread)
+{
+	struct cli_pkt *cli_pkt = &thread->pkt->cli;
+	uint8_t type = cli_pkt->type;
+	return (
+		type == TCLI_PKT_TUN_DATA	||
+		type == TCLI_PKT_REQSYNC	||
+		type == TCLI_PKT_SYNC		||
+		type == TCLI_PKT_CLOSE		||
+		type == TCLI_PKT_PING
+	);
+}
+
+
 static int handle_new_client(struct epl_thread *thread,
 			     struct srv_udp_state __maybe_unused *state,
 			     uint32_t addr, uint16_t port,
@@ -455,6 +469,9 @@ static int handle_new_client(struct epl_thread *thread,
 {
 	int ret;
 	struct udp_sess *sess;
+
+	if (skip_session_creation(thread))
+		return 0;
 
 	sess = get_udp_sess(thread->state, addr, port);
 	if (unlikely(!sess))

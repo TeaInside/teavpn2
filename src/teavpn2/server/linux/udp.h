@@ -14,7 +14,7 @@
 #include <teavpn2/mutex.h>
 #include <teavpn2/stack.h>
 #include <teavpn2/packet.h>
-#include <teavpn2/client/common.h>
+#include <teavpn2/server/common.h>
 
 
 #define EPOLL_EVT_ARR_NUM 3u
