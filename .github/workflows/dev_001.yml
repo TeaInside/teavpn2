@@ -1,0 +1,56 @@
+name: C/C++ (Linux)
+
+on:
+  push:
+    branches: [ master, dev_001 ]
+  pull_request:
+    branches: [ master, dev_001 ]
+    
+jobs:
+  main:
+    name: Build C/C++
+    strategy:
+      fail-fast: false
+
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install Dependencies
+      run: sudo apt install -y git gcc g++ clang make;
+
+    # Debug build
+    - name: (Debug Mode) Build with GCC
+      run: make -j$(nproc) BAN_WARN=1 CC=gcc CXX=g++;
+
+    - name: Clean Build
+      run: make V=1 -j$(nproc) clean;
+
+    - name: (Debug Mode) Build with Clang
+      run: make V=1 -j$(nproc) BAN_WARN=1 CC=clang CXX=clang++;
+
+    - name: Clean Build
+      run: make -j$(nproc) clean;
+
+    # Release build
+    - name: (Debug Mode) Build with GCC
+      run: |
+        make V=1 -j$(nproc) BAN_WARN=1 RELEASE_MODE=1 CC=gcc CXX=g++ && \
+        mv -v teavpn2 teavpn2-gcc;
+
+    - name: Clean Build
+      run: make -j$(nproc) clean;
+
+    - name: (Debug Mode) Build with Clang
+      run: |
+        make V=1 -j$(nproc) BAN_WARN=1 RELEASE_MODE=1 CC=clang CXX=clang++ && \
+        mv -v teavpn2 teavpn2-clang;
+
+    - name: Clean Build
+      run: make -j$(nproc) clean;
+
+    - name: Store artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: teavpn2-gcc
+        path: teavpn2-clang
