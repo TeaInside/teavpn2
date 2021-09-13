@@ -5,8 +5,6 @@
 
 #include <unistd.h>
 #include <sys/epoll.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
 #include <teavpn2/server/linux/udp.h>
 
 

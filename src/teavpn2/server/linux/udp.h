@@ -11,6 +11,8 @@
 #include <sys/time.h>
 #include <sys/epoll.h>
 #include <stdatomic.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <teavpn2/mutex.h>
 #include <teavpn2/stack.h>
 #include <teavpn2/packet.h>

@@ -4,8 +4,6 @@
  */
 
 #include <unistd.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
 #include <teavpn2/server/common.h>
 #include <teavpn2/net/linux/iface.h>
 #include <teavpn2/server/linux/udp.h>
@@ -640,9 +638,9 @@ static int _handle_event_udp(struct epl_thread *thread,
 }
 
 
-static ssize_t do_recvfrom(struct epl_thread *thread,
-			   int udp_fd, struct sockaddr_in *saddr,
-			   socklen_t *saddr_len)
+static ssize_t do_recv_from(struct epl_thread *thread,
+			    int udp_fd, struct sockaddr_in *saddr,
+			    socklen_t *saddr_len)
 {
 	int ret;
 	ssize_t recv_ret;
@@ -683,7 +681,7 @@ static int handle_event_udp(struct epl_thread *thread,
 	struct sockaddr_in saddr;
 	socklen_t saddr_len = sizeof(saddr);
 
-	recv_ret = do_recvfrom(thread, udp_fd, &saddr, &saddr_len);
+	recv_ret = do_recv_from(thread, udp_fd, &saddr, &saddr_len);
 	if (unlikely(recv_ret <= 0))
 		return (int)recv_ret;
 
