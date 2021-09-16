@@ -11,6 +11,8 @@
 #include <sys/time.h>
 #include <sys/epoll.h>
 #include <stdatomic.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <teavpn2/mutex.h>
 #include <teavpn2/stack.h>
 #include <teavpn2/packet.h>
@@ -137,9 +139,9 @@ static inline size_t do_send_to(int udp_fd, const void *pkt, size_t send_len)
 }
 
 
-static inline size_t do_recv_from(int udp_fd, void *pkt, size_t send_len)
+static inline size_t do_recv_from(int udp_fd, void *pkt, size_t recv_len)
 {
-	return udp_client_do_recv_from(udp_fd, pkt, send_len);
+	return udp_client_do_recv_from(udp_fd, pkt, recv_len);
 }
 
 
