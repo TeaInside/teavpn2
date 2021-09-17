@@ -913,6 +913,8 @@ static int run_event_loop(struct srv_udp_state *state)
 
 	atomic_store(&state->n_on_threads, 0);
 	for (i = 1; i < nn; i++) {
+		char buf[sizeof("tun-worker-xxxx")];
+
 		/*
 		 * Spawn the subthreads.
 		 * 
@@ -922,6 +924,9 @@ static int run_event_loop(struct srv_udp_state *state)
 		ret = spawn_thread(&threads[i]);
 		if (unlikely(ret))
 			goto out;
+
+		snprintf(buf, sizeof(buf), "tun-worker-%hhu", i);
+		pthread_setname_np(threads[i].thread, buf);
 	}
 
 	ret_p = _run_event_loop(&threads[0]);
