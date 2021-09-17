@@ -248,7 +248,7 @@ out_err:
 }
 
 
-static size_t simple_do_send_to(int udp_fd, const void *pkt, size_t send_len)
+static ssize_t simple_do_send_to(int udp_fd, const void *pkt, size_t send_len)
 {
 	int ret;
 	ssize_t send_ret;
@@ -263,7 +263,7 @@ static size_t simple_do_send_to(int udp_fd, const void *pkt, size_t send_len)
 }
 
 
-static size_t simple_do_recv_from(int udp_fd, void *pkt, size_t recv_len)
+static ssize_t simple_do_recv_from(int udp_fd, void *pkt, size_t recv_len)
 {
 	int ret;
 	ssize_t recv_ret;
@@ -458,7 +458,7 @@ int teavpn2_cli_udp_send_close_packet(struct cli_udp_state *state)
 	send_len = cli_pprep(cli_pkt, TCLI_PKT_CLOSE, 0, 0);
 	send_ret = simple_do_send_to(state->udp_fd, cli_pkt, send_len);
 	pr_debug("send_close_packet() = %zd", send_ret);
-	return unlikely(send_ret < 0) ? send_ret : 0;
+	return unlikely(send_ret < 0) ? (int)send_ret : 0;
 }
 
 

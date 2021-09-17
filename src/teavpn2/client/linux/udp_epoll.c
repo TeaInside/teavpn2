@@ -172,7 +172,7 @@ static int init_epoll_thread_array(struct cli_udp_state *state)
 }
 
 
-static size_t do_send_to(int udp_fd, const void *pkt, size_t send_len)
+static ssize_t do_send_to(int udp_fd, const void *pkt, size_t send_len)
 {
 	int ret;
 	ssize_t send_ret;
@@ -180,13 +180,13 @@ static size_t do_send_to(int udp_fd, const void *pkt, size_t send_len)
 	if (unlikely(send_ret < 0)) {
 		ret = errno;
 		pr_err("sendto(): " PRERF, PREAR(ret));
-		return -ret;
+		return (ssize_t)-ret;
 	}
 	return send_ret;
 }
 
 
-static size_t do_recv_from(int udp_fd, void *pkt, size_t recv_len)
+static ssize_t do_recv_from(int udp_fd, void *pkt, size_t recv_len)
 {
 	int ret;
 	ssize_t recv_ret;
@@ -194,7 +194,7 @@ static size_t do_recv_from(int udp_fd, void *pkt, size_t recv_len)
 	if (unlikely(recv_ret < 0)) {
 		ret = errno;
 		pr_err("recvfrom(): " PRERF, PREAR(ret));
-		return -ret;
+		return (ssize_t)-ret;
 	}
 	return recv_ret;
 }
