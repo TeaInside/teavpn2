@@ -454,8 +454,7 @@ static inline bool skip_session_creation(struct epl_thread *thread)
 		type == TCLI_PKT_TUN_DATA	||
 		type == TCLI_PKT_REQSYNC	||
 		type == TCLI_PKT_SYNC		||
-		type == TCLI_PKT_CLOSE		||
-		type == TCLI_PKT_PING
+		type == TCLI_PKT_CLOSE
 	);
 }
 
@@ -581,8 +580,6 @@ static int __handle_event_udp(struct epl_thread *thread,
 		return 0;
 	case TCLI_PKT_SYNC:
 		return 0;
-	case TCLI_PKT_PING:
-		return sess->is_authenticated ? 0 : -EBADRQC;
 	case TCLI_PKT_CLOSE:
 		close_udp_session(thread, sess);
 		return 0;
@@ -785,11 +782,10 @@ static int handle_event(struct epl_thread *thread, struct srv_udp_state *state,
 	int ret = 0;
 	int fd = event->data.fd;
 
-	if (fd == thread->state->udp_fd) {
+	if (fd == thread->state->udp_fd)
 		ret = handle_event_udp(thread, state, fd);
-	} else {
+	else
 		ret = handle_event_tun(thread, state, fd);
-	}
 
 	return ret;
 }

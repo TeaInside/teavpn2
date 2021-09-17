@@ -172,6 +172,34 @@ static int init_epoll_thread_array(struct cli_udp_state *state)
 }
 
 
+static size_t do_send_to(int udp_fd, const void *pkt, size_t send_len)
+{
+	int ret;
+	ssize_t send_ret;
+	send_ret = sendto(udp_fd, pkt, send_len, 0, NULL, 0);
+	if (unlikely(send_ret < 0)) {
+		ret = errno;
+		pr_err("sendto(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+	return send_ret;
+}
+
+
+static size_t do_recv_from(int udp_fd, void *pkt, size_t recv_len)
+{
+	int ret;
+	ssize_t recv_ret;
+	recv_ret = recvfrom(udp_fd, pkt, recv_len, 0, NULL, 0);
+	if (unlikely(recv_ret < 0)) {
+		ret = errno;
+		pr_err("recvfrom(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+	return recv_ret;
+}
+
+
 static ssize_t recv_from_server(struct epl_thread *thread, int udp_fd)
 {
 	int ret;
@@ -231,10 +259,9 @@ static int _handle_event_udp(struct epl_thread *thread,
 	case TSRV_PKT_TUN_DATA:
 		return handle_tun_data(thread);
 	case TSRV_PKT_REQSYNC:
+		// return send_sync();
 		return 0;
 	case TSRV_PKT_SYNC:
-		return 0;
-	case TSRV_PKT_PING:
 		return 0;
 	case TSRV_PKT_CLOSE:
 		state->stop = true;
@@ -536,7 +563,7 @@ static void close_epoll_fds(struct epl_thread *threads, uint8_t nn)
 static void destroy_epoll(struct cli_udp_state *state)
 {
 	struct epl_thread *threads;
-	uint8_t nn = state->cfg->sys.thread_num;
+	uint8_t i, nn = state->cfg->sys.thread_num;
 
 	if (!wait_for_threads_to_exit(state)) {
 		/* Thread(s) won't exit, don't free the heap! */
@@ -546,7 +573,11 @@ static void destroy_epoll(struct cli_udp_state *state)
 	}
 
 	threads = state->epl_threads;
-	close_epoll_fds(threads, nn);
+	if (threads) {
+		close_epoll_fds(threads, nn);
+		for (i = 0; i < nn; i++)
+			al64_free(threads[i].pkt);
+	}
 	al64_free(threads);
 }
 

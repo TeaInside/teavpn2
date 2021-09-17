@@ -128,20 +128,12 @@ struct cli_udp_state {
 
 extern int teavpn2_udp_client_epoll(struct cli_udp_state *state);
 extern int teavpn2_udp_client_io_uring(struct cli_udp_state *state);
-extern ssize_t udp_client_do_send_to(int udp_fd, const void *pkt,
-				     size_t send_len);
-extern ssize_t udp_client_do_recv_from(int udp_fd, void *pkt, size_t recv_len);
+extern int teavpn2_cli_udp_send_close_packet(struct cli_udp_state *state);
 
 
-static inline size_t do_send_to(int udp_fd, const void *pkt, size_t send_len)
+static inline int send_close_packet(struct cli_udp_state *state)
 {
-	return udp_client_do_send_to(udp_fd, pkt, send_len);
-}
-
-
-static inline size_t do_recv_from(int udp_fd, void *pkt, size_t recv_len)
-{
-	return udp_client_do_recv_from(udp_fd, pkt, recv_len);
+	return teavpn2_cli_udp_send_close_packet(state);
 }
 
 
@@ -181,19 +173,6 @@ static inline size_t cli_pprep_auth(struct cli_pkt *cli_pkt, const char *user,
 	strncpy2(auth->username, user, sizeof(auth->username));
 	strncpy2(auth->password, pass, sizeof(auth->password));
 	return cli_pprep(cli_pkt, TCLI_PKT_AUTH, data_len, 0);
-}
-
-
-static inline int send_close_packet(struct cli_udp_state *state)
-{
-	size_t send_len;
-	ssize_t send_ret;
-	struct cli_pkt *cli_pkt = &state->pkt->cli;
-
-	send_len = cli_pprep(cli_pkt, TCLI_PKT_CLOSE, 0, 0);
-	send_ret = do_send_to(state->udp_fd, cli_pkt, send_len);
-	pr_debug("send_close_packet() = %zd", send_ret);
-	return unlikely(send_ret < 0) ? send_ret : 0;
 }
 
 

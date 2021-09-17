@@ -185,7 +185,7 @@ static int socket_setup(int udp_fd, struct cli_udp_state *state)
 out_err:
 	err = errno;
 	pr_err("setsockopt(udp_fd, %s, %s, %d): " PRERF, lv, on, y, PREAR(err));
-	return ret;
+	return -err;
 }
 
 
@@ -216,8 +216,10 @@ static int init_socket(struct cli_udp_state *state)
 
 	prl_notice(2, "Setting up socket configuration...");
 	ret = socket_setup(udp_fd, state);
-	if (unlikely(ret))
+	if (unlikely(ret)) {
+		ret = -ret;
 		goto out_err;
+	}
 
 
 	memset(&addr, 0, sizeof(addr));
@@ -243,6 +245,36 @@ static int init_socket(struct cli_udp_state *state)
 out_err:
 	close(udp_fd);
 	return -ret;
+}
+
+
+static size_t simple_do_send_to(int udp_fd, const void *pkt, size_t send_len)
+{
+	int ret;
+	ssize_t send_ret;
+	send_ret = sendto(udp_fd, pkt, send_len, 0, NULL, 0);
+	if (unlikely(send_ret < 0)) {
+		ret = errno;
+		pr_err("sendto(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+	pr_debug("sendto(fd=%d) %zd bytes", udp_fd, send_ret);
+	return send_ret;
+}
+
+
+static size_t simple_do_recv_from(int udp_fd, void *pkt, size_t recv_len)
+{
+	int ret;
+	ssize_t recv_ret;
+	recv_ret = recvfrom(udp_fd, pkt, recv_len, 0, NULL, 0);
+	if (unlikely(recv_ret < 0)) {
+		ret = errno;
+		pr_err("recvfrom(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+	pr_debug("recvfrom(fd=%d) %zd bytes", udp_fd, recv_ret);
+	return recv_ret;
 }
 
 
@@ -299,36 +331,6 @@ err:
 		tun_fds[i] = -1;
 	}
 	return ret;
-}
-
-
-ssize_t udp_client_do_send_to(int udp_fd, const void *pkt, size_t send_len)
-{
-	int ret;
-	ssize_t send_ret;
-	send_ret = sendto(udp_fd, pkt, send_len, 0, NULL, 0);
-	if (unlikely(send_ret < 0)) {
-		ret = errno;
-		pr_err("sendto(): " PRERF, PREAR(ret));
-		return -ret;
-	}
-	pr_debug("sendto(fd=%d) %zd bytes", udp_fd, send_ret);
-	return send_ret;
-}
-
-
-ssize_t udp_client_do_recv_from(int udp_fd, void *pkt, size_t recv_len)
-{
-	int ret;
-	ssize_t recv_ret;
-	recv_ret = recvfrom(udp_fd, pkt, recv_len, 0, NULL, 0);
-	if (unlikely(recv_ret < 0)) {
-		ret = errno;
-		pr_err("recvfrom(): " PRERF, PREAR(ret));
-		return -ret;
-	}
-	pr_debug("recvfrom(fd=%d) %zd bytes", udp_fd, recv_ret);
-	return recv_ret;
 }
 
 
@@ -422,7 +424,7 @@ static int _do_handshake(struct cli_udp_state *state)
 
 	prl_notice(2, "Initializing protocol handshake...");
 	send_len = cli_pprep_handshake(cli_pkt);
-	send_ret = do_send_to(udp_fd, cli_pkt, send_len);
+	send_ret = simple_do_send_to(udp_fd, cli_pkt, send_len);
 	return (send_ret >= 0) ? 0 : (int)send_ret;
 }
 
@@ -439,11 +441,24 @@ static int wait_for_handshake_response(struct cli_udp_state *state)
 	if (unlikely(ret < 0))
 		return ret;
 
-	recv_ret = do_recv_from(udp_fd, srv_pkt, PKT_MAX_LEN);
+	recv_ret = simple_do_recv_from(udp_fd, srv_pkt, PKT_MAX_LEN);
 	if (unlikely(recv_ret < 0))
 		return (int)recv_ret;
 
 	return server_handshake_chk(srv_pkt, (size_t)recv_ret);
+}
+
+
+int teavpn2_cli_udp_send_close_packet(struct cli_udp_state *state)
+{
+	size_t send_len;
+	ssize_t send_ret;
+	struct cli_pkt *cli_pkt = &state->pkt->cli;
+
+	send_len = cli_pprep(cli_pkt, TCLI_PKT_CLOSE, 0, 0);
+	send_ret = simple_do_send_to(state->udp_fd, cli_pkt, send_len);
+	pr_debug("send_close_packet() = %zd", send_ret);
+	return unlikely(send_ret < 0) ? send_ret : 0;
 }
 
 
@@ -559,7 +574,7 @@ static int wait_for_auth_response(struct cli_udp_state *state)
 	if (unlikely(ret < 0))
 		return ret;
 
-	recv_ret = do_recv_from(udp_fd, srv_pkt, PKT_MAX_LEN);
+	recv_ret = simple_do_recv_from(udp_fd, srv_pkt, PKT_MAX_LEN);
 	if (unlikely(recv_ret < 0))
 		return (int)recv_ret;
 
@@ -583,7 +598,7 @@ static int _do_auth(struct cli_udp_state *state)
 
 	prl_notice(2, "Authenticating as %s...", auth_c->username);
 	send_len = cli_pprep_auth(cli_pkt, auth_c->username, auth_c->password);
-	send_ret = do_send_to(state->udp_fd, cli_pkt, send_len);
+	send_ret = simple_do_send_to(state->udp_fd, cli_pkt, send_len);
 	return (send_ret >= 0) ? 0 : (int)send_ret;
 }
 
@@ -626,7 +641,7 @@ static int run_client_event_loop(struct cli_udp_state *state)
 
 static void close_tun_fds(struct cli_udp_state *state)
 {
-	uint8_t i, nn = (uint8_t)state->cfg->sys.thread_num;
+	uint8_t i, nn = state->cfg->sys.thread_num;
 	int *tun_fds = state->tun_fds;
 
 	if (!tun_fds)
@@ -698,7 +713,9 @@ out:
 	if (unlikely(ret))
 		pr_err("teavpn2_client_udp_run(): " PRERF, PREAR(-ret));
 
-	send_close_packet(state);
+	if (state->udp_fd != -1)
+		send_close_packet(state);
+
 	destroy_state(state);
 	return ret;
 }
