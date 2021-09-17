@@ -883,6 +883,130 @@ static __no_inline void *_run_event_loop(void *thread_p)
 }
 
 
+static int zr_close_sess(struct srv_udp_state *state, struct udp_sess *sess)
+{
+	size_t send_len;
+	struct srv_pkt *srv_pkt = &state->zr.pkt->srv;
+
+	prl_notice(2, "[zombie reaper] Closing session " PRWIU " (no activity)...",
+		   W_IU(sess));
+
+	if (sess->ipv4_iff != 0)
+		del_ipv4_route_map(state->ipv4_map, sess->ipv4_iff);
+
+	send_len = srv_pprep(srv_pkt, TSRV_PKT_CLOSE, 0, 0);
+	send_to_client(&state->epl_threads[0], sess, srv_pkt, send_len);
+	return put_udp_session(state, sess);
+}
+
+
+static void zr_send_reqsync(struct srv_udp_state *state, struct udp_sess *sess)
+{
+	size_t send_len;
+	struct srv_pkt *srv_pkt = &state->zr.pkt->srv;
+
+	prl_notice(4, "[zombie reaper] Sending req sync to " PRWIU "...",
+		   W_IU(sess));
+
+	send_len = srv_pprep(srv_pkt, TSRV_PKT_REQSYNC, 0, 0);
+	send_to_client(&state->epl_threads[0], sess, srv_pkt, send_len);
+}
+
+
+static void zr_chk_auth(struct srv_udp_state *state, struct udp_sess *sess,
+			time_t time_diff)
+{
+	const time_t kill_timeout = UDP_SESS_TIMEOUT_AUTH;
+
+	if (time_diff > kill_timeout) {
+		zr_close_sess(state, sess);
+		return;
+	}
+
+	if (time_diff > (kill_timeout / 2))
+		zr_send_reqsync(state, sess);
+}
+
+
+static void zr_chk_no_auth(struct srv_udp_state *state, struct udp_sess *sess,
+			   time_t time_diff)
+{
+	const time_t kill_timeout = UDP_SESS_TIMEOUT_NO_AUTH;
+
+	if (time_diff > kill_timeout)
+		zr_close_sess(state, sess);
+}
+
+
+static void zombie_reaper_do_scan(struct srv_udp_state *state)
+{
+	uint16_t i, j, max_conn = state->cfg->sock.max_conn;
+	struct udp_sess *sess, *sess_arr = state->sess_arr;
+
+	for (i = j = 0; i < max_conn; i++) {
+		time_t time_diff;
+
+		sess = &sess_arr[i];
+		if (!atomic_load(&sess->is_connected))
+			continue;
+
+		get_unix_time(&time_diff);
+		time_diff -= sess->last_act;
+
+		if (sess->is_authenticated)
+			zr_chk_auth(state, sess, time_diff);
+		else
+			zr_chk_no_auth(state, sess, time_diff);
+	}
+}
+
+
+static void *run_zombie_reaper_thread(void *arg)
+{
+	struct srv_udp_state *state = (struct srv_udp_state *)arg;
+
+	nice(40);
+	atomic_store(&state->zr.is_online, true);
+
+	state->zr.pkt = calloc_wrp(1ul, sizeof(*state->zr.pkt));
+	if (unlikely(!state->zr.pkt))
+		state->stop = true;
+
+	while (likely(!state->stop)) {
+		sleep(5);
+		pr_debug("[zombie reaper] Scanning...");
+		zombie_reaper_do_scan(state);
+	}
+
+	al64_free(state->zr.pkt);
+	atomic_store(&state->zr.is_online, false);
+	return NULL;
+}
+
+
+static int spawn_zombie_reaper(struct srv_udp_state *state)
+{
+	int ret;
+	pthread_t *zr_thread = &state->zr.thread;
+
+	prl_notice(2, "Spawning zombie reaper thread...");
+	ret = pthread_create(zr_thread, NULL, run_zombie_reaper_thread, state);
+	if (unlikely(ret)) {
+		pr_err("pthread_create(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+
+	ret = pthread_detach(*zr_thread);
+	if (unlikely(ret)) {
+		pr_err("pthread_detach(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+
+	pthread_setname_np(*zr_thread, "zombie-reaper");
+	return ret;
+}
+
+
 static int spawn_thread(struct epl_thread *thread)
 {
 	int ret;
@@ -910,6 +1034,10 @@ static int run_event_loop(struct srv_udp_state *state)
 	void *ret_p;
 	uint8_t i, nn = state->cfg->sys.thread_num;
 	struct epl_thread *threads = state->epl_threads;
+
+	ret = spawn_zombie_reaper(state);
+	if (unlikely(ret))
+		goto out;
 
 	atomic_store(&state->n_on_threads, 0);
 	for (i = 1; i < nn; i++) {

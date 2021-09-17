@@ -22,6 +22,10 @@
 #define EPOLL_EVT_ARR_NUM 3u
 #define UDP_SESS_MAX_ERR 5u
 
+/* Timeout in seconds. */
+#define UDP_SESS_TIMEOUT_NO_AUTH	5
+#define UDP_SESS_TIMEOUT_AUTH		10
+
 /*
  * UDP session struct.
  *
@@ -119,6 +123,13 @@ struct epl_thread {
 };
 
 
+struct zombie_reaper {
+	_Atomic(bool)				is_online;
+	pthread_t				thread;
+	struct sc_pkt				*pkt;
+};
+
+
 struct srv_udp_state {
 	/*
 	 * @stop is false when event loop is supposed to run.
@@ -201,6 +212,12 @@ struct srv_udp_state {
 	 * Map @ipv4_ff to @sess_arr index.
 	 */
 	uint16_t				(*ipv4_map)[0x100];
+
+	/*
+	 * Zombie reaper.
+	 */
+	struct zombie_reaper			zr;
+
 
 	union {
 		/*
