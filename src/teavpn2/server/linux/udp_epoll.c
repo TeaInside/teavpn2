@@ -929,14 +929,14 @@ static void zr_send_reqsync(struct srv_udp_state *state, struct udp_sess *sess)
 static void zr_chk_auth(struct srv_udp_state *state, struct udp_sess *sess,
 			time_t time_diff)
 {
-	const time_t kill_timeout = UDP_SESS_TIMEOUT_AUTH;
+	const time_t max_diff = UDP_SESS_TIMEOUT_AUTH;
 
-	if (time_diff > kill_timeout) {
+	if (time_diff > max_diff) {
 		zr_close_sess(state, sess);
 		return;
 	}
 
-	if (time_diff > (kill_timeout / 2))
+	if (time_diff > (max_diff / 2))
 		zr_send_reqsync(state, sess);
 }
 
@@ -944,9 +944,9 @@ static void zr_chk_auth(struct srv_udp_state *state, struct udp_sess *sess,
 static void zr_chk_no_auth(struct srv_udp_state *state, struct udp_sess *sess,
 			   time_t time_diff)
 {
-	const time_t kill_timeout = UDP_SESS_TIMEOUT_NO_AUTH;
+	const time_t max_diff = UDP_SESS_TIMEOUT_NO_AUTH;
 
-	if (time_diff > kill_timeout)
+	if (time_diff > max_diff)
 		zr_close_sess(state, sess);
 }
 

@@ -20,6 +20,7 @@
 
 
 #define EPOLL_EVT_ARR_NUM 3u
+#define UDP_SESS_TIMEOUT  30
 
 
 struct cli_udp_state;
@@ -50,6 +51,12 @@ struct epl_thread {
 };
 
 
+struct timer_thread {
+	_Atomic(bool)				is_online;
+	pthread_t				thread;
+};
+
+
 struct cli_udp_state {
 	/*
 	 * @stop is false when event loop is supposed to run.
@@ -63,6 +70,16 @@ struct cli_udp_state {
 	 * situation that needs more attention.
 	 */
 	volatile bool				in_emergency;
+
+
+	bool					timeout_disconnect;
+
+
+	/*
+	 * Loop counter.
+	 */
+	uint8_t					loop_c;
+
 
 	/*
 	 * When we're exiting, the main thread will wait for
@@ -80,6 +97,15 @@ struct cli_udp_state {
 	 * exit, otherwise it's false.
 	 */
 	bool					need_remove_iff;
+
+
+	/*
+	 * For timeout timer.
+	 */
+	time_t					last_t;
+
+
+	struct timer_thread			tt;
 
 
 	/*
@@ -173,6 +199,21 @@ static inline size_t cli_pprep_auth(struct cli_pkt *cli_pkt, const char *user,
 	strncpy2(auth->username, user, sizeof(auth->username));
 	strncpy2(auth->password, pass, sizeof(auth->password));
 	return cli_pprep(cli_pkt, TCLI_PKT_AUTH, data_len, 0);
+}
+
+
+static __always_inline int get_unix_time(time_t *tm)
+{
+	int ret;
+	struct timeval tv;
+	ret = gettimeofday(&tv, NULL);
+	if (unlikely(ret)) {
+		ret = errno;
+		pr_err("gettimeofday(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+	*tm = tv.tv_sec;
+	return ret;
 }
 
 

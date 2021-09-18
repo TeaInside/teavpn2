@@ -247,6 +247,10 @@ static ssize_t recv_from_server(struct epl_thread *thread, int udp_fd)
 		return -ret;
 	}
 	thread->pkt->len = (size_t)recv_ret;
+
+	if ((++thread->state->loop_c % 64) == 0)
+		get_unix_time(&thread->state->last_t);
+
 	return recv_ret;
 }
 
@@ -268,17 +272,13 @@ static int handle_tun_data(struct epl_thread *thread)
 
 static int handle_req_sync(struct epl_thread *thread)
 {
-	int ret = 0;
 	size_t send_len;
 	ssize_t send_ret;
 	struct cli_pkt *cli_pkt = &thread->pkt->cli;
 
 	send_len = cli_pprep(cli_pkt, TSRV_PKT_SYNC, 0, 0);
 	send_ret = do_send_to(thread, cli_pkt, send_len);
-	if (unlikely(send_ret < 0))
-		ret = (int)send_ret;
-
-	return ret;
+	return unlikely(send_ret < 0) ? (int)send_ret : 0;
 }
 
 
@@ -294,9 +294,9 @@ static int _handle_event_udp(struct epl_thread *thread,
 	case TSRV_PKT_TUN_DATA:
 		return handle_tun_data(thread);
 	case TSRV_PKT_REQSYNC:
-		handle_req_sync(thread);
-		return 0;
+		return handle_req_sync(thread);
 	case TSRV_PKT_SYNC:
+		get_unix_time(&thread->state->last_t);
 		return 0;
 	case TSRV_PKT_CLOSE:
 		state->stop = true;
@@ -501,12 +501,93 @@ static int spawn_thread(struct epl_thread *thread)
 }
 
 
+static void tt_send_reqsync(struct cli_udp_state *state)
+{
+	size_t send_len;
+	struct cli_pkt pkt;
+	int udp_fd = state->udp_fd;
+	ssize_t __maybe_unused send_ret;
+
+	send_len = cli_pprep(&pkt, TCLI_PKT_REQSYNC, 0, 0);
+	send_ret = _do_send_to(udp_fd, &pkt, send_len);
+	pr_debug("[timer] sendto(udp_fd=%d) %zd bytes", udp_fd, send_ret);
+}
+
+
+static void _run_timer_thread(struct cli_udp_state *state)
+{
+	time_t time_diff = 0;
+	const time_t max_diff = UDP_SESS_TIMEOUT;
+
+	get_unix_time(&time_diff);
+	time_diff -= state->last_t;
+
+	if (time_diff > max_diff) {
+		prl_notice(2, "UDP timer timedout");
+		prl_notice(2, "Stopping...");
+		state->timeout_disconnect = true;
+		state->stop = true;
+		return;
+	}
+
+	if (time_diff > (max_diff / 2))
+		tt_send_reqsync(state);
+}
+
+
+static void *run_timer_thread(void *arg)
+{
+	struct cli_udp_state *state = (struct cli_udp_state *)arg;
+
+	if (nice(40) < 0) {
+		int err = errno;
+		pr_warn("nice(40) = " PRERF, PREAR(err));
+	}
+
+	atomic_store(&state->tt.is_online, true);
+	state->timeout_disconnect = false;
+	while (likely(!state->stop)) {
+		sleep(5);
+		_run_timer_thread(state);
+	}
+	atomic_store(&state->tt.is_online, false);
+	return NULL;
+}
+
+
+static int spawn_timer_thread(struct cli_udp_state *state)
+{
+	int ret;
+	pthread_t *tt = &state->tt.thread;
+
+	prl_notice(2, "Spawning timer thread...");
+	ret = pthread_create(tt, NULL, run_timer_thread, state);
+	if (unlikely(ret)) {
+		pr_err("pthread_create(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+
+	ret = pthread_detach(*tt);
+	if (unlikely(ret)) {
+		pr_err("pthread_detach(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+
+	pthread_setname_np(*tt, "timer");
+	return ret;
+}
+
+
 static int run_event_loop(struct cli_udp_state *state)
 {
 	int ret;
 	void *ret_p;
 	uint8_t i, nn = state->cfg->sys.thread_num;
 	struct epl_thread *threads = state->epl_threads;
+
+	ret = spawn_timer_thread(state);
+	if (unlikely(ret))
+		goto out;
 
 	atomic_store(&state->n_on_threads, 0);
 	for (i = 1; i < nn; i++) {
@@ -530,19 +611,38 @@ out:
 
 static bool wait_for_threads_to_exit(struct cli_udp_state *state)
 {
+	int ret;
 	unsigned wait_c = 0;
 	uint16_t thread_on = 0, cc;
 	uint8_t nn, i;
 	struct epl_thread *threads;
+
+	if (atomic_load(&state->tt.is_online)) {
+		ret = pthread_kill(state->tt.thread, SIGTERM);
+		if (unlikely(ret)) {
+			pr_err("pthread_kill(state->tt.thread, SIGTERM): "
+			       PRERF, PREAR(ret));
+		}
+
+		prl_notice(2, "Waiting for timer thread to exit...");
+
+		while (atomic_load(&state->tt.is_online)) {
+			usleep(100000);
+			if (wait_c++ > 1000)
+				return false;
+		}
+		wait_c = 0;
+	}
+
 
 	thread_on = atomic_load(&state->n_on_threads);
 	if (thread_on == 0)
 		return true;
 
 	threads = state->epl_threads;
-	nn = (uint8_t)state->cfg->sys.thread_num;
+	nn = state->cfg->sys.thread_num;
 	for (i = 0; i < nn; i++) {
-		int ret;
+
 
 		if (!atomic_load(&threads[i].is_online))
 			continue;
@@ -624,6 +724,7 @@ int teavpn2_udp_client_epoll(struct cli_udp_state *state)
 		goto out;
 
 	state->stop = false;
+	get_unix_time(&state->last_t);
 	ret = run_event_loop(state);
 out:
 	destroy_epoll(state);
