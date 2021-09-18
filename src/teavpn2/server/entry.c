@@ -12,32 +12,99 @@ struct cfg_parse_ctx {
 	struct srv_cfg	*cfg;
 };
 
-/* TODO: Write my own getopt function. */
 
-static const struct option long_options[] = {
-	{"help",        no_argument,       0, 'h'},
-	{"version",     no_argument,       0, 'V'},
-	{"verbose",     optional_argument, 0, 'v'},
-
-	{"config",      required_argument, 0, 'c'},
-	{"data-dir",    required_argument, 0, 'd'},
-	{"thread",      required_argument, 0, 't'},
-
-	{"sock-type",   required_argument, 0, 's'},
-	{"bind-addr",   required_argument, 0, 'H'},
-	{"bind-port",   required_argument, 0, 'P'},
-	{"backlog",     required_argument, 0, 'B'},
-	{"encrypt",     no_argument,       0, 'E'},
-
-	{"dev",         required_argument, 0, 'D'},
-
-	{0, 0, 0, 0}
-};
-static const char short_opt[] = "hVv::c:d:t:s:H:P:B:ED:";
+/*
+ * Default config.
+ */
+static const int d_srv_backlog = 10;
+static const uint16_t d_srv_bind_port = 44444;
+static const uint16_t d_srv_mtu = 1450;
+static const char d_srv_dev[] = "tsrv0";
+static const char d_srv_ipv4[] = "10.5.5.1";
+static const char d_srv_ipv4_netmask[] = "255.255.255.0";
+static const char d_srv_cfg_file[] = "/etc/teavpn2/server.ini";
+static const uint8_t d_num_of_threads = 2;
+static const uint16_t d_srv_max_conn = 32;
 
 
-static void show_help(void)
+static void set_default_config(struct srv_cfg *cfg)
 {
+	struct srv_cfg_sys *sys = &cfg->sys;
+	struct srv_cfg_sock *sock = &cfg->sock;
+	struct srv_cfg_iface *iface = &cfg->iface;
+
+	sys->cfg_file = d_srv_cfg_file;
+	sys->thread_num = d_num_of_threads;
+
+	iface->iff.ipv4_mtu = d_srv_mtu;
+	strncpy2(iface->dev, d_srv_dev, sizeof(iface->dev));
+	strncpy2(iface->iff.dev, d_srv_dev, sizeof(iface->iff.dev));
+	strncpy2(iface->iff.ipv4, d_srv_ipv4, sizeof(iface->iff.ipv4));
+	strncpy2(iface->iff.ipv4_netmask, d_srv_ipv4_netmask,
+		 sizeof(iface->iff.ipv4_netmask));
+
+
+	strncpy2(sock->bind_addr, "0.0.0.0", sizeof(cfg->sock.bind_addr));
+	sock->bind_port = d_srv_bind_port;
+	sock->backlog = d_srv_backlog;
+	sock->max_conn = d_srv_max_conn;
+}
+
+
+static void teavpn_server_show_help(const char *app)
+{
+	printf("Usage: %s server [options]\n", app);
+
+	printf("\n");
+	printf("TeaVPN Server Application\n");
+	printf("\n");
+	printf("Available options:\n");
+	printf("  -h, --help\t\t\tShow this help message.\n");
+	printf("  -V, --version\t\t\tShow application version.\n");
+	printf("  -c, --config=FILE\t\tSet config file (default: %s).\n",
+	       d_srv_cfg_file);
+	printf("  -d, --data-dir=DIR\t\tSet data directory.\n");
+	printf("  -t, --thread=N\t\tSet number of threads (default: %hhu).\n",
+	       d_num_of_threads);
+
+	printf("\n");
+	printf("[Config options]\n");
+	printf(" Virtual network interface:\n");
+	printf("  -D, --dev=DEV\t\t\tSet virtual network interface name"
+	       " (default: %s).\n", d_srv_dev);
+	printf("  -m, --mtu=MTU\t\t\tSet mtu value (default: %d).\n",
+	       d_srv_mtu);
+	printf("  -4, --ipv4=IP\t\t\tSet IPv4 (default: %s).\n", d_srv_ipv4);
+	printf("  -N, --ipv4-netmask=MASK\tSet IPv4 netmask (default: %s).\n",
+	       d_srv_ipv4_netmask);
+#ifdef TEAVPN_IPV6_SUPPORT
+	printf("  -6, --ipv6=IP\t\t\tSet IPv6 (default: %s).\n", "???");
+	printf("  -M, --ipv6-netmask=MASK\tSet IPv6 netmask (default: %s).\n",
+	       "???");
+#endif
+
+
+	printf("\n");
+	printf(" Socket:\n");
+	printf("  -s, --sock-type=TYPE\t\tSet socket type (must be tcp or udp)"
+	       " (default: tcp).\n");
+	printf("  -H, --bind-addr=IP\t\tSet bind address (default 0.0.0.0).\n");
+	printf("  -P, --bind-port=PORT\t\tSet bind port (default: %d).\n",
+	       d_srv_bind_port);
+	printf("  -k, --max-conn=N\t\tSet max connections (default: %d).\n",
+	       d_srv_max_conn);
+	printf("  -B, --backlog=N\t\tSet socket listen backlog (default: %d)"
+	       ".\n", d_srv_backlog);
+	printf("  -C, --ssl-cert=FILE\t\tSet SSL certificate.\n");
+	printf("  -K, --ssl-priv-key=FILE\tSet SSL private key.\n");
+
+	printf("\n");
+	printf("\n");
+	printf("For bug reporting, please open an issue on the GitHub repository."
+	       "\n");
+	printf("GitHub repository: https://github.com/TeaInside/teavpn2\n");
+	printf("\n");
+	printf("This software is licensed under GNU GPL-v2 license.\n");
 }
 
 
@@ -73,6 +140,36 @@ static __maybe_unused void dump_server_cfg(struct srv_cfg *cfg)
 	puts("=============================================");
 }
 
+/* TODO: Write my own getopt function. */
+
+static const struct option long_options[] = {
+	/* Help, version and verbose. */
+	{"help",           no_argument,       0, 'h'},
+	{"version",        no_argument,       0, 'V'},
+	{"verbose",        optional_argument, 0, 'v'},
+
+	/* Sys. */
+	{"config",         required_argument, 0, 'c'},
+	{"data-dir",       required_argument, 0, 'd'},
+	{"thread",         required_argument, 0, 't'},
+
+	/* Net. */
+	{"dev",            required_argument, 0, 'D'},
+	{"mtu",            required_argument, 0, 'm'},
+	{"ipv4",           required_argument, 0, '4'},
+	{"ipv4-netmask",   required_argument, 0, 'N'},
+
+	/* Socket. */
+	{"sock-type",      required_argument, 0, 's'},
+	{"bind-addr",      required_argument, 0, 'H'},
+	{"bind-port",      required_argument, 0, 'P'},
+	{"backlog",        required_argument, 0, 'B'},
+	{"encrypt",        no_argument,       0, 'E'},
+
+
+	{0, 0, 0, 0}
+};
+static const char short_opt[] = "hVv::c:d:t:D:m:4:N:s:H:P:B:E:";
 
 static int parse_argv(int argc, char *argv[], struct srv_cfg *cfg)
 {
@@ -89,12 +186,13 @@ static int parse_argv(int argc, char *argv[], struct srv_cfg *cfg)
 			break;
 
 		switch (c) {
+		/* Help, version and verbose. */
 		case 'h':
-			show_help();
-			exit(0);
+			teavpn_server_show_help(argv[0]);
+			goto exit_zero;
 		case 'V':
 			show_version();
-			exit(0);
+			goto exit_zero;
 		case 'v': {
 			uint8_t level = optarg ? (uint8_t)atoi(optarg) : 6u;
 			set_notice_level(level);
@@ -102,17 +200,14 @@ static int parse_argv(int argc, char *argv[], struct srv_cfg *cfg)
 			break;
 		}
 
-
-		/*
-		 * Sys config
-		 */
+		/* Sys */
 		case 'c':
 			sys->cfg_file = optarg;
 			break;
 		case 'd':
 			strncpy2(sys->data_dir, optarg, sizeof(sys->data_dir));
 			break;
-		case 't': {
+		case 't':  {
 			int tmp = atoi(optarg);
 			if (tmp <= 0) {
 				pr_err("Thread num argument must be greater than 0");
@@ -123,13 +218,32 @@ static int parse_argv(int argc, char *argv[], struct srv_cfg *cfg)
 		}
 
 
-		/*
-		 * Sock config
-		 */
-		case 's': {
+		/* Net. */
+		case 'D':
+			strncpy2(iface->dev, optarg, sizeof(iface->dev));
+			break;
+		case 'm':  {
+			int tmp = atoi(optarg);
+			if (tmp <= 0) {
+				pr_err("MTU must be greater than 0");
+				return -EINVAL;
+			}
+			iface->mtu = (uint16_t)tmp;
+			break;
+		}
+		case '4':
+			strncpy2(iface->iff.ipv4, optarg, sizeof(iface->iff.ipv4));
+			break;
+		case 'N':
+			strncpy2(iface->iff.ipv4_netmask, optarg,
+				 sizeof(iface->iff.ipv4_netmask));
+			break;
+
+		/* Socket. */
+		case 's':  {
 			char tmp[5], *p = tmp;
 
-			strncpy2(tmp, optarg, sizeof(tmp));
+			strncpy(tmp, optarg, sizeof(tmp));
 			tmp[sizeof(tmp) - 1] = '\0';
 
 			while (*p) {
@@ -148,7 +262,8 @@ static int parse_argv(int argc, char *argv[], struct srv_cfg *cfg)
 			break;
 		}
 		case 'H':
-			strncpy2(sock->bind_addr, optarg, sizeof(sock->bind_addr));
+			strncpy(sock->bind_addr, optarg, sizeof(sock->bind_addr));
+			sock->bind_addr[sizeof(sock->bind_addr) - 1] = '\0';
 			break;
 		case 'P':
 			sock->bind_port = (uint16_t)atoi(optarg);
@@ -156,19 +271,14 @@ static int parse_argv(int argc, char *argv[], struct srv_cfg *cfg)
 		case 'E':
 			sock->use_encryption = atoi(optarg) ? true : false;
 			break;
-
-		/*
-		 * Iface config
-		 */
-		case 'D':
-			strncpy2(iface->dev, optarg, sizeof(iface->dev));
-			break;
-		default:
-			return -EINVAL;
 		}
 	}
 
 	return 0;
+
+exit_zero:
+	exit(0);
+	__builtin_unreachable();
 }
 
 
@@ -326,13 +436,16 @@ int run_server(int argc, char *argv[])
 	struct srv_cfg cfg;
 	memset(&cfg, 0, sizeof(cfg));
 
+	set_default_config(&cfg);
 	ret = parse_argv(argc, argv, &cfg);
 	if (ret)
 		return -ret;
 
 	ret = parse_cfg_file(cfg.sys.cfg_file, &cfg);
-	if (ret)
-		return -ret;
+	if (ret) {
+		if (!(ret == -ENOENT && !strcmp(cfg.sys.cfg_file, d_srv_cfg_file)))
+			return -ret;
+	}
 
 
 #ifndef NDEBUG
