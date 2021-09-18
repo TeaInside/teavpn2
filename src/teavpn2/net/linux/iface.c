@@ -512,11 +512,11 @@ static __no_inline bool teavpn_iface_toggle(struct if_info *iface, bool up,
 
 		if (up) {
 			int tmp_ret;
-			char tmp[128];
-			snprintf(tmp, sizeof(tmp),
+			char __tmp[128];
+			snprintf(__tmp, sizeof(__tmp),
 				 "%s route delete %s/32 via %s >> /dev/null 2>&1",
 				 ip, eipv4_pub, erdgw);
-			tmp_ret = system(tmp);
+			tmp_ret = system(__tmp);
 			(void)tmp_ret;
 		}
 
