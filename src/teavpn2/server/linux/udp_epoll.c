@@ -976,7 +976,11 @@ static void *run_zombie_reaper_thread(void *arg)
 {
 	struct srv_udp_state *state = (struct srv_udp_state *)arg;
 
-	nice(40);
+	if (nice(40) < 0) {
+		int err = errno;
+		pr_warn("nice(40) = " PRERF, PREAR(err));
+	}
+
 	atomic_store(&state->zr.is_online, true);
 
 	state->zr.pkt = calloc_wrp(1ul, sizeof(*state->zr.pkt));
