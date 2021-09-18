@@ -955,7 +955,7 @@ static void zombie_reaper_do_scan(struct srv_udp_state *state)
 	struct udp_sess *sess, *sess_arr = state->sess_arr;
 
 	for (i = j = 0; i < max_conn; i++) {
-		time_t time_diff;
+		time_t time_diff = 0;
 
 		sess = &sess_arr[i];
 		if (!atomic_load(&sess->is_connected))
