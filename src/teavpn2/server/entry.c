@@ -54,7 +54,8 @@ static __maybe_unused void dump_server_cfg(struct srv_cfg *cfg)
 	PR_CFG(cfg->sys.thread_num, "%hhu");
 	PR_CFG(cfg->sys.verbose_level, "%hhu");
 	putchar('\n');
-	PR_CFG(cfg->sock.use_encryption, "%hhu");
+	printf("   cfg->sock.use_encryption = %hhu\n",
+		(uint8_t)cfg->sock.use_encryption);
 	printf("   cfg->sock.type = %s\n",
 		(cfg->sock.type == SOCK_TCP) ? "SOCK_TCP" :
 		((cfg->sock.type == SOCK_UDP) ? "SOCK_UDP" : "unknown"));

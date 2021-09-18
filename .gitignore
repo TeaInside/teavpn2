@@ -11,6 +11,7 @@
 *.gcov
 *.test
 *.tmp.c
+/*.patch
 /.deps/
 /teavpn2*
 /dump.txt

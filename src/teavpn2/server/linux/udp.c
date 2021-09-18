@@ -4,9 +4,6 @@
  */
 
 #include <unistd.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <teavpn2/server/common.h>
 #include <teavpn2/net/linux/iface.h>
 #include <teavpn2/server/linux/udp.h>
 
@@ -141,7 +138,7 @@ static int socket_setup(int udp_fd, struct srv_udp_state *state)
 	}
 
 
-	y = 1024 * 1024 * 200;
+	y = 1024 * 1024 * 50;
 	ret = setsockopt(udp_fd, SOL_SOCKET, SO_RCVBUFFORCE, py, len);
 	if (unlikely(ret)) {
 		lv = "SOL_SOCKET";
@@ -150,7 +147,7 @@ static int socket_setup(int udp_fd, struct srv_udp_state *state)
 	}
 
 
-	y = 1024 * 1024 * 50;
+	y = 1024 * 1024 * 100;
 	ret = setsockopt(udp_fd, SOL_SOCKET, SO_SNDBUFFORCE, py, len);
 	if (unlikely(ret)) {
 		lv = "SOL_SOCKET";
