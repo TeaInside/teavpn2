@@ -918,7 +918,7 @@ static void zr_send_reqsync(struct srv_udp_state *state, struct udp_sess *sess)
 	size_t send_len;
 	struct srv_pkt *srv_pkt = &state->zr.pkt->srv;
 
-	prl_notice(4, "[zombie reaper] Sending req sync to " PRWIU "...",
+	prl_notice(5, "[zombie reaper] Sending req sync to " PRWIU "...",
 		   W_IU(sess));
 
 	send_len = srv_pprep(srv_pkt, TSRV_PKT_REQSYNC, 0, 0);
