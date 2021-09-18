@@ -1081,10 +1081,28 @@ out:
 
 static bool wait_for_threads_to_exit(struct srv_udp_state *state)
 {
+	int ret;
 	uint8_t nn, i;
 	unsigned wait_c = 0;
 	uint16_t thread_on = 0, cc;
 	struct epl_thread *threads;
+
+	if (atomic_load(&state->zr.is_online)) {
+		ret = pthread_kill(state->zr.thread, SIGTERM);
+		if (unlikely(ret)) {
+			pr_err("pthread_kill(state->zr.thread, SIGTERM): "
+			       PRERF, PREAR(ret));
+		}
+
+		prl_notice(2, "Waiting for zombie reaper thread to exit...");
+
+		while (atomic_load(&state->zr.is_online)) {
+			usleep(100000);
+			if (wait_c++ > 1000)
+				return false;
+		}
+		wait_c = 0;
+	}
 
 	thread_on = atomic_load(&state->n_on_threads);
 	if (thread_on == 0)
@@ -1096,7 +1114,6 @@ static bool wait_for_threads_to_exit(struct srv_udp_state *state)
 	threads = state->epl_threads;
 	nn = state->cfg->sys.thread_num;
 	for (i = 0; i < nn; i++) {
-		int ret;
 
 		if (!atomic_load(&threads[i].is_online))
 			continue;
