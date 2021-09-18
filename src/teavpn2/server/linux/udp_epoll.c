@@ -260,6 +260,8 @@ static int close_udp_session(struct epl_thread *thread, struct udp_sess *sess)
 	size_t send_len;
 	struct srv_pkt *srv_pkt = &thread->pkt->srv;
 
+	prl_notice(2, "Closing connection from " PRWIU, W_IU(sess));
+
 	if (sess->ipv4_iff != 0)
 		del_ipv4_route_map(thread->state->ipv4_map, sess->ipv4_iff);
 
