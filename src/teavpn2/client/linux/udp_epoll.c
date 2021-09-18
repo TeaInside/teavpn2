@@ -172,7 +172,7 @@ static int init_epoll_thread_array(struct cli_udp_state *state)
 }
 
 
-static ssize_t do_send_to(int udp_fd, const void *pkt, size_t send_len)
+static ssize_t _do_send_to(int udp_fd, const void *pkt, size_t send_len)
 {
 	int ret;
 	ssize_t send_ret;
@@ -186,7 +186,7 @@ static ssize_t do_send_to(int udp_fd, const void *pkt, size_t send_len)
 }
 
 
-static ssize_t do_recv_from(int udp_fd, void *pkt, size_t recv_len)
+static ssize_t _do_recv_from(int udp_fd, void *pkt, size_t recv_len)
 {
 	int ret;
 	ssize_t recv_ret;
@@ -200,6 +200,27 @@ static ssize_t do_recv_from(int udp_fd, void *pkt, size_t recv_len)
 }
 
 
+static ssize_t do_send_to(struct epl_thread *thread, const void *buf,
+			  size_t pkt_len)
+{
+	int udp_fd = thread->state->udp_fd;
+	ssize_t send_ret = _do_send_to(udp_fd, buf, pkt_len);
+	pr_debug("[thread=%hu] sendto(udp_fd=%d) %zd bytes", thread->idx,
+		 udp_fd, send_ret);
+	return send_ret;
+}
+
+
+static ssize_t do_recv_from(struct epl_thread *thread, void *buf, size_t len)
+{
+	int udp_fd = thread->state->udp_fd;
+	ssize_t recv_ret = _do_recv_from(udp_fd, buf, len);
+	pr_debug("[thread=%hu] recvfrom(udp_fd=%d) %zd bytes", thread->idx,
+		 udp_fd, recv_ret);
+	return recv_ret;
+}
+
+
 static ssize_t recv_from_server(struct epl_thread *thread, int udp_fd)
 {
 	int ret;
@@ -207,7 +228,7 @@ static ssize_t recv_from_server(struct epl_thread *thread, int udp_fd)
 	char *buf = thread->pkt->__raw;
 	const size_t recv_size = sizeof(thread->pkt->cli.__raw);
 
-	recv_ret = do_recv_from(udp_fd, buf, recv_size);
+	recv_ret = do_recv_from(thread, buf, recv_size);
 	if (unlikely(recv_ret <= 0)) {
 
 		if (recv_ret == 0) {
@@ -226,8 +247,6 @@ static ssize_t recv_from_server(struct epl_thread *thread, int udp_fd)
 		return -ret;
 	}
 	thread->pkt->len = (size_t)recv_ret;
-
-	pr_debug("[thread=%hu] recvfrom() %zd bytes", thread->idx, recv_ret);
 	return recv_ret;
 }
 
@@ -247,6 +266,22 @@ static int handle_tun_data(struct epl_thread *thread)
 }
 
 
+static int handle_req_sync(struct epl_thread *thread)
+{
+	int ret = 0;
+	size_t send_len;
+	ssize_t send_ret;
+	struct cli_pkt *cli_pkt = &thread->pkt->cli;
+
+	send_len = cli_pprep(cli_pkt, TSRV_PKT_SYNC, 0, 0);
+	send_ret = do_send_to(thread, cli_pkt, send_len);
+	if (unlikely(send_ret < 0))
+		ret = (int)send_ret;
+
+	return ret;
+}
+
+
 static int _handle_event_udp(struct epl_thread *thread,
 			     struct cli_udp_state *state)
 {
@@ -259,7 +294,7 @@ static int _handle_event_udp(struct epl_thread *thread,
 	case TSRV_PKT_TUN_DATA:
 		return handle_tun_data(thread);
 	case TSRV_PKT_REQSYNC:
-		// return send_sync();
+		handle_req_sync(thread);
 		return 0;
 	case TSRV_PKT_SYNC:
 		return 0;
@@ -286,8 +321,7 @@ static int handle_event_udp(struct epl_thread *thread,
 }
 
 
-static int handle_event_tun(struct epl_thread *thread,
-			    struct cli_udp_state *state, int tun_fd)
+static int handle_event_tun(struct epl_thread *thread, int tun_fd)
 {
 	int ret;
 	size_t send_len;
@@ -309,7 +343,7 @@ static int handle_event_tun(struct epl_thread *thread,
 		 read_ret);
 
 	send_len = cli_pprep(cli_pkt, TCLI_PKT_TUN_DATA, (uint16_t)read_ret, 0);
-	send_ret = do_send_to(state->udp_fd, cli_pkt, send_len);
+	send_ret = do_send_to(thread, cli_pkt, send_len);
 	return (send_ret < 0) ? (int)send_ret : 0;
 }
 
@@ -320,11 +354,10 @@ static int handle_event(struct epl_thread *thread, struct cli_udp_state *state,
 	int ret = 0;
 	int fd = event->data.fd;
 
-	if (fd == thread->state->udp_fd) {
+	if (fd == thread->state->udp_fd)
 		ret = handle_event_udp(thread, state, fd);
-	} else {
-		ret = handle_event_tun(thread, state, fd);
-	}
+	else
+		ret = handle_event_tun(thread, fd);
 
 	return ret;
 }

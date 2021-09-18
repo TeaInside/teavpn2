@@ -204,11 +204,12 @@ static ssize_t send_to_client(struct epl_thread *thread,
 	int err;
 	ssize_t send_ret;
 	uint32_t emergency_count = 0;
+	int udp_fd = thread->state->udp_fd;
 	socklen_t len = sizeof(sess->addr);
 	struct sockaddr *dst_addr = (struct sockaddr *)&sess->addr;
 
 send_again:
-	send_ret = sendto(thread->state->udp_fd, buf, pkt_len, 0, dst_addr, len);
+	send_ret = sendto(udp_fd, buf, pkt_len, 0, dst_addr, len);
 	if (unlikely(send_ret <= 0)) {
 
 		if (send_ret == 0) {
@@ -242,8 +243,8 @@ send_again:
 		return (ssize_t)-err;
 	}
 
-	pr_debug("[thread=%hu] sendto() %zd bytes to " PRWIU, thread->idx,
-		 send_ret, W_IU(sess));
+	pr_debug("[thread=%hu] sendto(udp_fd=%d) %zd bytes to " PRWIU,
+		 thread->idx, udp_fd, send_ret, W_IU(sess));
 
 	if (unlikely(emergency_count > 0)) {
 		thread->state->in_emergency = false;
@@ -547,8 +548,8 @@ write_again:
 		return 0;
 	}
 
-	pr_debug("[thread=%u] TUN write(%d, buf, %hu) = %zd bytes", thread->idx,
-		 tun_fd, data_len, write_ret);
+	pr_debug("[thread=%u] write(tun_fd=%d) = %zd bytes", thread->idx, tun_fd,
+		 write_ret);
 
 	if (unlikely(emergency_count > 0)) {
 		thread->state->in_emergency = false;
@@ -556,6 +557,22 @@ write_again:
 	}
 
 	return 0;
+}
+
+
+static int handle_req_sync(struct epl_thread *thread, struct udp_sess *sess)
+{
+	int ret = 0;
+	size_t send_len;
+	ssize_t send_ret;
+	struct srv_pkt *srv_pkt = &thread->pkt->srv;
+
+	send_len = srv_pprep(srv_pkt, TSRV_PKT_SYNC, 0, 0);
+	send_ret = send_to_client(thread, sess, srv_pkt, send_len);
+	if (unlikely(send_ret < 0))
+		ret = (int)send_ret;
+
+	return ret;
 }
 
 
@@ -577,24 +594,14 @@ static int __handle_event_udp(struct epl_thread *thread,
 	case TCLI_PKT_TUN_DATA:
 		return handle_tun_data(thread, sess);
 	case TCLI_PKT_REQSYNC:
-		return 0;
+		return handle_req_sync(thread, sess);
 	case TCLI_PKT_SYNC:
+		udp_sess_tv_update(sess);
 		return 0;
 	case TCLI_PKT_CLOSE:
 		close_udp_session(thread, sess);
 		return 0;
 	default:
-
-		if (sess->is_authenticated) {
-			/*
-			 * If an authenticated client sends an invalid packet,
-			 * give it a chance to sync. It could be a bit network
-			 * problem.
-			 */
-			// return request_sync(thread, sess);
-			return 0;
-		}
-
 		/* Bad packet! */
 		return -EBADRQC;
 	}
@@ -631,6 +638,9 @@ static int _handle_event_udp(struct epl_thread *thread,
 		return ret;
 	}
 
+	if ((++sess->loop_c % 64) == 0)
+		udp_sess_tv_update(sess);
+
 	return 0;
 }
 
@@ -665,7 +675,8 @@ static ssize_t do_recv_from(struct epl_thread *thread,
 	}
 
 	thread->pkt->len = (size_t)recv_ret;
-	pr_debug("[thread=%hu] recvfrom() %zd bytes", thread->idx, recv_ret);
+	pr_debug("[thread=%hu] recvfrom(udp_fd=%d) %zd bytes", thread->idx,
+		 udp_fd, recv_ret);
 
 	return recv_ret;
 }
@@ -769,8 +780,8 @@ static int handle_event_tun(struct epl_thread *thread,
 	}
 
 	thread->pkt->len = (size_t)read_ret;
-	pr_debug("[thread=%hu] TUN read(%d, buf, %zu) = %zd bytes",
-		 thread->idx, tun_fd, read_size, read_ret);
+	pr_debug("[thread=%hu] read(tun_fd=%d) = %zd bytes",
+		 thread->idx, tun_fd, read_ret);
 
 	return route_packet(thread, state, read_ret);
 }

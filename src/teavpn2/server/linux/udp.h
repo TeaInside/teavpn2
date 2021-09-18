@@ -52,6 +52,11 @@ struct udp_sess {
 	uint16_t				idx;
 
 	/*
+	 * Loop counter.
+	 */
+	uint8_t					loop_c;
+
+	/*
 	 * Error counter.
 	 */
 	uint16_t				err_c;
@@ -259,6 +264,7 @@ static __always_inline void reset_udp_session(struct udp_sess *sess, uint16_t id
 	sess->src_addr = 0u;
 	sess->src_port = 0u;
 	sess->idx      = idx;
+	sess->loop_c   = 0u;
 	sess->err_c    = 0u;
 	sess->last_act = 0;
 	memset(&sess->addr, 0, sizeof(sess->addr));
