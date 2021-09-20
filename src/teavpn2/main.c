@@ -32,13 +32,18 @@ static void show_general_usage(const char *app)
 static int run_teavpn2(int argc, char *argv[])
 {
 	if (!strcmp("server", argv[1]))
-		return run_server(argc - 1, argv + 1);
+		return run_server(argc, argv);
 
 	if (!strcmp("client", argv[1]))
-		return run_client(argc - 1, argv + 1);
+		return run_client(argc, argv);
 
 	if (!strcmp("--version", argv[1]) || !strcmp("-V", argv[1])) {
 		show_version();
+		return 0;
+	}
+
+	if (!strcmp("--help", argv[1]) || !strcmp("-H", argv[1])) {
+		show_general_usage(argv[0]);
 		return 0;
 	}
 

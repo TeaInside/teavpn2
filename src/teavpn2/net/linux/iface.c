@@ -510,6 +510,17 @@ static __no_inline bool teavpn_iface_toggle(struct if_info *iface, bool up,
 		simple_esc_arg(erdgw, rdgw);
 		simple_esc_arg(eipv4_pub, ipv4_pub);
 
+		if (up) {
+			int tmp_ret;
+			char __tmp[128];
+			snprintf(__tmp, sizeof(__tmp),
+				 "%s route delete %s/32 via %s >> /dev/null 2>&1",
+				 ip, eipv4_pub, erdgw);
+			tmp_ret = system(__tmp);
+			(void)tmp_ret;
+		}
+
+
 		/* We have the real default gateway in rdgw */
 		EXEC_CMD(&ret, cbuf, ip, "route %s %s/32 via %s",
 			 (up ? "add" : "delete"), eipv4_pub, erdgw);
