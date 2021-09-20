@@ -420,10 +420,22 @@ int run_client(int argc, char *argv[])
 		return -ret;
 
 	ret = parse_cfg_file(cfg.sys.cfg_file, &cfg);
-	if (ret)
-		return -ret;
+	if (ret) {
+		if (!(ret == -ENOENT && !strcmp(cfg.sys.cfg_file, d_cli_cfg_file)))
+			return -ret;
+	}
 
 	dump_client_cfg(&cfg);
+
+	if (!*cfg.auth.username) {
+		pr_err("Username cannot be empty");
+		return EINVAL;
+	}
+
+	if (!*cfg.auth.password) {
+		pr_err("Password cannot be empty");
+		return EINVAL;
+	}
 
 	switch (cfg.sock.type) {
 	case SOCK_UDP:
