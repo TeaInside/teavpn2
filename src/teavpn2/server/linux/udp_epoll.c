@@ -640,8 +640,17 @@ static int _handle_event_udp(struct epl_thread *thread,
 		return ret;
 	}
 
-	if ((++sess->loop_c % 64) == 0)
+	if ((++sess->loop_c % 8) == 0) {
+		int i;
+		size_t send_len;
+		struct srv_pkt *srv_pkt = &thread->pkt->srv;
+
 		udp_sess_tv_update(sess);
+		send_len = srv_pprep(srv_pkt, TSRV_PKT_SYNC, 0, 0);
+		for (i = 0; i < 5; i++)
+			send_to_client(thread, sess, srv_pkt, send_len);
+		pr_debug("Syncing with " PRWIU, W_IU(sess));
+	}
 
 	return 0;
 }
