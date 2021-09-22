@@ -247,10 +247,6 @@ static ssize_t recv_from_server(struct epl_thread *thread, int udp_fd)
 		return -ret;
 	}
 	thread->pkt->len = (size_t)recv_ret;
-
-	if ((++thread->state->loop_c % 64) == 0)
-		get_unix_time(&thread->state->last_t);
-
 	return recv_ret;
 }
 
@@ -294,6 +290,7 @@ static int _handle_event_udp(struct epl_thread *thread,
 	case TSRV_PKT_TUN_DATA:
 		return handle_tun_data(thread);
 	case TSRV_PKT_REQSYNC:
+		get_unix_time(&thread->state->last_t);
 		return handle_req_sync(thread);
 	case TSRV_PKT_SYNC:
 		get_unix_time(&thread->state->last_t);
@@ -358,6 +355,9 @@ static int handle_event(struct epl_thread *thread, struct cli_udp_state *state,
 		ret = handle_event_udp(thread, state, fd);
 	else
 		ret = handle_event_tun(thread, fd);
+
+	if ((state->loop_c++ % UDP_LOOP_C_DEADLINE) == 0)
+		get_unix_time(&state->last_t);
 
 	return ret;
 }
@@ -530,7 +530,7 @@ static void _run_timer_thread(struct cli_udp_state *state)
 		return;
 	}
 
-	if (time_diff > (max_diff / 2))
+	if (time_diff > ((max_diff * 3) / 4))
 		tt_send_reqsync(state);
 }
 
@@ -547,7 +547,7 @@ static void *run_timer_thread(void *arg)
 	atomic_store(&state->tt.is_online, true);
 	state->timeout_disconnect = false;
 	while (likely(!state->stop)) {
-		sleep(5);
+		sleep(3);
 		_run_timer_thread(state);
 	}
 	atomic_store(&state->tt.is_online, false);
