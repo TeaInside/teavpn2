@@ -54,12 +54,20 @@ static inline void set_notice_level(uint8_t level)
 #define pr_emerg	__pr_emerg
 #define pr_dbg		__pr_debug
 #define pr_warn		__pr_warn
+
+#if defined(__x86_64__)
 #define panic(...)					\
 do {							\
 	__emerg_release_bug = true;			\
 	BUG_ON(1);					\
 	__panic(__FILE__, __LINE__, __VA_ARGS__);	\
 } while (0)
+#else
+#define panic(...)					\
+do {							\
+	__panic(__FILE__, __LINE__, __VA_ARGS__);	\
+} while (0)
+#endif
 
 
 #ifdef NDEBUG

@@ -4,8 +4,6 @@
  */
 
 #include <unistd.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
 #include <teavpn2/server/common.h>
 #include <teavpn2/net/linux/iface.h>
 #include <teavpn2/server/linux/udp.h>
@@ -206,11 +204,12 @@ static ssize_t send_to_client(struct epl_thread *thread,
 	int err;
 	ssize_t send_ret;
 	uint32_t emergency_count = 0;
+	int udp_fd = thread->state->udp_fd;
 	socklen_t len = sizeof(sess->addr);
 	struct sockaddr *dst_addr = (struct sockaddr *)&sess->addr;
 
 send_again:
-	send_ret = sendto(thread->state->udp_fd, buf, pkt_len, 0, dst_addr, len);
+	send_ret = sendto(udp_fd, buf, pkt_len, 0, dst_addr, len);
 	if (unlikely(send_ret <= 0)) {
 
 		if (send_ret == 0) {
@@ -244,8 +243,8 @@ send_again:
 		return (ssize_t)-err;
 	}
 
-	pr_debug("[thread=%hu] sendto() %zd bytes to " PRWIU, thread->idx,
-		 send_ret, W_IU(sess));
+	pr_debug("[thread=%hu] sendto(udp_fd=%d) %zd bytes to " PRWIU,
+		 thread->idx, udp_fd, send_ret, W_IU(sess));
 
 	if (unlikely(emergency_count > 0)) {
 		thread->state->in_emergency = false;
@@ -260,6 +259,8 @@ static int close_udp_session(struct epl_thread *thread, struct udp_sess *sess)
 {
 	size_t send_len;
 	struct srv_pkt *srv_pkt = &thread->pkt->srv;
+
+	prl_notice(2, "Closing connection from " PRWIU, W_IU(sess));
 
 	if (sess->ipv4_iff != 0)
 		del_ipv4_route_map(thread->state->ipv4_map, sess->ipv4_iff);
@@ -448,6 +449,19 @@ out:
 }
 
 
+static inline bool skip_session_creation(struct epl_thread *thread)
+{
+	struct cli_pkt *cli_pkt = &thread->pkt->cli;
+	uint8_t type = cli_pkt->type;
+	return (
+		type == TCLI_PKT_TUN_DATA	||
+		type == TCLI_PKT_REQSYNC	||
+		type == TCLI_PKT_SYNC		||
+		type == TCLI_PKT_CLOSE
+	);
+}
+
+
 static int handle_new_client(struct epl_thread *thread,
 			     struct srv_udp_state __maybe_unused *state,
 			     uint32_t addr, uint16_t port,
@@ -455,6 +469,9 @@ static int handle_new_client(struct epl_thread *thread,
 {
 	int ret;
 	struct udp_sess *sess;
+
+	if (skip_session_creation(thread))
+		return 0;
 
 	sess = get_udp_sess(thread->state, addr, port);
 	if (unlikely(!sess))
@@ -533,8 +550,8 @@ write_again:
 		return 0;
 	}
 
-	pr_debug("[thread=%u] TUN write(%d, buf, %hu) = %zd bytes", thread->idx,
-		 tun_fd, data_len, write_ret);
+	pr_debug("[thread=%u] write(tun_fd=%d) = %zd bytes", thread->idx, tun_fd,
+		 write_ret);
 
 	if (unlikely(emergency_count > 0)) {
 		thread->state->in_emergency = false;
@@ -542,6 +559,22 @@ write_again:
 	}
 
 	return 0;
+}
+
+
+static int handle_req_sync(struct epl_thread *thread, struct udp_sess *sess)
+{
+	int ret = 0;
+	size_t send_len;
+	ssize_t send_ret;
+	struct srv_pkt *srv_pkt = &thread->pkt->srv;
+
+	send_len = srv_pprep(srv_pkt, TSRV_PKT_SYNC, 0, 0);
+	send_ret = send_to_client(thread, sess, srv_pkt, send_len);
+	if (unlikely(send_ret < 0))
+		ret = (int)send_ret;
+
+	return ret;
 }
 
 
@@ -563,26 +596,14 @@ static int __handle_event_udp(struct epl_thread *thread,
 	case TCLI_PKT_TUN_DATA:
 		return handle_tun_data(thread, sess);
 	case TCLI_PKT_REQSYNC:
-		return 0;
+		return handle_req_sync(thread, sess);
 	case TCLI_PKT_SYNC:
+		udp_sess_tv_update(sess);
 		return 0;
-	case TCLI_PKT_PING:
-		return sess->is_authenticated ? 0 : -EBADRQC;
 	case TCLI_PKT_CLOSE:
 		close_udp_session(thread, sess);
 		return 0;
 	default:
-
-		if (sess->is_authenticated) {
-			/*
-			 * If an authenticated client sends an invalid packet,
-			 * give it a chance to sync. It could be a bit network
-			 * problem.
-			 */
-			// return request_sync(thread, sess);
-			return 0;
-		}
-
 		/* Bad packet! */
 		return -EBADRQC;
 	}
@@ -619,13 +640,25 @@ static int _handle_event_udp(struct epl_thread *thread,
 		return ret;
 	}
 
+	if ((++sess->loop_c % 8) == 0) {
+		int i;
+		size_t send_len;
+		struct srv_pkt *srv_pkt = &thread->pkt->srv;
+
+		udp_sess_tv_update(sess);
+		send_len = srv_pprep(srv_pkt, TSRV_PKT_SYNC, 0, 0);
+		for (i = 0; i < 5; i++)
+			send_to_client(thread, sess, srv_pkt, send_len);
+		pr_debug("Syncing with " PRWIU, W_IU(sess));
+	}
+
 	return 0;
 }
 
 
-static ssize_t do_recvfrom(struct epl_thread *thread,
-			   int udp_fd, struct sockaddr_in *saddr,
-			   socklen_t *saddr_len)
+static ssize_t do_recv_from(struct epl_thread *thread,
+			    int udp_fd, struct sockaddr_in *saddr,
+			    socklen_t *saddr_len)
 {
 	int ret;
 	ssize_t recv_ret;
@@ -653,7 +686,8 @@ static ssize_t do_recvfrom(struct epl_thread *thread,
 	}
 
 	thread->pkt->len = (size_t)recv_ret;
-	pr_debug("[thread=%hu] recvfrom() %zd bytes", thread->idx, recv_ret);
+	pr_debug("[thread=%hu] recvfrom(udp_fd=%d) %zd bytes", thread->idx,
+		 udp_fd, recv_ret);
 
 	return recv_ret;
 }
@@ -666,7 +700,7 @@ static int handle_event_udp(struct epl_thread *thread,
 	struct sockaddr_in saddr;
 	socklen_t saddr_len = sizeof(saddr);
 
-	recv_ret = do_recvfrom(thread, udp_fd, &saddr, &saddr_len);
+	recv_ret = do_recv_from(thread, udp_fd, &saddr, &saddr_len);
 	if (unlikely(recv_ret <= 0))
 		return (int)recv_ret;
 
@@ -757,8 +791,8 @@ static int handle_event_tun(struct epl_thread *thread,
 	}
 
 	thread->pkt->len = (size_t)read_ret;
-	pr_debug("[thread=%hu] TUN read(%d, buf, %zu) = %zd bytes",
-		 thread->idx, tun_fd, read_size, read_ret);
+	pr_debug("[thread=%hu] read(tun_fd=%d) = %zd bytes",
+		 thread->idx, tun_fd, read_ret);
 
 	return route_packet(thread, state, read_ret);
 }
@@ -770,11 +804,10 @@ static int handle_event(struct epl_thread *thread, struct srv_udp_state *state,
 	int ret = 0;
 	int fd = event->data.fd;
 
-	if (fd == thread->state->udp_fd) {
+	if (fd == thread->state->udp_fd)
 		ret = handle_event_udp(thread, state, fd);
-	} else {
+	else
 		ret = handle_event_tun(thread, state, fd);
-	}
 
 	return ret;
 }
@@ -872,6 +905,134 @@ static __no_inline void *_run_event_loop(void *thread_p)
 }
 
 
+static int zr_close_sess(struct srv_udp_state *state, struct udp_sess *sess)
+{
+	size_t send_len;
+	struct srv_pkt *srv_pkt = &state->zr.pkt->srv;
+
+	prl_notice(2, "[zombie reaper] Closing session " PRWIU " (no activity)...",
+		   W_IU(sess));
+
+	if (sess->ipv4_iff != 0)
+		del_ipv4_route_map(state->ipv4_map, sess->ipv4_iff);
+
+	send_len = srv_pprep(srv_pkt, TSRV_PKT_CLOSE, 0, 0);
+	send_to_client(&state->epl_threads[0], sess, srv_pkt, send_len);
+	return put_udp_session(state, sess);
+}
+
+
+static void zr_send_reqsync(struct srv_udp_state *state, struct udp_sess *sess)
+{
+	size_t send_len;
+	struct srv_pkt *srv_pkt = &state->zr.pkt->srv;
+
+	prl_notice(5, "[zombie reaper] Sending req sync to " PRWIU "...",
+		   W_IU(sess));
+
+	send_len = srv_pprep(srv_pkt, TSRV_PKT_REQSYNC, 0, 0);
+	send_to_client(&state->epl_threads[0], sess, srv_pkt, send_len);
+}
+
+
+static void zr_chk_auth(struct srv_udp_state *state, struct udp_sess *sess,
+			time_t time_diff)
+{
+	const time_t max_diff = UDP_SESS_TIMEOUT_AUTH;
+
+	if (time_diff > max_diff) {
+		zr_close_sess(state, sess);
+		return;
+	}
+
+	if (time_diff > (max_diff / 2))
+		zr_send_reqsync(state, sess);
+}
+
+
+static void zr_chk_no_auth(struct srv_udp_state *state, struct udp_sess *sess,
+			   time_t time_diff)
+{
+	const time_t max_diff = UDP_SESS_TIMEOUT_NO_AUTH;
+
+	if (time_diff > max_diff)
+		zr_close_sess(state, sess);
+}
+
+
+static void zombie_reaper_do_scan(struct srv_udp_state *state)
+{
+	uint16_t i, j, max_conn = state->cfg->sock.max_conn;
+	struct udp_sess *sess, *sess_arr = state->sess_arr;
+
+	for (i = j = 0; i < max_conn; i++) {
+		time_t time_diff = 0;
+
+		sess = &sess_arr[i];
+		if (!atomic_load(&sess->is_connected))
+			continue;
+
+		get_unix_time(&time_diff);
+		time_diff -= sess->last_act;
+
+		if (sess->is_authenticated)
+			zr_chk_auth(state, sess, time_diff);
+		else
+			zr_chk_no_auth(state, sess, time_diff);
+	}
+}
+
+
+static void *run_zombie_reaper_thread(void *arg)
+{
+	struct srv_udp_state *state = (struct srv_udp_state *)arg;
+
+	if (nice(40) < 0) {
+		int err = errno;
+		pr_warn("nice(40) = " PRERF, PREAR(err));
+	}
+
+	atomic_store(&state->zr.is_online, true);
+
+	state->zr.pkt = calloc_wrp(1ul, sizeof(*state->zr.pkt));
+	if (unlikely(!state->zr.pkt))
+		state->stop = true;
+
+	while (likely(!state->stop)) {
+		sleep(5);
+		pr_debug("[zombie reaper] Scanning...");
+		zombie_reaper_do_scan(state);
+	}
+
+	al64_free(state->zr.pkt);
+	atomic_store(&state->zr.is_online, false);
+	return NULL;
+}
+
+
+static int spawn_zombie_reaper(struct srv_udp_state *state)
+{
+	int ret;
+	pthread_t *zr_thread = &state->zr.thread;
+
+	prl_notice(2, "Spawning zombie reaper thread...");
+	ret = pthread_create(zr_thread, NULL, run_zombie_reaper_thread, state);
+	if (unlikely(ret)) {
+		pr_err("pthread_create(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+
+	ret = pthread_detach(*zr_thread);
+	if (unlikely(ret)) {
+		pr_err("pthread_detach(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+
+	pthread_setname_np(*zr_thread, "zombie-reaper");
+	return ret;
+}
+
+
 static int spawn_thread(struct epl_thread *thread)
 {
 	int ret;
@@ -900,8 +1061,14 @@ static int run_event_loop(struct srv_udp_state *state)
 	uint8_t i, nn = state->cfg->sys.thread_num;
 	struct epl_thread *threads = state->epl_threads;
 
+	ret = spawn_zombie_reaper(state);
+	if (unlikely(ret))
+		goto out;
+
 	atomic_store(&state->n_on_threads, 0);
 	for (i = 1; i < nn; i++) {
+		char buf[sizeof("tun-worker-xxxx")];
+
 		/*
 		 * Spawn the subthreads.
 		 * 
@@ -911,6 +1078,9 @@ static int run_event_loop(struct srv_udp_state *state)
 		ret = spawn_thread(&threads[i]);
 		if (unlikely(ret))
 			goto out;
+
+		snprintf(buf, sizeof(buf), "tun-worker-%hhu", i);
+		pthread_setname_np(threads[i].thread, buf);
 	}
 
 	ret_p = _run_event_loop(&threads[0]);
@@ -922,10 +1092,28 @@ out:
 
 static bool wait_for_threads_to_exit(struct srv_udp_state *state)
 {
+	int ret;
 	uint8_t nn, i;
 	unsigned wait_c = 0;
 	uint16_t thread_on = 0, cc;
 	struct epl_thread *threads;
+
+	if (atomic_load(&state->zr.is_online)) {
+		ret = pthread_kill(state->zr.thread, SIGTERM);
+		if (unlikely(ret)) {
+			pr_err("pthread_kill(state->zr.thread, SIGTERM): "
+			       PRERF, PREAR(ret));
+		}
+
+		prl_notice(2, "Waiting for zombie reaper thread to exit...");
+
+		while (atomic_load(&state->zr.is_online)) {
+			usleep(100000);
+			if (wait_c++ > 1000)
+				return false;
+		}
+		wait_c = 0;
+	}
 
 	thread_on = atomic_load(&state->n_on_threads);
 	if (thread_on == 0)
@@ -937,7 +1125,6 @@ static bool wait_for_threads_to_exit(struct srv_udp_state *state)
 	threads = state->epl_threads;
 	nn = state->cfg->sys.thread_num;
 	for (i = 0; i < nn; i++) {
-		int ret;
 
 		if (!atomic_load(&threads[i].is_online))
 			continue;

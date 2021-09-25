@@ -16,8 +16,6 @@
 #define TCLI_PKT_REQSYNC		3u
 #define TCLI_PKT_SYNC			4u
 #define TCLI_PKT_CLOSE			5u
-#define TCLI_PKT_PING			6u
-
 
 #define TSRV_PKT_HANDSHAKE		0u
 #define TSRV_PKT_AUTH_OK		1u
@@ -25,6 +23,7 @@
 #define TSRV_PKT_REQSYNC		3u
 #define TSRV_PKT_SYNC			4u
 #define TSRV_PKT_CLOSE			5u
+
 #define TSRV_PKT_HANDSHAKE_REJECT	6u
 #define TSRV_PKT_AUTH_REJECT		7u
 

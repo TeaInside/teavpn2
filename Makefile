@@ -85,6 +85,11 @@ VGFLAGS	:= \
 	--error-exitcode=99 \
 	-s
 
+ifeq ($(LTO),1)
+	LDFLAGS += -flto
+	C_CXX_FLAGS += -flto
+endif
+
 
 ifndef DEFAULT_OPTIMIZATION
 	DEFAULT_OPTIMIZATION := -O0

@@ -11,14 +11,20 @@
 #include <sys/time.h>
 #include <sys/epoll.h>
 #include <stdatomic.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <teavpn2/mutex.h>
 #include <teavpn2/stack.h>
 #include <teavpn2/packet.h>
-#include <teavpn2/client/common.h>
+#include <teavpn2/server/common.h>
 
 
 #define EPOLL_EVT_ARR_NUM 3u
 #define UDP_SESS_MAX_ERR 5u
+
+/* Timeout in seconds. */
+#define UDP_SESS_TIMEOUT_NO_AUTH	5
+#define UDP_SESS_TIMEOUT_AUTH		10
 
 /*
  * UDP session struct.
@@ -44,6 +50,11 @@ struct udp_sess {
 	 * instance.
 	 */
 	uint16_t				idx;
+
+	/*
+	 * Loop counter.
+	 */
+	uint8_t					loop_c;
 
 	/*
 	 * Error counter.
@@ -113,6 +124,13 @@ struct epl_thread {
 	_Atomic(bool)				is_online;
 
 	uint16_t				idx;
+	struct sc_pkt				*pkt;
+};
+
+
+struct zombie_reaper {
+	_Atomic(bool)				is_online;
+	pthread_t				thread;
 	struct sc_pkt				*pkt;
 };
 
@@ -200,6 +218,12 @@ struct srv_udp_state {
 	 */
 	uint16_t				(*ipv4_map)[0x100];
 
+	/*
+	 * Zombie reaper.
+	 */
+	struct zombie_reaper			zr;
+
+
 	union {
 		/*
 		 * For epoll event loop.
@@ -240,6 +264,7 @@ static __always_inline void reset_udp_session(struct udp_sess *sess, uint16_t id
 	sess->src_addr = 0u;
 	sess->src_port = 0u;
 	sess->idx      = idx;
+	sess->loop_c   = 0u;
 	sess->err_c    = 0u;
 	sess->last_act = 0;
 	memset(&sess->addr, 0, sizeof(sess->addr));

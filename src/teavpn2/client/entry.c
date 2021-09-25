@@ -13,32 +13,75 @@ struct cfg_parse_ctx {
 	struct cli_cfg	*cfg;
 };
 
-/* TODO: Write my own getopt function. */
+
+/*
+ * Default config.
+ */
+static const uint16_t d_cli_server_port = 44444;
+static const char d_cli_dev[] = "tcli0";
+static const char d_cli_cfg_file[] = "/etc/teavpn2/client.ini";
+static const uint8_t d_num_of_threads = 2;
 
 
-static const struct option long_options[] = {
-	{"help",        no_argument,       0, 'h'},
-	{"version",     no_argument,       0, 'V'},
-	{"verbose",     optional_argument, 0, 'v'},
-
-	{"config",      required_argument, 0, 'c'},
-	{"data-dir",    required_argument, 0, 'd'},
-	{"thread",      required_argument, 0, 't'},
-
-	{"sock-type",   required_argument, 0, 's'},
-	{"server-addr", required_argument, 0, 'H'},
-	{"server-port", required_argument, 0, 'P'},
-	{"encrypt",     no_argument,       0, 'E'},
-
-	{"dev",         required_argument, 0, 'D'},
-
-	{0, 0, 0, 0}
-};
-static const char short_opt[] = "hVv::c:d:t:s:H:P:ED:";
-
-
-static void show_help(void)
+static void set_default_config(struct cli_cfg *cfg)
 {
+	struct cli_cfg_sys *sys = &cfg->sys;
+	struct cli_cfg_sock *sock = &cfg->sock;
+	struct cli_cfg_iface *iface = &cfg->iface;
+
+	sys->cfg_file = d_cli_cfg_file;
+	sys->thread_num = d_num_of_threads;
+
+	strncpy2(iface->dev, d_cli_dev, sizeof(iface->dev));
+	strncpy2(iface->iff.dev, d_cli_dev, sizeof(iface->iff.dev));
+
+	sock->server_port = d_cli_server_port;
+}
+
+
+static void teavpn_client_show_help(const char *app)
+{
+	printf("Usage: %s server [options]\n", app);
+
+	printf("\n");
+	printf("TeaVPN Client Application\n");
+	printf("\n");
+	printf("Available options:\n");
+	printf("  -h, --help\t\t\tShow this help message.\n");
+	printf("  -V, --version\t\t\tShow application version.\n");
+	printf("  -c, --config=FILE\t\tSet config file (default: %s).\n",
+	       d_cli_cfg_file);
+	printf("  -d, --data-dir=DIR\t\tSet data directory.\n");
+	printf("  -t, --thread=N\t\tSet number of threads (default: %hhu).\n",
+	       d_num_of_threads);
+
+	printf("\n");
+	printf("[Config options]\n");
+	printf(" Virtual network interface:\n");
+	printf("  -D, --dev=DEV\t\t\tSet virtual network interface name"
+	       " (default: %s).\n", d_cli_dev);
+
+
+	printf("\n");
+	printf(" Socket:\n");
+	printf("  -s, --sock-type=TYPE\t\tSet socket type (must be tcp or udp)"
+	       " (default: tcp).\n");
+	printf("  -H, --server-addr=IP\t\tSet server address.\n");
+	printf("  -P, --server-port=PORT\tSet server port (default: %d).\n",
+	       d_cli_server_port);
+
+	printf("\n");
+	printf(" Auth:\n");
+	printf("  -u, --username\t\tSet username.\n");
+	printf("  -p, --password=PASSWORD\tSet Password.\n");
+
+	printf("\n");
+	printf("\n");
+	printf("For bug reporting, please open an issue on the GitHub repository."
+	       "\n");
+	printf("GitHub repository: https://github.com/TeaInside/teavpn2\n");
+	printf("\n");
+	printf("This software is licensed under GNU GPL-v2 license.\n");
 }
 
 
@@ -54,7 +97,8 @@ static void dump_client_cfg(struct cli_cfg *cfg)
 	PR_CFG(cfg->sys.thread_num, "%hhu");
 	PR_CFG(cfg->sys.verbose_level, "%hhu");
 	putchar('\n');
-	PR_CFG(cfg->sock.use_encryption, "%hhu");
+	printf("   cfg->sock.use_encryption = %hhu\n",
+		(uint8_t)cfg->sock.use_encryption);
 	printf("   cfg->sock.type = %s\n",
 		(cfg->sock.type == SOCK_TCP) ? "SOCK_TCP" :
 		((cfg->sock.type == SOCK_UDP) ? "SOCK_UDP" : "unknown"));
@@ -67,23 +111,49 @@ static void dump_client_cfg(struct cli_cfg *cfg)
 }
 
 
+static const struct option long_options[] = {
+	{"help",        no_argument,       0, 'h'},
+	{"version",     no_argument,       0, 'V'},
+	{"verbose",     optional_argument, 0, 'v'},
+
+	{"config",      required_argument, 0, 'c'},
+	{"data-dir",    required_argument, 0, 'd'},
+	{"thread",      required_argument, 0, 't'},
+
+	{"dev",         required_argument, 0, 'D'},
+
+	{"sock-type",   required_argument, 0, 's'},
+	{"server-addr", required_argument, 0, 'H'},
+	{"server-port", required_argument, 0, 'P'},
+	{"encrypt",     no_argument,       0, 'E'},
+
+	{"username",    required_argument, 0, 'u'},
+	{"password",    required_argument, 0, 'p'},
+
+	{0, 0, 0, 0}
+};
+static const char short_opt[] = "hVv::c:d:t:D:s:H:P:Eu:p:";
+
+
 static int parse_argv(int argc, char *argv[], struct cli_cfg *cfg)
 {
 	int c;
 	struct cli_cfg_sys *sys = &cfg->sys;
 	struct cli_cfg_sock *sock = &cfg->sock;
 	struct cli_cfg_iface *iface = &cfg->iface;
+	struct cli_cfg_auth *auth = &cfg->auth;
 
 	while (1) {
 		int opt_idx = 0;
 
-		c = getopt_long(argc, argv, short_opt, long_options, &opt_idx);
+		c = getopt_long(argc - 1, argv + 1, short_opt, long_options,
+				&opt_idx);
 		if (c == -1)
 			break;
 
 		switch (c) {
 		case 'h':
-			show_help();
+			teavpn_client_show_help(argv[0]);
 			exit(0);
 		case 'V':
 			show_version();
@@ -103,8 +173,7 @@ static int parse_argv(int argc, char *argv[], struct cli_cfg *cfg)
 			sys->cfg_file = optarg;
 			break;
 		case 'd':
-			strncpy(sys->data_dir, optarg, sizeof(sys->data_dir));
-			sys->data_dir[sizeof(sys->data_dir) - 1] = '\0';
+			strncpy2(sys->data_dir, optarg, sizeof(sys->data_dir));
 			break;
 		case 't': {
 			int tmp = atoi(optarg);
@@ -142,8 +211,7 @@ static int parse_argv(int argc, char *argv[], struct cli_cfg *cfg)
 			break;
 		}
 		case 'H':
-			strncpy(sock->server_addr, optarg, sizeof(sock->server_addr));
-			sock->server_addr[sizeof(sock->server_addr) - 1] = '\0';
+			strncpy2(sock->server_addr, optarg, sizeof(sock->server_addr));
 			break;
 		case 'P':
 			sock->server_port = (uint16_t)atoi(optarg);
@@ -156,8 +224,15 @@ static int parse_argv(int argc, char *argv[], struct cli_cfg *cfg)
 		 * Iface config
 		 */
 		case 'D':
-			strncpy(iface->dev, optarg, sizeof(iface->dev));
-			iface->dev[sizeof(iface->dev) - 1] = '\0';
+			strncpy2(iface->dev, optarg, sizeof(iface->dev));
+			break;
+
+		/* Auth */
+		case 'u':
+			strncpy2(auth->username, optarg, sizeof(auth->username));
+			break;
+		case 'p':
+			strncpy2(auth->password, optarg, sizeof(auth->password));
 			break;
 		default:
 			return -EINVAL;
@@ -337,16 +412,30 @@ int run_client(int argc, char *argv[])
 	struct cli_cfg cfg;
 	memset(&cfg, 0, sizeof(cfg));
 
+	set_default_config(&cfg);
+
 	pr_debug("Parsing argv...");
 	ret = parse_argv(argc, argv, &cfg);
 	if (ret)
 		return -ret;
 
 	ret = parse_cfg_file(cfg.sys.cfg_file, &cfg);
-	if (ret)
-		return -ret;
+	if (ret) {
+		if (!(ret == -ENOENT && !strcmp(cfg.sys.cfg_file, d_cli_cfg_file)))
+			return -ret;
+	}
 
 	dump_client_cfg(&cfg);
+
+	if (!*cfg.auth.username) {
+		pr_err("Username cannot be empty");
+		return EINVAL;
+	}
+
+	if (!*cfg.auth.password) {
+		pr_err("Password cannot be empty");
+		return EINVAL;
+	}
 
 	switch (cfg.sock.type) {
 	case SOCK_UDP:
