@@ -171,13 +171,87 @@ static int init_epoll_thread_array(struct srv_udp_state *state)
 }
 
 
+static ssize_t _send_to_client(struct srv_udp_state *state,
+			       const void *buf, size_t pkt_len,
+			       struct sockaddr *dst_addr)
+{
+	int err;
+	ssize_t send_ret;
+	int udp_fd = state->udp_fd;
+	const socklen_t addr_len = sizeof(struct sockaddr_in);
+
+	if (unlikely(pkt_len == 0))
+		return 0;
+
+	send_ret = sendto(udp_fd, buf, pkt_len, 0, dst_addr, addr_len);
+	if (unlikely(send_ret <= 0)) {
+
+		if (send_ret == 0) {
+			pr_err("UDP socket disconnected!");
+			return -ENETDOWN;
+		}
+
+		err = errno;
+		if (err != EAGAIN)
+			pr_err("sendto(): " PRERF, PREAR(err));
+
+		return -err;
+	}
+
+	return send_ret;
+}
+
+
+static ssize_t send_to_client(struct epl_thread *thread,
+			      struct udp_sess *sess, const void *buf,
+			      size_t pkt_len)
+{
+	ssize_t send_ret;
+	struct sockaddr *dst_addr = (struct sockaddr *)&sess->addr;
+
+	send_ret = _send_to_client(thread->state, buf, pkt_len, dst_addr);
+	if (unlikely(send_ret < 0)) {
+
+		if (send_ret == -EAGAIN) {
+			thread->state->in_emergency = true;
+			/* TODO: Do poll(), wait for the fd to be ready. */
+		}
+
+		pr_err("[thread=%hhu] send_to_client() " PRWIU " " PRERF,
+		       thread->idx, W_IU(sess), PREAR((int)send_ret));
+		return send_ret;
+	}
+
+	pr_debug("[thread=%hhu] sendto(udp_fd=%d) %zd bytes to " PRWIU,
+		 thread->idx, thread->state->udp_fd, send_ret, W_IU(sess));
+
+	return send_ret;
+}
+
+
+static int close_udp_session(struct epl_thread *thread, struct udp_sess *sess)
+{
+	size_t send_len;
+	struct srv_pkt *srv_pkt = &thread->pkt->srv;
+
+	prl_notice(2, "Closing connection from " PRWIU "...", W_IU(sess));
+
+	if (sess->ipv4_iff != 0)
+		del_ipv4_route_map(thread->state->ipv4_map, sess->ipv4_iff);
+
+	send_len = srv_pprep(srv_pkt, TSRV_PKT_CLOSE, 0, 0);
+	send_to_client(thread, sess, srv_pkt, send_len);
+	return delete_udp_session(thread->state, sess);
+}
+
+
 static ssize_t _do_recv_from(int udp_fd, char *buf, size_t recv_size,
 			     struct sockaddr *src_addr, socklen_t *saddr_len)
 {
 	int ret;
 	ssize_t recv_ret;
 
-	if (recv_size == 0)
+	if (unlikely(recv_size == 0))
 		return 0;
 
 	recv_ret = recvfrom(udp_fd, buf, recv_size, 0, src_addr, saddr_len);
@@ -213,9 +287,7 @@ static ssize_t do_recv_from(struct epl_thread *thread,
 	if (unlikely(recv_ret < 0))
 		return recv_ret;
 
-#if 0
 	thread->pkt->len = (size_t)recv_ret;
-#endif
 	pr_debug("[thread=%hu] recvfrom(udp_fd=%d) %zd bytes", thread->idx,
 		 udp_fd, recv_ret);
 
@@ -223,10 +295,113 @@ static ssize_t do_recv_from(struct epl_thread *thread,
 }
 
 
+static int send_handshake(struct epl_thread *thread, struct udp_sess *sess)
+{
+	size_t send_len;
+	ssize_t send_ret;
+	struct srv_pkt *srv_pkt = &thread->pkt->srv;
+
+	send_len = srv_pprep_handshake(srv_pkt);
+	send_ret = send_to_client(thread, sess, srv_pkt, send_len);
+	if (unlikely(send_ret < 0))
+		return (int)send_ret;
+
+	return 0;
+}
+
+
+static int send_handshake_reject(struct epl_thread *thread,
+				 struct udp_sess *sess, uint8_t reason,
+				 const char *msg)
+{
+	size_t send_len;
+	ssize_t send_ret;
+	struct srv_pkt *srv_pkt = &thread->pkt->srv;
+
+	send_len = srv_pprep_handshake_reject(srv_pkt, reason, msg);
+	send_ret = send_to_client(thread, sess, srv_pkt, send_len);
+	if (unlikely(send_ret < 0))
+		return (int)send_ret;
+
+	return 0;
+}
+
+
 static int handle_client_handshake(struct epl_thread *thread,
 				   struct udp_sess *sess)
 {
-	return 0;
+	int ret;
+	char rej_msg[512];
+	uint8_t rej_reason = 0;
+	size_t len = thread->pkt->len;
+	struct cli_pkt *cli_pkt = &thread->pkt->cli;
+	struct pkt_handshake *hand = &cli_pkt->handshake;
+	struct teavpn2_version *cur = &hand->cur;
+	const size_t expected_len = sizeof(*hand);
+
+	if (len < (PKT_MIN_LEN + expected_len)) {
+		snprintf(rej_msg, sizeof(rej_msg),
+			 "Invalid handshake packet length from " PRWIU
+			 " (expected at least %zu bytes; actual = %zu bytes)",
+			 W_IU(sess), (PKT_MIN_LEN + expected_len), len);
+
+		ret = -EBADMSG;
+		rej_reason = TSRV_HREJECT_INVALID;
+		goto reject;
+	}
+
+	cli_pkt->len = ntohs(cli_pkt->len);
+	if (((size_t)cli_pkt->len) != expected_len) {
+		snprintf(rej_msg, sizeof(rej_msg),
+			 "Invalid handshake packet length from " PRWIU
+			 " (expected = %zu; actual: cli_pkt->len = %hu)",
+			 W_IU(sess), expected_len, cli_pkt->len);
+
+		ret = -EBADMSG;
+		rej_reason = TSRV_HREJECT_INVALID;
+		goto reject;
+	}
+
+	if (cli_pkt->type != TCLI_PKT_HANDSHAKE) {
+		snprintf(rej_msg, sizeof(rej_msg),
+			 "Invalid first packet type from " PRWIU
+			 " (expected = TCLI_PKT_HANDSHAKE (%u); actual = %hhu)",
+			 W_IU(sess), TCLI_PKT_HANDSHAKE, cli_pkt->type);
+
+		ret = -EBADMSG;
+		rej_reason = TSRV_HREJECT_INVALID;
+		goto reject;
+	}
+
+	/* For printing safety! */
+	cur->extra[sizeof(cur->extra) - 1] = '\0';
+	prl_notice(2, "New connection from " PRWIU
+		   " (client version: TeaVPN2-%hhu.%hhu.%hhu%s)",
+		   W_IU(sess),
+		   cur->ver,
+		   cur->patch_lvl,
+		   cur->sub_lvl,
+		   cur->extra);
+
+	if ((cur->ver != VERSION) || (cur->patch_lvl != PATCHLEVEL) ||
+	    (cur->sub_lvl != SUBLEVEL)) {
+		ret = -EBADMSG;
+		rej_reason = TSRV_HREJECT_VERSION_NOT_SUPPORTED;
+		prl_notice(2, "Dropping connection from " PRWIU
+			   " (version not supported)...", W_IU(sess));
+		goto reject;
+	}
+
+
+	/*
+	 * Good handshake packet, send back.
+	 */
+	return send_handshake(thread, sess);
+
+reject:
+	prl_notice(2, "%s", rej_msg);
+	send_handshake_reject(thread, sess, rej_reason, rej_msg);
+	return ret;
 }
 
 
@@ -239,15 +414,12 @@ static int _handle_new_client(struct epl_thread *thread, struct udp_sess *sess)
 		/*
 		 * Handshake failed, drop the client session!
 		 */
-#if 0
 		close_udp_session(thread, sess);
-#endif
 
 		/*
-		 * If handle_client_handshake() returns -EBADMSG,
-		 * this means, the client has sent bad handshake
-		 * packet. So it's not our fault, so return 0 as
-		 * we are still fine.
+		 * If the handle_client_handshake() returns -EBADMSG,
+		 * this means the client has sent bad handshake packet.
+		 * It's not our fault, so return 0 as we are still fine.
 		 */
 		ret = (ret == -EBADMSG) ? 0 : ret;
 	}
@@ -296,9 +468,30 @@ static int handle_new_client(struct epl_thread *thread, uint32_t addr,
 }
 
 
+/*
+ * Handle request sync from client.
+ * If the client requests a sync, we (the server) send a sync packet.
+ */
+static int handle_clpkt_reqsync(struct epl_thread *thread, struct udp_sess *sess)
+{
+	int ret = 0;
+	size_t send_len;
+	ssize_t send_ret;
+	struct srv_pkt *srv_pkt = &thread->pkt->srv;
+
+	send_len = srv_pprep_sync(srv_pkt);
+	send_ret = send_to_client(thread, sess, srv_pkt, send_len);
+	if (unlikely(send_ret < 0))
+		ret = (int)send_ret;
+
+	return ret;
+}
+
+
 static int __handle_event_from_udp(struct epl_thread *thread,
 				   struct udp_sess *sess)
 {
+	int ret = 0;
 	struct cli_pkt *cli_pkt = &thread->pkt->cli;
 
 	switch (cli_pkt->type) {
@@ -307,7 +500,11 @@ static int __handle_event_from_udp(struct epl_thread *thread,
 	case TCLI_PKT_AUTH:
 	case TCLI_PKT_TUN_DATA:
 	case TCLI_PKT_REQSYNC:
+		ret = handle_clpkt_reqsync(thread, sess);
+		fallthrough;
 	case TCLI_PKT_SYNC:
+		udp_sess_update_last_act(sess);
+		return ret;
 	case TCLI_PKT_CLOSE:
 		return 0;
 	default:
