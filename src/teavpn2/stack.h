@@ -20,17 +20,13 @@ struct bt_stack {
 static inline int32_t bt_stack_pop(struct bt_stack *stk)
 {
 	int32_t ret;
-	uint16_t sp;
+	uint16_t sp = stk->sp;
 
-	if (BUG_ON(stk == NULL))
-		return -1;
-
-	sp = stk->sp;
-	if (unlikely(sp == stk->max_sp))
+	if (sp == stk->max_sp)
 		/* Stack is empty. */
 		return -1;
 
-	ret = (int32_t)stk->arr[++sp];
+	ret = (int32_t)stk->arr[sp++];
 	stk->sp = sp;
 	return ret;
 }
@@ -38,13 +34,9 @@ static inline int32_t bt_stack_pop(struct bt_stack *stk)
 
 static inline int32_t bt_stack_push(struct bt_stack *stk, uint16_t n)
 {
-	uint16_t sp;
+	uint16_t sp = stk->sp;
 
-	if (BUG_ON(stk == NULL))
-		return -1;
-
-	sp = stk->sp;
-	if (unlikely(sp == 0))
+	if (sp == 0)
 		/* Stack is full. */
 		return -1;
 
@@ -76,6 +68,56 @@ static inline void bt_stack_destroy(struct bt_stack *stk)
 {
 	if (stk->arr)
 		al64_free(stk->arr);
+}
+
+
+static inline void bt_stack_test(struct bt_stack *stk)
+{
+	uint16_t i, j, capacity = stk->max_sp;
+
+	assert(capacity > 0);
+
+	for (i = 0; i < capacity; i++) {
+		/*
+		 * Test stack is empty.
+		 */
+		assert(bt_stack_pop(stk) == -1);
+		__asm__ volatile("":"+r"(stk)::"memory");
+	}
+
+	for (i = 0; i < capacity; i++) {
+		/*
+		 * Test fill the stack.
+		 */
+		assert(bt_stack_push(stk, i) == (int32_t)i);
+		__asm__ volatile("":"+r"(stk)::"memory");
+	}
+
+	for (i = 0; i < capacity; i++) {
+		/*
+		 * Test stack is full.
+		 */
+		assert(bt_stack_push(stk, i) == -1);
+		__asm__ volatile("":"+r"(stk)::"memory");
+	}
+
+	for (j = capacity - 1, i = 0; i < capacity; i++, j--) {
+		/*
+		 * Test stack is FIFO.
+		 */
+		assert(bt_stack_pop(stk) == j);
+		__asm__ volatile("":"+r"(stk)::"memory");
+	}
+
+	for (i = 0; i < capacity; i++) {
+		/*
+		 * Test stack is empty.
+		 */
+		assert(bt_stack_pop(stk) == -1);
+		__asm__ volatile("":"+r"(stk)::"memory");
+	}
+
+	pr_debug("bt_stack_test success!");
 }
 
 
