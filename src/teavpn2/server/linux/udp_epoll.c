@@ -540,7 +540,7 @@ static ssize_t _handle_clpkt_tun_data(struct epl_thread *thread, int tun_fd)
 {
 	uint16_t data_len;
 	ssize_t write_ret;
-	
+
 	struct srv_pkt *srv_pkt = &thread->pkt->srv;
 
 	data_len = ntohs(srv_pkt->len);
@@ -702,8 +702,8 @@ static int route_ipv4_packet(struct epl_thread *thread, __be32 dst_addr,
 	struct udp_sess *dst_sess;
 
 	find = get_ipv4_route_map(thread->state->ipv4_map, dst_addr);
-	if (unlikely(find == -1))
-		return -ENOENT;
+	if (unlikely(find < 0))
+		return (int)find;
 
 	idx      = (uint16_t)find;
 	dst_sess = &sess_arr[idx];
