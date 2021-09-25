@@ -588,7 +588,7 @@ static int handle_clpkt_tun_data(struct epl_thread *thread,
 		return (int)write_ret;
 	}
 
-	pr_debug("[thread=%hhu] write(tun_fd=%d) %zd bytes", thread->idx,
+	pr_debug("[thread=%hu] write(tun_fd=%d) %zd bytes", thread->idx,
 		 tun_fd, write_ret);
 
 	return 0;
