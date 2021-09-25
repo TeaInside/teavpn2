@@ -171,6 +171,261 @@ static int init_epoll_thread_array(struct srv_udp_state *state)
 }
 
 
+static ssize_t _do_recv_from(int udp_fd, char *buf, size_t recv_size,
+			     struct sockaddr *src_addr, socklen_t *saddr_len)
+{
+	int ret;
+	ssize_t recv_ret;
+
+	if (recv_size == 0)
+		return 0;
+
+	recv_ret = recvfrom(udp_fd, buf, recv_size, 0, src_addr, saddr_len);
+	if (unlikely(recv_ret < 0)) {
+
+		if (recv_ret == 0) {
+			pr_err("UDP socket has been disconnected!");
+			return -ENETDOWN;
+		}
+
+		ret = errno;
+		if (ret == EAGAIN)
+			return 0;
+
+		pr_err("recvfrom(udp_fd) (fd=%d): " PRERF, udp_fd, PREAR(ret));
+		return (ssize_t)-ret;
+	}
+
+	return recv_ret;
+}
+
+
+static ssize_t do_recv_from(struct epl_thread *thread,
+			    int udp_fd, struct sockaddr_in *saddr,
+			    socklen_t *saddr_len)
+{
+	ssize_t recv_ret;
+	char *buf = thread->pkt->__raw;
+	struct sockaddr *src_addr = (struct sockaddr *)saddr;
+	const size_t recv_size = sizeof(thread->pkt->cli.__raw);
+
+	recv_ret = _do_recv_from(udp_fd, buf, recv_size, src_addr, saddr_len);
+	if (unlikely(recv_ret < 0))
+		return recv_ret;
+
+#if 0
+	thread->pkt->len = (size_t)recv_ret;
+#endif
+	pr_debug("[thread=%hu] recvfrom(udp_fd=%d) %zd bytes", thread->idx,
+		 udp_fd, recv_ret);
+
+	return recv_ret;
+}
+
+
+static int handle_client_handshake(struct epl_thread *thread,
+				   struct udp_sess *sess)
+{
+	return 0;
+}
+
+
+static int _handle_new_client(struct epl_thread *thread, struct udp_sess *sess)
+{
+	int ret = 0;
+
+	ret = handle_client_handshake(thread, sess);
+	if (ret) {
+		/*
+		 * Handshake failed, drop the client session!
+		 */
+#if 0
+		close_udp_session(thread, sess);
+#endif
+
+		/*
+		 * If handle_client_handshake() returns -EBADMSG,
+		 * this means, the client has sent bad handshake
+		 * packet. So it's not our fault, so return 0 as
+		 * we are still fine.
+		 */
+		ret = (ret == -EBADMSG) ? 0 : ret;
+	}
+
+	return ret;
+}
+
+
+static inline bool skip_session_creation(struct epl_thread *thread)
+{
+	struct cli_pkt *cli_pkt = &thread->pkt->cli;
+	uint8_t type = cli_pkt->type;
+	return (
+		type == TCLI_PKT_TUN_DATA	||
+		type == TCLI_PKT_REQSYNC	||
+		type == TCLI_PKT_SYNC		||
+		type == TCLI_PKT_CLOSE
+	);
+}
+
+
+static int handle_new_client(struct epl_thread *thread, uint32_t addr,
+			     uint16_t port, struct sockaddr_in *saddr)
+{
+	int ret;
+	struct udp_sess *sess;
+
+	if (skip_session_creation(thread))
+		return 0;
+
+	sess = create_udp_sess(thread->state, addr, port);
+	if (unlikely(!sess)) {
+		ret = errno;
+		return (ret == EAGAIN) ? 0 : -ret;
+	}
+	sess->addr = *saddr;
+
+#ifndef NDEBUG
+	/*
+	 * After calling create_udp_sess(), we must have it
+	 * on the map. If we don't have, then it's a bug!
+	 */
+	BUG_ON(lookup_udp_sess(thread->state, addr, port) != sess);
+#endif
+	return _handle_new_client(thread, sess);
+}
+
+
+static int __handle_event_from_udp(struct epl_thread *thread,
+				   struct udp_sess *sess)
+{
+	struct cli_pkt *cli_pkt = &thread->pkt->cli;
+
+	switch (cli_pkt->type) {
+	case TCLI_PKT_HANDSHAKE:
+		return 0;
+	case TCLI_PKT_AUTH:
+	case TCLI_PKT_TUN_DATA:
+	case TCLI_PKT_REQSYNC:
+	case TCLI_PKT_SYNC:
+	case TCLI_PKT_CLOSE:
+		return 0;
+	default:
+		/* Bad packet! */
+		return -EBADMSG;
+	}
+}
+
+
+static int _handle_event_from_udp(struct epl_thread *thread,
+				  struct sockaddr_in *saddr)
+{
+	int ret;
+	uint32_t addr;
+	uint16_t port;
+	struct udp_sess *sess;
+
+	port = ntohs(saddr->sin_port);
+	addr = ntohl(saddr->sin_addr.s_addr);
+	sess = lookup_udp_sess(thread->state, addr, port);
+	if (unlikely(!sess)) {
+		/*
+		 * It's a new client because we don't find it on
+		 * the session map.
+		 */
+		return handle_new_client(thread, addr, port, saddr);
+	}
+
+	ret = __handle_event_from_udp(thread, sess);
+	if (unlikely(ret < 0)) {
+		if (ret == -EBADMSG) {
+			/* TODO: Close connection */
+			return 0;
+		}
+		return ret;
+	}
+	return ret;
+}
+
+
+static int handle_event_from_udp(struct epl_thread *thread, int udp_fd)
+{
+	ssize_t recv_ret;
+	struct sockaddr_in saddr;
+	socklen_t saddr_len = sizeof(saddr);
+
+	recv_ret = do_recv_from(thread, udp_fd, &saddr, &saddr_len);
+	if (unlikely(recv_ret <= 0))
+		return (int)recv_ret;
+
+	return _handle_event_from_udp(thread, &saddr);
+}
+
+
+static int handle_event_from_tun(struct epl_thread *thread, int tun_fd)
+{
+	return 0;
+}
+
+
+static int handle_event(struct epl_thread *thread, struct epoll_event *event)
+{
+	int ret = 0;
+	int fd = event->data.fd;
+
+	if (fd == thread->state->udp_fd)
+		ret = handle_event_from_udp(thread, fd);
+	else
+		ret = handle_event_from_tun(thread, fd);
+
+	return ret;
+}
+
+
+static int do_epoll_wait(struct epl_thread *thread)
+{
+	int ret;
+	int epoll_fd = thread->epoll_fd;
+	int timeout = thread->epoll_timeout;
+	struct epoll_event *events = thread->events;
+
+	ret = epoll_wait(epoll_fd, events, EPOLL_EVT_ARR_NUM, timeout);
+	if (unlikely(ret < 0)) {
+		ret = errno;
+
+		if (likely(ret == EINTR)) {
+			prl_notice(2, "[thread=%hu] Interrupted!", thread->idx);
+			return 0;
+		}
+
+		pr_err("[thread=%u] epoll_wait(): " PRERF, thread->idx,
+		       PREAR(ret));
+		return -ret;
+	}
+	return ret;
+}
+
+
+static int __run_event_loop(struct epl_thread *thread)
+{
+	int i, ret, tmp;
+	struct epoll_event *events;
+
+	ret = do_epoll_wait(thread);
+	if (unlikely(ret < 0))
+		return ret;
+
+	events = thread->events;
+	for (i = 0; i < ret; i++) {
+		tmp = handle_event(thread, &events[i]);
+		if (unlikely(tmp))
+			return tmp;
+	}
+
+	return 0;
+}
+
+
 static __no_inline void *_run_event_loop(void *thread_p)
 {
 	int ret = 0;
@@ -184,7 +439,9 @@ static __no_inline void *_run_event_loop(void *thread_p)
 	atomic_fetch_add(&state->n_on_threads, 1);
 
 	while (likely(!state->stop)) {
-		sleep(2);
+		ret = __run_event_loop(thread);
+		if (unlikely(ret))
+			break;
 	}
 
 	atomic_store(&thread->is_online, false);

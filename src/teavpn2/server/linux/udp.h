@@ -290,6 +290,10 @@ struct srv_udp_state {
 
 extern int teavpn2_udp_server_epoll(struct srv_udp_state *state);
 extern int teavpn2_udp_server_io_uring(struct srv_udp_state *state);
+extern struct udp_sess *create_udp_sess(struct srv_udp_state *state,
+					uint32_t addr, uint16_t port);
+extern struct udp_sess *lookup_udp_sess(struct srv_udp_state *state,
+					uint32_t addr, uint16_t port);
 
 
 static __always_inline void reset_udp_session(struct udp_sess *sess, uint16_t idx)
