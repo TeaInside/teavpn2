@@ -33,6 +33,10 @@
 #define EPOLL_TIMEOUT		10000
 
 
+#define UDP_SESS_TIMEOUT_AUTH		180
+#define UDP_SESS_TIMEOUT_NO_AUTH	30
+
+
 /*
  * UDP session struct.
  *

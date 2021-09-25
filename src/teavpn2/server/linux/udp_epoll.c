@@ -217,12 +217,12 @@ static ssize_t send_to_client(struct epl_thread *thread,
 			/* TODO: Do poll(), wait for the fd to be ready. */
 		}
 
-		pr_err("[thread=%hhu] send_to_client() " PRWIU " " PRERF,
+		pr_err("[thread=%hu] send_to_client() " PRWIU " " PRERF,
 		       thread->idx, W_IU(sess), PREAR((int)send_ret));
 		return send_ret;
 	}
 
-	pr_debug("[thread=%hhu] sendto(udp_fd=%d) %zd bytes to " PRWIU,
+	pr_debug("[thread=%hu] sendto(udp_fd=%d) %zd bytes to " PRWIU,
 		 thread->idx, thread->state->udp_fd, send_ret, W_IU(sess));
 
 	return send_ret;
@@ -581,7 +581,7 @@ static int handle_clpkt_tun_data(struct epl_thread *thread,
 			return 0;
 		}
 
-		pr_err("[thread=%hhu] write(tun_fd=%d) data from " PRWIU " "
+		pr_err("[thread=%hu] write(tun_fd=%d) data from " PRWIU " "
 		       PRERF, thread->idx, tun_fd, W_IU(sess),
 		       PREAR((int)write_ret));
 
@@ -670,6 +670,17 @@ static int _handle_event_from_udp(struct epl_thread *thread,
 			return 0;
 		}
 	}
+
+	if ((++sess->loop_c % 32) == 0) {
+		size_t send_len;
+		struct srv_pkt *srv_pkt = &thread->pkt->srv;
+
+		udp_sess_update_last_act(sess);
+		send_len = srv_pprep_sync(srv_pkt);
+		send_to_client(thread, sess, srv_pkt, send_len);
+		pr_debug("Syncing with " PRWIU, W_IU(sess));
+	}
+
 	return ret;
 }
 
@@ -877,6 +888,61 @@ static __no_inline void *_run_event_loop(void *thread_p)
 }
 
 
+static void zr_send_reqsync(struct srv_udp_state *state, struct udp_sess *sess)
+{
+	size_t send_len;
+	struct srv_pkt *srv_pkt = &state->zr.pkt->srv;
+
+	prl_notice(5, "[zombie reaper] Sending req sync to " PRWIU "...",
+		   W_IU(sess));
+
+	send_len = srv_pprep(srv_pkt, TSRV_PKT_REQSYNC, 0, 0);
+	send_to_client(&state->epl_threads[0], sess, srv_pkt, send_len);
+}
+
+
+static int zr_close_sess(struct srv_udp_state *state, struct udp_sess *sess)
+{
+	size_t send_len;
+	struct srv_pkt *srv_pkt = &state->zr.pkt->srv;
+
+	prl_notice(2, "[zombie reaper] Closing session " PRWIU " (no activity)...",
+		   W_IU(sess));
+
+	if (sess->ipv4_iff != 0)
+		del_ipv4_route_map(state->ipv4_map, sess->ipv4_iff);
+
+	send_len = srv_pprep(srv_pkt, TSRV_PKT_CLOSE, 0, 0);
+	send_to_client(&state->epl_threads[0], sess, srv_pkt, send_len);
+	return delete_udp_session(state, sess);
+}
+
+
+static void zr_chk_auth(struct srv_udp_state *state, struct udp_sess *sess,
+			time_t time_diff)
+{
+	const time_t max_diff = UDP_SESS_TIMEOUT_AUTH;
+
+	if (time_diff > max_diff) {
+		zr_close_sess(state, sess);
+		return;
+	}
+
+	if (time_diff > ((max_diff * 3) / 4))
+		zr_send_reqsync(state, sess);
+}
+
+
+static void zr_chk_no_auth(struct srv_udp_state *state, struct udp_sess *sess,
+			   time_t time_diff)
+{
+	const time_t max_diff = UDP_SESS_TIMEOUT_NO_AUTH;
+
+	if (time_diff > max_diff)
+		zr_close_sess(state, sess);
+}
+
+
 static void zombie_reaper_do_scan(struct srv_udp_state *state)
 {
 	uint16_t i, j, max_conn = state->cfg->sock.max_conn;
@@ -886,16 +952,16 @@ static void zombie_reaper_do_scan(struct srv_udp_state *state)
 		time_t time_diff = 0;
 
 		sess = &sess_arr[i];
-		if (!sess->is_connected)
+		if (!atomic_load(&sess->is_connected))
 			continue;
 
 		get_unix_time(&time_diff);
 		time_diff -= sess->last_act;
 
-		// if (sess->is_authenticated)
-		// 	zr_chk_auth(state, sess, time_diff);
-		// else
-		// 	zr_chk_no_auth(state, sess, time_diff);
+		if (sess->is_authenticated)
+			zr_chk_auth(state, sess, time_diff);
+		else
+			zr_chk_no_auth(state, sess, time_diff);
 	}
 }
 
@@ -1121,10 +1187,10 @@ static void close_client_sess(struct srv_udp_state *state)
 
 	for (i = 0; i < max_conn; i++) {
 
-		if (!sess_arr[i].is_connected)
+		if (!atomic_load(&sess_arr[i].is_connected))
 			continue;
 
-		// close_udp_session(&state->epl_threads[0], &sess_arr[i]);
+		close_udp_session(&state->epl_threads[0], &sess_arr[i]);
 	}
 }
 
