@@ -468,6 +468,133 @@ static int handle_new_client(struct epl_thread *thread, uint32_t addr,
 }
 
 
+static int handle_clpkt_auth(struct epl_thread *thread, struct udp_sess *sess)
+{
+	int ret = 0;
+	size_t send_len;
+	ssize_t send_ret;
+	struct srv_pkt *srv_pkt = &thread->pkt->srv;
+	struct cli_pkt *cli_pkt = &thread->pkt->cli;
+	struct pkt_auth_res *auth_res = &srv_pkt->auth_res;
+	struct pkt_auth auth = cli_pkt->auth;
+
+	if (sess->is_authenticated) {
+		/*
+		 * If the client has already been authenticated,
+		 * this will be a no-op.
+		 */
+		return 0;
+	}
+
+	/* Ensure we have NUL terminated credentials. */
+	auth.username[sizeof(auth.username) - 1] = '\0';
+	auth.password[sizeof(auth.password) - 1] = '\0';
+
+	prl_notice(2, "Got auth packet from (user: %s) " PRWIU, auth.username,
+		   W_IU(sess));
+
+	if (!teavpn2_auth(auth.username, auth.password, &auth_res->iff))
+		goto reject;
+
+	/*
+	 * Auth ok!
+	 */
+	send_len = srv_pprep(srv_pkt, TSRV_PKT_AUTH_OK, sizeof(*auth_res), 0);
+	send_ret = send_to_client(thread, sess, srv_pkt, send_len);
+	if (unlikely(send_ret < 0)) {
+		ret = (int)send_ret;
+		close_udp_session(thread, sess);
+		goto out;
+	}
+
+	sess->ipv4_iff = ntohl(inet_addr(auth_res->iff.ipv4));
+	add_ipv4_route_map(thread->state->ipv4_map, sess->ipv4_iff, sess->idx);
+
+	sess->is_authenticated = true;
+	strncpy2(sess->username, auth.username, sizeof(sess->username));
+	goto out;
+
+
+reject:
+	/* 
+	 * Auth fails!
+	 */
+	send_len = srv_pprep(srv_pkt, TSRV_PKT_AUTH_REJECT, 0, 0);
+	send_ret = send_to_client(thread, sess, srv_pkt, send_len);
+	if (unlikely(send_ret < 0))
+		ret = (int)send_ret;
+
+	prl_notice(2, "Authentication failed for username \"%s\" " PRWIU,
+		   auth.username, W_IU(sess));
+	close_udp_session(thread, sess);
+
+
+out:
+	memset(auth.password, 0, sizeof(auth.password));
+	__asm__ volatile("":"+m"(auth.password)::"memory");
+	return ret;
+}
+
+
+static ssize_t _handle_clpkt_tun_data(struct epl_thread *thread, int tun_fd)
+{
+	uint16_t data_len;
+	ssize_t write_ret;
+	
+	struct srv_pkt *srv_pkt = &thread->pkt->srv;
+
+	data_len = ntohs(srv_pkt->len);
+	if (unlikely(data_len == 0))
+		return 0;
+
+	write_ret = write(tun_fd, srv_pkt->__raw, (size_t)data_len);
+	if (unlikely(write_ret <= 0)) {
+		int err;
+
+		if (write_ret == 0) {
+			pr_err("write() to TUN fd returned zero");
+			return -ENETDOWN;
+		}
+
+		err = errno;
+		if (err != EAGAIN)
+			pr_err("write(): " PRERF, PREAR(err));
+
+		return (ssize_t)-err;
+	}
+	return write_ret;
+}
+
+
+static int handle_clpkt_tun_data(struct epl_thread *thread,
+				 struct udp_sess *sess)
+{	
+	ssize_t write_ret;
+	int tun_fd = thread->state->tun_fds[0];
+
+	write_ret = _handle_clpkt_tun_data(thread, tun_fd);
+	if (unlikely(write_ret < 0)) {
+
+		if (write_ret == -EAGAIN) {
+			/* TODO: Do poll(), wait for the fd to be ready. */
+			// thread->state->in_emergency = true;
+			return 0;
+		}
+
+		pr_err("[thread=%hhu] write(tun_fd=%d) data from " PRWIU " "
+		       PRERF, thread->idx, tun_fd, W_IU(sess),
+		       PREAR((int)write_ret));
+
+		return (int)write_ret;
+	}
+
+	pr_debug("[thread=%hhu] write(tun_fd=%d) %zd bytes", thread->idx,
+		 tun_fd, write_ret);
+
+	return 0;
+}
+
+
 /*
  * Handle request sync from client.
  * If the client requests a sync, we (the server) send a sync packet.
@@ -498,7 +625,9 @@ static int __handle_event_from_udp(struct epl_thread *thread,
 	case TCLI_PKT_HANDSHAKE:
 		return 0;
 	case TCLI_PKT_AUTH:
+		return handle_clpkt_auth(thread, sess);
 	case TCLI_PKT_TUN_DATA:
+		return handle_clpkt_tun_data(thread, sess);
 	case TCLI_PKT_REQSYNC:
 		ret = handle_clpkt_reqsync(thread, sess);
 		fallthrough;
@@ -506,6 +635,7 @@ static int __handle_event_from_udp(struct epl_thread *thread,
 		udp_sess_update_last_act(sess);
 		return ret;
 	case TCLI_PKT_CLOSE:
+		close_udp_session(thread, sess);
 		return 0;
 	default:
 		/* Bad packet! */
@@ -558,9 +688,110 @@ static int handle_event_from_udp(struct epl_thread *thread, int udp_fd)
 }
 
 
+/*
+ * return -ENOENT if cannot find the destination.
+ * return 0 if it finds the destination.
+ * return -errno if it errors.
+ */
+static int route_ipv4_packet(struct epl_thread *thread, __be32 dst_addr,
+			     struct udp_sess *sess_arr, size_t send_len)
+{
+	uint16_t idx;
+	int32_t find;
+	ssize_t send_ret;
+	struct udp_sess *dst_sess;
+
+	find = get_ipv4_route_map(thread->state->ipv4_map, dst_addr);
+	if (unlikely(find == -1))
+		return -ENOENT;
+
+	idx      = (uint16_t)find;
+	dst_sess = &sess_arr[idx];
+	send_ret = send_to_client(thread, dst_sess, &thread->pkt->srv, send_len);
+	if (send_ret < 0)
+		return (int)send_ret;
+
+	return 0;
+}
+
+
+static int broadcast_packet(struct epl_thread *thread, size_t send_len)
+{
+	struct srv_pkt *srv_pkt = &thread->pkt->srv;
+	struct srv_udp_state *state = thread->state;
+	struct udp_sess	*sess_arr = state->sess_arr;
+	uint16_t i, max_conn = state->cfg->sock.max_conn;
+
+	/*
+	 * Broadcast this to all authenticated clients.
+	 */
+	for (i = 0; i < max_conn; i++) {
+		ssize_t send_ret;
+		struct udp_sess	*sess = &sess_arr[i];
+
+		if (!sess->is_authenticated)
+			continue;
+
+		send_ret = send_to_client(thread, sess, srv_pkt, send_len);
+		if (send_ret < 0)
+			return (int)send_ret;
+	}
+
+	return 0;
+}
+
+
+static int _route_packet(struct epl_thread *thread, size_t send_len)
+{
+	struct srv_pkt *srv_pkt = &thread->pkt->srv;
+	struct iphdr *iphdr = &srv_pkt->tun_data.iphdr;
+
+	if (likely(iphdr->version == 4)) {
+		int ret;
+		uint32_t dst_addr = ntohl(iphdr->daddr);
+		struct udp_sess	*sess_arr = thread->state->sess_arr;
+
+		ret = route_ipv4_packet(thread, dst_addr, sess_arr, send_len);
+		if (ret != -ENOENT)
+			return ret;
+	}
+
+	return broadcast_packet(thread, send_len);
+}
+
+
+static int route_packet(struct epl_thread *thread, ssize_t len)
+{
+	size_t send_len;
+	struct srv_pkt *srv_pkt = &thread->pkt->srv;
+
+	send_len = srv_pprep(srv_pkt, TSRV_PKT_TUN_DATA, (uint16_t)len, 0);
+	return _route_packet(thread, send_len);
+}
+
+
 static int handle_event_from_tun(struct epl_thread *thread, int tun_fd)
 {
-	return 0;
+	int ret;
+	ssize_t read_ret;
+	char *buf = thread->pkt->srv.__raw;
+	const size_t read_size = sizeof(thread->pkt->srv.__raw);
+
+	read_ret = read(tun_fd, buf, read_size);
+	if (unlikely(read_ret < 0)) {
+		ret = errno;
+		if (likely(ret == EAGAIN))
+			return 0;
+
+		pr_err("read(tun_fd) (fd=%d): " PRERF, tun_fd, PREAR(ret));
+		return -ret;
+	}
+
+	thread->pkt->len = (size_t)read_ret;
+	pr_debug("[thread=%hu] read(tun_fd=%d) = %zd bytes", thread->idx,
+		 tun_fd, read_ret);
+
+	return route_packet(thread, read_ret);
 }
 
 
