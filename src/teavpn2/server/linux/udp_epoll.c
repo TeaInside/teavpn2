@@ -342,7 +342,6 @@ static int _handle_event_from_udp(struct epl_thread *thread,
 			/* TODO: Close connection */
 			return 0;
 		}
-		return ret;
 	}
 	return ret;
 }
