@@ -166,6 +166,30 @@ static int init_epoll_thread_array(struct srv_udp_state *state)
 
 		threads[i].pkt = pkt;
 	}
+
+	return 0;
+}
+
+
+static __no_inline void *_run_event_loop(void *thread_p)
+{
+	int ret = 0;
+	struct epl_thread *thread;
+	struct srv_udp_state *state;
+
+	thread = (struct epl_thread *)thread_p;
+	state  = thread->state;
+
+	atomic_store(&thread->is_online, true);
+	atomic_fetch_add(&state->n_on_threads, 1);
+
+	while (likely(!state->stop)) {
+		sleep(2);
+	}
+
+	atomic_store(&thread->is_online, false);
+	atomic_fetch_sub(&state->n_on_threads, 1);
+	return (void *)((intptr_t)ret);
 }
 
 
@@ -219,25 +243,50 @@ static void *run_zombie_reaper_thread(void *arg)
 }
 
 
-static int spawn_zombie_reaper(struct srv_udp_state *state)
+static int spawn_zombie_reaper_thread(struct srv_udp_state *state)
 {
 	int ret;
-	pthread_t *zr_thread = &state->zr.thread;
+	pthread_t *tr = &state->zr.thread;
 
 	prl_notice(2, "Spawning zombie reaper thread...");
-	ret = pthread_create(zr_thread, NULL, run_zombie_reaper_thread, state);
+	ret = pthread_create(tr, NULL, run_zombie_reaper_thread, state);
 	if (unlikely(ret)) {
 		pr_err("pthread_create(): " PRERF, PREAR(ret));
 		return -ret;
 	}
 
-	ret = pthread_detach(*zr_thread);
+	ret = pthread_detach(*tr);
 	if (unlikely(ret)) {
 		pr_err("pthread_detach(): " PRERF, PREAR(ret));
 		return -ret;
 	}
 
-	pthread_setname_np(*zr_thread, "zombie-reaper");
+	pthread_setname_np(*tr, "zombie-reaper");
+	return ret;
+}
+
+
+static int spawn_tun_worker_thread(struct epl_thread *thread)
+{
+	int ret;
+	char buf[sizeof("tun-worker-xxxx")];
+	pthread_t *tr = &thread->thread;
+
+	prl_notice(2, "Spawning thread %u...", thread->idx);
+	ret = pthread_create(tr, NULL, _run_event_loop, thread);
+	if (unlikely(ret)) {
+		pr_err("pthread_create(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+
+	ret = pthread_detach(*tr);
+	if (unlikely(ret)) {
+		pr_err("pthread_detach(): " PRERF, PREAR(ret));
+		return -ret;
+	}
+
+	snprintf(buf, sizeof(buf), "tun-worker-%hu", thread->idx);
+	pthread_setname_np(*tr, buf);
 	return ret;
 }
 
@@ -249,12 +298,112 @@ static int run_event_loop(struct srv_udp_state *state)
 	uint8_t i, nn = state->cfg->sys.thread_num;
 	struct epl_thread *threads = state->epl_threads;
 
-	ret = spawn_zombie_reaper(state);
+	ret = spawn_zombie_reaper_thread(state);
 	if (unlikely(ret))
 		goto out;
 
+	atomic_store(&state->n_on_threads, 0);
+	for (i = 1; i < nn; i++) {
+		/*
+		 * Spawn the subthreads.
+		 * 
+		 * For @i == 0, it is the main thread,
+		 * don't spawn pthread for it.
+		 */
+		ret = spawn_tun_worker_thread(&threads[i]);
+		if (unlikely(ret))
+			goto out;
+	}
+
+	ret_p = _run_event_loop(&threads[0]);
+	ret   = (int)((intptr_t)ret_p);
 out:
 	return ret;
+}
+
+
+static bool wait_for_zombie_reaper_thread_to_exit(struct srv_udp_state *state)
+{
+	int ret;
+	unsigned wait_c = 0;
+
+	if (atomic_load(&state->zr.is_online)) {
+		ret = pthread_kill(state->zr.thread, SIGTERM);
+		if (unlikely(ret)) {
+			pr_err("pthread_kill(state->zr.thread, SIGTERM): "
+			       PRERF, PREAR(ret));
+		}
+
+		prl_notice(2, "Waiting for zombie reaper thread to exit...");
+
+		while (atomic_load(&state->zr.is_online)) {
+			usleep(100000);
+			if (wait_c++ > 1000)
+				return false;
+		}
+	}
+
+	return true;
+}
+
+
+static bool wait_for_tun_worker_threads_to_exit(struct srv_udp_state *state)
+{
+	int ret;
+	uint8_t nn, i;
+	unsigned wait_c = 0;
+	uint16_t thread_on = 0, cc;
+	struct epl_thread *threads;
+
+	thread_on = atomic_load(&state->n_on_threads);
+	if (thread_on == 0)
+		/*
+		 * All threads have exited, it's good.
+		 */
+		return true;
+
+	threads = state->epl_threads;
+	nn = state->cfg->sys.thread_num;
+	for (i = 0; i < nn; i++) {
+
+		if (!atomic_load(&threads[i].is_online))
+			continue;
+
+		ret = pthread_kill(threads[i].thread, SIGTERM);
+		if (unlikely(ret)) {
+			pr_err("pthread_kill(threads[%hhu].thread, SIGTERM): "
+			       PRERF, i, PREAR(ret));
+		}
+	}
+
+
+	prl_notice(2, "Waiting for %hu thread(s) to exit...", thread_on);
+	while ((cc = atomic_load(&state->n_on_threads)) > 0) {
+
+		if (cc != thread_on) {
+			thread_on = cc;
+			prl_notice(2, "Waiting for %hu thread(s) to exit...",
+				   cc);
+		}
+
+		usleep(100000);
+		if (wait_c++ > 1000)
+			return false;
+	}
+	return true;
+}
+
+
+static bool wait_for_threads_to_exit(struct srv_udp_state *state)
+{
+
+	if (!wait_for_zombie_reaper_thread_to_exit(state))
+		return false;
+
+	if (!wait_for_tun_worker_threads_to_exit(state))
+		return false;
+
+	return true;
 }
 
 
@@ -311,7 +460,6 @@ static void free_pkt_buffer(struct srv_udp_state *state)
 
 static void destroy_epoll(struct srv_udp_state *state)
 {
-#if 0
 	if (!wait_for_threads_to_exit(state)) {
 		/*
 		 * Thread(s) won't exit, don't free the heap!
@@ -320,7 +468,6 @@ static void destroy_epoll(struct srv_udp_state *state)
 		state->threads_wont_exit = true;
 		return;
 	}
-#endif
 
 	close_epoll_fds(state);
 	close_client_sess(state);

@@ -93,7 +93,7 @@ struct udp_sess {
 	uint8_t					err_c;
 
 	bool					is_authenticated;
-	bool					is_connected;
+	_Atomic(bool)				is_connected;
 };
 
 
