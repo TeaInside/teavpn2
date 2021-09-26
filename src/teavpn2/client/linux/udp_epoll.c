@@ -161,7 +161,7 @@ static int init_epoll_thread_array(struct cli_udp_state *state)
 		if (unlikely(ret))
 			return ret;
 
-		pkt = calloc_wrp(1ul, sizeof(*pkt));
+		pkt = al4096_malloc_mmap(sizeof(*pkt));
 		if (unlikely(!pkt))
 			return -errno;
 
@@ -453,7 +453,7 @@ static void thread_wait(struct epl_thread *thread, struct cli_udp_state *state)
 }
 
 
-static __no_inline void *_run_event_loop(void *thread_p)
+static noinline void *_run_event_loop(void *thread_p)
 {
 	int ret = 0;
 	struct epl_thread *thread;
@@ -709,7 +709,7 @@ static void destroy_epoll(struct cli_udp_state *state)
 	if (threads) {
 		close_epoll_fds(threads, nn);
 		for (i = 0; i < nn; i++)
-			al64_free(threads[i].pkt);
+			al4096_free_munmap(threads[i].pkt, sizeof(*threads[i].pkt));
 	}
 	al64_free(threads);
 }

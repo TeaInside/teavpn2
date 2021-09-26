@@ -10,7 +10,8 @@
 #include <teavpn2/allocator.h>
 #include <teavpn2/common.h>
 
-__no_inline void *al64_calloc(size_t nmemb, size_t size)
+
+noinline void *al64_calloc(size_t nmemb, size_t size)
 {
 	void *orig;
 	void *aligned;
@@ -36,7 +37,7 @@ __no_inline void *al64_calloc(size_t nmemb, size_t size)
 }
 
 
-__no_inline void *al64_malloc(size_t size)
+noinline void *al64_malloc(size_t size)
 {
 	void *orig;
 	void *aligned;
@@ -56,7 +57,7 @@ __no_inline void *al64_malloc(size_t size)
 }
 
 
-__no_inline void al64_free(void *user)
+noinline void al64_free(void *user)
 {
 	void *orig;
 	uint8_t shift;
@@ -70,7 +71,7 @@ __no_inline void al64_free(void *user)
 }
 
 
-__no_inline void *al64_realloc(void *user, size_t new_size)
+noinline void *al64_realloc(void *user, size_t new_size)
 {
 	void *tmp;
 	void *orig;

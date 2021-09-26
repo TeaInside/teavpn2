@@ -12,30 +12,31 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <teavpn2/compiler_attributes.h>
 
 extern uint8_t __notice_level;
 
-extern void __attribute__((format(printf, 1, 2)))
+extern void __printf(1, 2)
 __pr_notice(const char *fmt, ...);
 
 
-extern void __attribute__((format(printf, 1, 2)))
+extern void __printf(1, 2)
 __pr_error(const char *fmt, ...);
 
 
-extern void __attribute__((format(printf, 1, 2)))
+extern void __printf(1, 2)
 __pr_emerg(const char *fmt, ...);
 
 
-extern void __attribute__((format(printf, 1, 2)))
+extern void __printf(1, 2)
 __pr_debug(const char *fmt, ...);
 
 
-extern void __attribute__((format(printf, 1, 2)))
+extern void __printf(1, 2)
 __pr_warn(const char *fmt, ...);
 
 
-extern void __attribute__((format(printf, 3, 4))) __attribute__((noreturn))
+extern void __printf(3, 4) __noreturn
 __panic(const char *file, int lineno, const char *fmt, ...);
 
 
