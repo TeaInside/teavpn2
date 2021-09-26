@@ -306,6 +306,7 @@ extern int delete_udp_session(struct srv_udp_state *state,
 static __always_inline void reset_udp_session(struct udp_sess *sess, uint16_t idx)
 {
 	memset(sess, 0, sizeof(*sess));
+	sess->username[0] = '_';
 	sess->idx = idx;
 }
 
