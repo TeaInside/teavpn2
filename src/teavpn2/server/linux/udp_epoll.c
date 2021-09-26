@@ -605,6 +605,8 @@ static int handle_clpkt_auth(struct epl_thread *thread, struct udp_sess *sess)
 
 	sess->is_authenticated = true;
 	strncpy2(sess->username, auth.username, sizeof(sess->username));
+	prl_notice(2, "Assigning private IP %s to " PRWIU "...",
+		   auth_res->iff.ipv4, W_IU(sess));
 	goto out;
 
 
