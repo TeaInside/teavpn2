@@ -964,6 +964,49 @@ static int __run_event_loop(struct epl_thread *thread)
 }
 
 
+static void thread_wait(struct epl_thread *thread, struct srv_udp_state *state)
+{
+	static _Atomic(bool) release_sub_thread = false;
+	uint8_t nn = state->cfg->sys.thread_num;
+
+	if (thread->idx != 0) {
+		/*
+		 * We are the sub thread.
+		 * Waiting for the main thread be ready...
+		 */
+		while (!atomic_load(&release_sub_thread)) {
+			if (unlikely(state->stop))
+				return;
+
+			usleep(100000);
+		}
+		return;
+	}
+
+	/*
+	 * We are the main thread. Wait for all threads
+	 * to be spawned properly.
+	 */
+	while (atomic_load(&state->n_on_threads) != nn) {
+
+		prl_notice(2, "(thread=%u) "
+			   "Waiting for subthread(s) to be ready...",
+			   thread->idx);
+
+		if (unlikely(state->stop))
+			return;
+
+		usleep(100000);
+	}
+
+	if (nn > 1)
+		prl_notice(2, "All threads are ready!");
+
+	prl_notice(2, "Initialization Sequence Completed");
+	atomic_store(&release_sub_thread, true);
+}
+
+
 static noinline void *_run_event_loop(void *thread_p)
 {
 	int ret = 0;
@@ -975,6 +1018,7 @@ static noinline void *_run_event_loop(void *thread_p)
 
 	atomic_store(&thread->is_online, true);
 	atomic_fetch_add(&state->n_on_threads, 1);
+	thread_wait(thread, state);
 
 	while (likely(!state->stop)) {
 		ret = __run_event_loop(thread);
