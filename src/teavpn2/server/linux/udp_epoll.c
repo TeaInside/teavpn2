@@ -1019,6 +1019,7 @@ static int zr_close_sess(struct srv_udp_state *state, struct udp_sess *sess)
 static void zr_chk_auth(struct srv_udp_state *state, struct udp_sess *sess,
 			time_t time_diff)
 {
+	int i = 0;
 	const time_t max_diff = UDP_SESS_TIMEOUT_AUTH;
 
 	if (time_diff > max_diff) {
@@ -1026,7 +1027,30 @@ static void zr_chk_auth(struct srv_udp_state *state, struct udp_sess *sess,
 		return;
 	}
 
-	if (time_diff > ((max_diff * 3) / 4))
+	if (time_diff > ((max_diff * 4) / 5)) {
+		i = 7;
+		goto send_reqsync;
+	}
+
+	if (time_diff > ((max_diff * 3) / 5)) {
+		i = 5;
+		goto send_reqsync;
+	}
+
+	if (time_diff > ((max_diff * 2) / 5)) {
+		i = 3;
+		goto send_reqsync;
+	}
+
+	if (time_diff > ((max_diff * 1) / 5)) {
+		i = 1;
+		goto send_reqsync;
+	}
+
+	return;
+
+send_reqsync:
+	while (i-- > 0)
 		zr_send_reqsync(state, sess);
 }
 
@@ -1045,6 +1069,9 @@ static void zombie_reaper_do_scan(struct srv_udp_state *state)
 {
 	uint16_t i, j, max_conn = state->cfg->sock.max_conn;
 	struct udp_sess *sess, *sess_arr = state->sess_arr;
+
+	if (atomic_load(&state->n_on_sess) == 0)
+		return;
 
 	for (i = j = 0; i < max_conn; i++) {
 		time_t time_diff = 0;
