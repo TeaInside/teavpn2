@@ -350,6 +350,11 @@ static int init_udp_session_stack(struct srv_udp_state *state)
 	if (unlikely(ret))
 		return -ret;
 
+#ifndef NDEBUG
+	for (i = 0; i < 100; i++)
+		bt_stack_test(&state->sess_stk);
+#endif
+
 	for (i = max_conn; i--;) {
 		int32_t tmp = bt_stack_push(&state->sess_stk, (uint16_t)i);
 		if (unlikely(tmp == -1)) {

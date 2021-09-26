@@ -19,12 +19,23 @@
 #include <teavpn2/server/common.h>
 
 
-#define EPOLL_EVT_ARR_NUM 3u
-#define UDP_SESS_MAX_ERR 5u
+/*
+ * The number of events for epoll_wait() array argument.
+ */
+#define EPOLL_EVT_ARR_NUM	3u
 
-/* Timeout in seconds. */
-#define UDP_SESS_TIMEOUT_NO_AUTH	5
-#define UDP_SESS_TIMEOUT_AUTH		10
+/*
+ * Tolerance number of errors per session.
+ */
+#define UDP_SESS_MAX_ERR	5u
+
+
+#define EPOLL_TIMEOUT		10000
+
+
+#define UDP_SESS_TIMEOUT_AUTH		180
+#define UDP_SESS_TIMEOUT_NO_AUTH	30
+
 
 /*
  * UDP session struct.
@@ -52,16 +63,6 @@ struct udp_sess {
 	uint16_t				idx;
 
 	/*
-	 * Loop counter.
-	 */
-	uint8_t					loop_c;
-
-	/*
-	 * Error counter.
-	 */
-	uint16_t				err_c;
-
-	/*
 	 * UDP is stateless, we may not know whether the
 	 * client is still online or not, @last_act can
 	 * be used to handle timeout for session closing
@@ -70,7 +71,7 @@ struct udp_sess {
 	time_t					last_act;
 
 	/*
-	 * Big endian src_addr and src_port for sendto() call.
+	 * Big endian @src_addr and @src_port for sendto() call.
 	 */
 	struct sockaddr_in			addr;
 
@@ -84,16 +85,30 @@ struct udp_sess {
 	 */
 	char					str_src_addr[IPV4_L];
 
+
+	/*
+	 * Loop counter.
+	 */
+	uint8_t					loop_c;
+
+	/*
+	 * Error counter.
+	 */
+	uint8_t					err_c;
+
 	bool					is_authenticated;
 	_Atomic(bool)				is_connected;
 };
 
 
 /*
- * Bucket for session map. We can handle collision with singly linked
- * list here.
+ * Bucket for session map.
+ *
+ * This is a very simple hash table to handle multiple
+ * sessions at once.
  */
 struct udp_map_bucket;
+
 struct udp_map_bucket {
 	struct udp_map_bucket			*next;
 	struct udp_sess				*sess;
@@ -103,6 +118,13 @@ struct udp_map_bucket {
 struct srv_udp_state;
 
 
+/*
+ * Epoll thread.
+ *
+ * When we use epoll as event loop, each thread will have
+ * one instance of this struct.
+ *
+ */
 struct epl_thread {
 	/*
 	 * Pointer to the UDP state struct.
@@ -123,15 +145,36 @@ struct epl_thread {
 	 */
 	_Atomic(bool)				is_online;
 
+	/*
+	 * We have array of struct epl_thread, the @idx here
+	 * saves the index of the current struct.
+	 */
 	uint16_t				idx;
+
 	struct sc_pkt				*pkt;
 };
 
 
+/*
+ * UDP is stateless, we need a zombie reaper to close
+ * stale sessions.
+ */
 struct zombie_reaper {
 	_Atomic(bool)				is_online;
 	pthread_t				thread;
 	struct sc_pkt				*pkt;
+};
+
+
+/*
+ * This is a struct for event loop which uses io_uring.
+ * (Work in progress...)
+ */
+struct iou_thread {
+	/*
+	 * Pointer to the UDP state struct.
+	 */
+	struct srv_udp_state			*state;
 };
 
 
@@ -251,27 +294,18 @@ struct srv_udp_state {
 
 extern int teavpn2_udp_server_epoll(struct srv_udp_state *state);
 extern int teavpn2_udp_server_io_uring(struct srv_udp_state *state);
-extern struct udp_sess *map_find_udp_sess(struct srv_udp_state *state,
-					  uint32_t addr, uint16_t port);
-extern struct udp_sess *get_udp_sess(struct srv_udp_state *state, uint32_t addr,
-				     uint16_t port);
-extern int put_udp_session(struct srv_udp_state *state, struct udp_sess *sess);
+extern struct udp_sess *create_udp_sess(struct srv_udp_state *state,
+					uint32_t addr, uint16_t port);
+extern struct udp_sess *lookup_udp_sess(struct srv_udp_state *state,
+					uint32_t addr, uint16_t port);
+extern int delete_udp_session(struct srv_udp_state *state,
+			      struct udp_sess *sess);
 
 
 static __always_inline void reset_udp_session(struct udp_sess *sess, uint16_t idx)
 {
-	sess->ipv4_iff = 0u;
-	sess->src_addr = 0u;
-	sess->src_port = 0u;
-	sess->idx      = idx;
-	sess->loop_c   = 0u;
-	sess->err_c    = 0u;
-	sess->last_act = 0;
-	memset(&sess->addr, 0, sizeof(sess->addr));
-	sess->username[0] = '_';
-	sess->username[1] = '\0';
-	sess->is_authenticated = false;
-	atomic_store(&sess->is_connected, false);
+	memset(sess, 0, sizeof(*sess));
+	sess->idx = idx;
 }
 
 
@@ -319,7 +353,19 @@ static __always_inline size_t srv_pprep_handshake(struct srv_pkt *srv_pkt)
 }
 
 
-static __always_inline int get_unix_time(time_t *tm)
+static __always_inline size_t srv_pprep_sync(struct srv_pkt *srv_pkt)
+{
+	return srv_pprep(srv_pkt, TSRV_PKT_SYNC, 0, 0);
+}
+
+
+static __always_inline size_t srv_pprep_reqsync(struct srv_pkt *srv_pkt)
+{
+	return srv_pprep(srv_pkt, TSRV_PKT_REQSYNC, 0, 0);
+}
+
+
+static inline int get_unix_time(time_t *tm)
 {
 	int ret;
 	struct timeval tv;
@@ -334,12 +380,15 @@ static __always_inline int get_unix_time(time_t *tm)
 }
 
 
-static __always_inline int udp_sess_tv_update(struct udp_sess *cur_sess)
+static inline int udp_sess_update_last_act(struct udp_sess *sess)
 {
-	return get_unix_time(&cur_sess->last_act);
+	return get_unix_time(&sess->last_act);
 }
 
 
+/*
+ * The @addr is the private IP address (virtual network interface).
+ */
 static inline void add_ipv4_route_map(uint16_t (*ipv4_map)[0x100], uint32_t addr,
 				      uint16_t idx)
 {
@@ -347,8 +396,8 @@ static inline void add_ipv4_route_map(uint16_t (*ipv4_map)[0x100], uint32_t addr
 	 * IPv4 looks like this:
 	 *     AA.BB.CC.DD
 	 *
-	 * DD is the byte0
-	 * CC is the byte1
+	 * DD is the byte0.
+	 * CC is the byte1.
 	 */
 
 	uint16_t byte0, byte1;
@@ -377,7 +426,7 @@ static inline void del_ipv4_route_map(uint16_t (*ipv4_map)[0x100], uint32_t addr
 }
 
 
-static inline int32_t get_route_map(uint16_t (*ipv4_map)[0x100], uint32_t addr)
+static inline int32_t get_ipv4_route_map(uint16_t (*ipv4_map)[0x100], uint32_t addr)
 {
 	uint16_t ret, byte0, byte1;
 
@@ -385,13 +434,11 @@ static inline int32_t get_route_map(uint16_t (*ipv4_map)[0x100], uint32_t addr)
 	byte1 = (addr >> 8u) & 0xffu;
 	ret   = ipv4_map[byte0][byte1];
 
-	if (ret == 0) {
+	if (ret == 0)
 		/* Unmapped address. */
-		return -1;
-	}
+		return -ENOENT;
 
 	return (int32_t)(ret - 1);
 }
-
 
 #endif /* #ifndef TEAVPN2__SERVER__LINUX__UDP_H */
