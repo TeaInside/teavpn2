@@ -188,7 +188,7 @@ static int init_epoll_thread_array(struct srv_udp_state *state)
 		if (unlikely(ret))
 			return ret;
 
-		pkt = calloc_wrp(1ul, sizeof(*pkt));
+		pkt = al4096_malloc_mmap(sizeof(*pkt));
 		if (unlikely(!pkt))
 			return -errno;
 
@@ -1304,7 +1304,7 @@ static void free_pkt_buffer(struct srv_udp_state *state)
 		return;
 
 	for (i = 0; i < nn; i++)
-		al64_free(threads[i].pkt);
+		al4096_free_munmap(threads[i].pkt, sizeof(*threads[i].pkt));
 }
 
 

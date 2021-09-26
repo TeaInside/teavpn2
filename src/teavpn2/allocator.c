@@ -10,6 +10,7 @@
 #include <teavpn2/allocator.h>
 #include <teavpn2/common.h>
 
+
 noinline void *al64_calloc(size_t nmemb, size_t size)
 {
 	void *orig;
