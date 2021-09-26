@@ -4,6 +4,11 @@
  * https://github.com/torvalds/linux/blob/a3b397b4fffb799d25658defafd962f0fb3e9fe0/include/linux/compiler_attributes.h
  *
  */
+#if defined(__clang__)
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Wreserved-id-macro"
+#endif
+
 #ifndef __LINUX_COMPILER_ATTRIBUTES_H
 #ifndef __LINUX_COMPILER_ATTRIBUTES_
 #  define __LINUX_COMPILER_ATTRIBUTES_H
@@ -357,3 +362,7 @@
 #endif
 
 #endif /* __LINUX_COMPILER_ATTRIBUTES_H */
+
+#if defined(__clang__)
+#  pragma clang diagnostic pop
+#endif
