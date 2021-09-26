@@ -20,7 +20,8 @@ static inline void *al4096_malloc_mmap(size_t size)
 {
 	void *ret;
 
-	ret = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS, -1, 0);
+	ret = mmap(NULL, size, PROT_READ | PROT_WRITE,
+		   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	if (ret == MAP_FAILED)
 		return NULL;
 
