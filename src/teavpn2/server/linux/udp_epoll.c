@@ -3,6 +3,7 @@
  * Copyright (C) 2021  Ammar Faizi
  */
 
+#include <poll.h>
 #include <unistd.h>
 #include <teavpn2/server/common.h>
 #include <teavpn2/net/linux/iface.h>
@@ -106,6 +107,33 @@ static int init_epoll_fd_add(struct srv_udp_state *state,
 }
 
 
+static int wait_for_fd_be_writable(int fd, int timeout)
+{
+	int ret;
+	struct pollfd fds[1];
+	const nfds_t nfds = 1;
+
+	fds[0].fd = fd;
+	fds[0].events = POLLOUT;
+	fds[0].revents = 0;
+
+	ret = poll(fds, nfds, timeout);
+	if (ret <= 0) {
+
+		if (ret == 0)
+			return -ETIMEDOUT;
+
+		ret = errno;
+		if (ret != EINTR)
+			pr_err("poll(): " PRERF, PREAR(ret));
+
+		return -ret;
+	}
+
+	return 0;
+}
+
+
 static int init_epoll_thread(struct srv_udp_state *state,
 			     struct epl_thread *thread)
 {
@@ -202,6 +230,66 @@ static ssize_t _send_to_client(struct srv_udp_state *state,
 }
 
 
+static int emergency_wait_for_tun_fd_be_writable(struct epl_thread *thread,
+						 int tun_fd)
+{
+	int ret;
+	const int timeout = 30000;
+	struct srv_udp_state *state = thread->state;
+
+	pr_emerg("[thread=%hu] write(tun_fd=%d) got EAGAIN", thread->idx,
+		 tun_fd);
+
+	state->in_emergency = true;
+	if (state->stop)
+		goto give_up;
+
+	pr_emerg("[thread=%hu] Sleeping on poll(), waiting for tun_fd be "
+		 "writable...", thread->idx);
+
+	ret = wait_for_fd_be_writable(tun_fd, timeout);
+	if (ret == 0)
+		return ret;
+
+	state->stop = true;
+	pr_err("wait_for_fd_be_writable(): " PRERF, PREAR(-ret));
+
+give_up:
+	pr_emerg("Giving up...");
+	return -ENETDOWN;
+}
+
+
+static int emergency_wait_for_udp_fd_be_writable(struct epl_thread *thread)
+{
+	int ret;
+	const int timeout = 30000;
+	int udp_fd = thread->state->udp_fd;
+	struct srv_udp_state *state = thread->state;
+
+	pr_emerg("[thread=%hu] sendto(udp_fd=%d) got EAGAIN", thread->idx,
+		 udp_fd);
+
+	state->in_emergency = true;
+	if (state->stop)
+		goto give_up;
+
+	pr_emerg("[thread=%hu] Sleeping on poll(), waiting for udp_fd be "
+		 "writable...", thread->idx);
+
+	ret = wait_for_fd_be_writable(udp_fd, timeout);
+	if (ret == 0)
+		return ret;
+
+	state->stop = true;
+	pr_err("wait_for_fd_be_writable(): " PRERF, PREAR(-ret));
+
+give_up:
+	pr_emerg("Giving up...");
+	return -ENETDOWN;
+}
+
+
 static ssize_t send_to_client(struct epl_thread *thread,
 			      struct udp_sess *sess, const void *buf,
 			      size_t pkt_len)
@@ -209,12 +297,16 @@ static ssize_t send_to_client(struct epl_thread *thread,
 	ssize_t send_ret;
 	struct sockaddr *dst_addr = (struct sockaddr *)&sess->addr;
 
+send_again:
 	send_ret = _send_to_client(thread->state, buf, pkt_len, dst_addr);
 	if (unlikely(send_ret < 0)) {
 
 		if (send_ret == -EAGAIN) {
-			thread->state->in_emergency = true;
-			/* TODO: Do poll(), wait for the fd to be ready. */
+			int ret = emergency_wait_for_udp_fd_be_writable(thread);
+			if (ret == 0)
+				goto send_again;
+
+			return ret;
 		}
 
 		pr_err("[thread=%hu] send_to_client() " PRWIU " " PRERF,
@@ -222,6 +314,7 @@ static ssize_t send_to_client(struct epl_thread *thread,
 		return send_ret;
 	}
 
+	thread->state->in_emergency = false;
 	pr_debug("[thread=%hu] sendto(udp_fd=%d) %zd bytes to " PRWIU,
 		 thread->idx, thread->state->udp_fd, send_ret, W_IU(sess));
 
@@ -572,13 +665,17 @@ static int handle_clpkt_tun_data(struct epl_thread *thread,
 	ssize_t write_ret;
 	int tun_fd = thread->state->tun_fds[0];
 
+write_again:
 	write_ret = _handle_clpkt_tun_data(thread, tun_fd);
 	if (unlikely(write_ret < 0)) {
 
 		if (write_ret == -EAGAIN) {
-			/* TODO: Do poll(), wait for the fd to be ready. */
-			// thread->state->in_emergency = true;
-			return 0;
+			int ret = emergency_wait_for_tun_fd_be_writable(thread,
+									tun_fd);
+			if (ret == 0)
+				goto write_again;
+
+			return ret;
 		}
 
 		pr_err("[thread=%hu] write(tun_fd=%d) data from " PRWIU " "
@@ -666,9 +763,10 @@ static int _handle_event_from_udp(struct epl_thread *thread,
 	ret = __handle_event_from_udp(thread, sess);
 	if (unlikely(ret < 0)) {
 		if (ret == -EBADMSG) {
-			/* TODO: Close connection */
+			close_udp_session(thread, sess);
 			return 0;
 		}
+		return ret;
 	}
 
 	if ((++sess->loop_c % 32) == 0) {
@@ -744,7 +842,7 @@ static int broadcast_packet(struct epl_thread *thread, size_t send_len)
 			continue;
 
 		send_ret = send_to_client(thread, sess, srv_pkt, send_len);
-		if (send_ret < 0)
+		if (unlikely(send_ret < 0))
 			return (int)send_ret;
 	}
 
@@ -763,7 +861,7 @@ static int _route_packet(struct epl_thread *thread, size_t send_len)
 		struct udp_sess	*sess_arr = thread->state->sess_arr;
 
 		ret = route_ipv4_packet(thread, dst_addr, sess_arr, send_len);
-		if (ret != -ENOENT)
+		if (likely(ret != -ENOENT))
 			return ret;
 	}
 
