@@ -1081,8 +1081,10 @@ static void *run_zombie_reaper_thread(void *arg)
 
 	while (likely(!state->stop)) {
 		sleep(5);
-		pr_debug("[zombie reaper] Scanning...");
-		zombie_reaper_do_scan(state);
+		if (!state->in_emergency) {
+			pr_debug("[zombie reaper] Scanning...");
+			zombie_reaper_do_scan(state);
+		}
 	}
 
 	al64_free(state->zr.pkt);
