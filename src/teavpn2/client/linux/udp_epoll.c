@@ -453,7 +453,7 @@ static void thread_wait(struct epl_thread *thread, struct cli_udp_state *state)
 }
 
 
-static __no_inline void *_run_event_loop(void *thread_p)
+static noinline void *_run_event_loop(void *thread_p)
 {
 	int ret = 0;
 	struct epl_thread *thread;

@@ -8,9 +8,10 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <teavpn2/compiler_attributes.h>
 
 extern void *al64_calloc(size_t nmemb, size_t size);
-extern void *al64_malloc(size_t size);
+extern __malloc void *al64_malloc(size_t size);
 extern void al64_free(void *user);
 extern void *al64_realloc(void *user, size_t new_size);
 

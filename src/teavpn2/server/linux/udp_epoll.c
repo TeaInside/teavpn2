@@ -962,7 +962,7 @@ static int __run_event_loop(struct epl_thread *thread)
 }
 
 
-static __no_inline void *_run_event_loop(void *thread_p)
+static noinline void *_run_event_loop(void *thread_p)
 {
 	int ret = 0;
 	struct epl_thread *thread;
