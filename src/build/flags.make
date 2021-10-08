@@ -56,8 +56,8 @@ DEPFLAGS = -MT "$@" -MMD -MP -MF "$(@:$(BASE_DIR)/%.o=$(BASE_DEP_DIR)/%.d)"
 # Convert *.o filename to *.c
 O_TO_C = $(@:$(BASE_DIR)/%.o=%.c)
 
-override CFLAGS = $(C_CXX_FLAGS) $(INCLUDE_DIR)
-override CXXFLAGS = $(C_CXX_FLAGS) $(INCLUDE_DIR)
+override CFLAGS = $(C_CXX_FLAGS)
+override CXXFLAGS = $(C_CXX_FLAGS) 
 
 #
 # Prepare warn flags for Clang or GCC.
@@ -70,5 +70,5 @@ else
 	override CXXFLAGS += $(GCC_WARN_FLAGS)
 endif
 
-override CFLAGS += $(USER_CFLAGS)
-override CXXFLAGS += $(USER_CXXFLAGS)
+override CFLAGS += $(INCLUDE_DIR) $(USER_CFLAGS)
+override CXXFLAGS += $(INCLUDE_DIR) $(USER_CXXFLAGS)

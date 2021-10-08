@@ -317,10 +317,12 @@ print_config "CONFIG_LINUX" "$CONFIG_LINUX";
 if test "$CONFIG_IO_URING" = "y"; then
   output_sym "CONFIG_IO_URING";
 fi;
+print_config "CONFIG_IO_URING" "$CONFIG_IO_URING";
 
 if test "$CONFIG_HPC_EMERGENCY" = "y"; then
   output_sym "CONFIG_HPC_EMERGENCY";
 fi;
+print_config "CONFIG_HPC_EMERGENCY" "$CONFIG_HPC_EMERGENCY";
 
 echo "CC := $cc" >> $config_host_mak;
 print_config "CC" "$cc";

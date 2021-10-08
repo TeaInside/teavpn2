@@ -7,12 +7,7 @@
 # Copyright (C) 2021  Ammar Faizi
 #
 
-INCLUDE_DIR += \
-	-I$(BASE_DIR)/src/ext \
-	-I$(BASE_DIR)/src/ext/hpc_emerg/src
-
-include $(BASE_DIR)/src/ext/inih/Makefile
-
+INCLUDE_DIR += -I$(BASE_DIR)/src/ext
 
 ## Build HPC emerg objects
 LIB_LDFLAGS += -ldl
@@ -27,11 +22,13 @@ ifeq ($(CONFIG_HPC_EMERGENCY),y)
 	override LIB_LDFLAGS += -ldl
 	OBJ_CC += $(BASE_DIR)/src/ext/hpc_emerg/src/emerg/arch/x64/emerg.o
 	DEP_DIRS += $(BASE_DEP_DIR)/src/ext/hpc_emerg/src/emerg/arch/x64
+	INCLUDE_DIR += -I$(BASE_DIR)/src/ext/hpc_emerg/src
 endif
 
 ifeq ($(CONFIG_IO_URING),y)
 	override LIB_LDFLAGS += $(BASE_DIR)/src/ext/liburing/src/liburing.a
 	EXT_DEP_FILE += $(BASE_DIR)/src/ext/liburing/src/liburing.a
+	INCLUDE_DIR += -I$(BASE_DIR)/src/ext/liburing/src/include
 endif
 
 $(BASE_DIR)/src/ext/liburing/src/liburing.a:
@@ -41,6 +38,9 @@ $(BASE_DIR)/src/ext/liburing/src/liburing.a:
 	+$(Q)$(MAKE) CFLAGS="$(USER_CFLAGS)" -s --no-print-directory \
 	-C $(BASE_DIR)/src/ext/liburing/src;
 	$(Q)echo "---------------------------------------------------------------";
+
+
+include $(BASE_DIR)/src/ext/inih/Makefile
 
 liburing_clean:
 	+$(Q)$(MAKE) --no-print-directory -C $(BASE_DIR)/src/ext/liburing clean;
