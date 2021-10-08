@@ -1,72 +1,58 @@
-name: C/C++ (Linux)
+name: Build Linux
 
 on:
   push:
-    branches: [ master, dev_001 ]
   pull_request:
-    branches: [ master, dev_001 ]
-    
+
 jobs:
-  main:
-    name: Build C/C++
+  build:
+    runs-on: ubuntu-latest
+
     strategy:
       fail-fast: false
+      matrix:
+        include:
+          - cc: gcc
+            cxx: g++
+          - cc: clang
+            cxx: clang++
 
-    runs-on: ubuntu-latest
+    env:
+      V: 1
+      BAN_WARN: 1
+
     steps:
-    - uses: actions/checkout@v2
+    - name: Checkout source
+      uses: actions/checkout@v2
 
-    - name: Install Dependencies
-      run: sudo apt install -y git gcc g++ clang make;
-
-    # Debug build
-    - name: (Debug Mode) Build with GCC
+    - name: Install tools
       run: |
-        gcc --version && \
-        g++ --version && \
-        make -j$(nproc) BAN_WARN=1 CC=gcc CXX=g++;
+        sudo apt-get install clang gcc g++ make libc6-dev-i386 gcc-multilib g++-multilib -y;
 
-    - name: Clean Build
-      run: make V=1 -j$(nproc) clean;
-
-    - name: (Debug Mode) Build with Clang
+    - name: Show tools version
       run: |
-        clang --version && \
-        clang++ --version && \
-        make V=1 -j$(nproc) BAN_WARN=1 CC=clang CXX=clang++;
+        ${{matrix.cc}} --version;
+        ${{matrix.cxx}} --version;
+        make --version;
 
-    - name: Clean Build
-      run: make -j$(nproc) clean;
-
-    # Release build
-    - name: (Release Mode) Build with GCC
+    - name: Build (Debug Mode)
       run: |
-        gcc --version && \
-        g++ --version && \
-        make V=1 -j$(nproc) BAN_WARN=1 RELEASE_MODE=1 CC=gcc CXX=g++ && \
-        mv -v teavpn2 teavpn2-gcc;
+        make -j$(nproc) clean_all;
+        ./configure --cc=${{matrix.cc}} --cxx=${{matrix.cxx}} --ld=${{matrix.cc}};
+        make -j$(nproc) DEBUG_MODE=1;
 
-    - name: Clean Build
-      run: make -j$(nproc) clean;
-
-    - name: (Release Mode) Build with Clang
+    - name: Build
       run: |
-        clang --version && \
-        clang++ --version && \
-        make V=1 -j$(nproc) BAN_WARN=1 RELEASE_MODE=1 CC=clang CXX=clang++ && \
-        mv -v teavpn2 teavpn2-clang;
+        ./configure --cc=${{matrix.cc}} --cxx=${{matrix.cxx}} --ld=${{matrix.cc}};
+        make -j$(nproc);
 
-    - name: Clean Build
-      run: make -j$(nproc) clean;
+    - name: Build 32-bit (Debug Mode)
+      run: |
+        make -j$(nproc) clean_all;
+        ./configure --cc=${{matrix.cc}} --cxx=${{matrix.cxx}} --ld=${{matrix.cc}} --32-bit;
+        make -j$(nproc) DEBUG_MODE=1;
 
-    - name: Store GCC artifact
-      uses: actions/upload-artifact@v2
-      with:
-        name: teavpn2-gcc
-        path: teavpn2-gcc
-
-    - name: Store Clang artifact
-      uses: actions/upload-artifact@v2
-      with:
-        name: teavpn2-clang
-        path: teavpn2-clang
+    - name: Build 32-bit
+      run: |
+        ./configure --cc=${{matrix.cc}} --cxx=${{matrix.cxx}} --ld=${{matrix.cc}} --32-bit;
+        make -j$(nproc);

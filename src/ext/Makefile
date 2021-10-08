@@ -38,7 +38,8 @@ $(BASE_DIR)/src/ext/liburing/src/liburing.a:
 	$(Q)echo "Building liburing ...";
 	+$(Q)cd $(BASE_DIR)/src/ext/liburing && \
 	./configure --cc="$(CC)" --cxx="$(CXX)";
-	+$(Q)$(MAKE) -s --no-print-directory -C $(BASE_DIR)/src/ext/liburing/src;
+	+$(Q)$(MAKE) CFLAGS="$(USER_CFLAGS)" -s --no-print-directory \
+	-C $(BASE_DIR)/src/ext/liburing/src;
 	$(Q)echo "---------------------------------------------------------------";
 
 liburing_clean:

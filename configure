@@ -147,6 +147,8 @@ print_config() {
 # Default CFLAGS
 CFLAGS="${USER_CFLAGS}";
 CXXFLAGS="${USER_CFLAGS}";
+LDFLAGS="${USER_LDFLAGS}";
+LIB_LDFLAGS="${USER_LIB_LDFLAGS}";
 
 # Print configure header at the top of $config_host_h
 echo "/*" > $config_host_h
