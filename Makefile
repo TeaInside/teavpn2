@@ -51,8 +51,7 @@ override LIB_LDFLAGS	:= -lpthread $(LIB_LDFLAGS)
 override C_CXX_FLAGS	:= \
 	-ggdb3 \
 	-fstrict-aliasing \
-	-fstack-protector-strong \
-	-fno-omit-frame-pointer \
+	-fno-stack-protector \
 	-fdata-sections \
 	-ffunction-sections \
 	-D_GNU_SOURCE \

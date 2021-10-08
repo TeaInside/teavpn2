@@ -56,6 +56,14 @@
 #  define __must_hold(LOCK)
 #endif
 
+#ifndef __hot
+#  define __hot __attribute__((__hot__))
+#endif
+
+#ifndef __cold
+#  define __cold __attribute__((__cold__))
+#endif
+
 #if defined(__clang__)
 #  pragma clang diagnostic pop
 #endif

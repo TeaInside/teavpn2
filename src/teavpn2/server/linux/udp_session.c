@@ -100,8 +100,8 @@ out:
 }
 
 
-struct udp_sess *lookup_udp_sess(struct srv_udp_state *state, uint32_t addr,
-				 uint16_t port)
+struct udp_sess * __hot lookup_udp_sess(struct srv_udp_state *state,
+					uint32_t addr, uint16_t port)
 	__acquires(&state->sess_map_lock)
 	__releases(&state->sess_map_lock)
 {

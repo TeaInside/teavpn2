@@ -28,8 +28,8 @@ ifeq ($(DEBUG_MODE),1)
 		SANITIZE := 1
 	endif
 else
-	override LDFLAGS	+= $(OPTIMIZATION_FLAGS)
-	override C_CXX_FLAGS	+= $(OPTIMIZATION_FLAGS)
+	override LDFLAGS	+= $(OPTIMIZATION_FLAG)
+	override C_CXX_FLAGS	+= $(OPTIMIZATION_FLAG)
 endif
 
 

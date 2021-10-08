@@ -38,8 +38,8 @@ static __always_inline void mutex_init_mark(struct tmutex *m)
 }
 
 
-static __always_inline int mutex_init(struct tmutex *m,
-				      const pthread_mutexattr_t *attr)
+static __cold __always_inline int mutex_init(struct tmutex *m,
+					     const pthread_mutexattr_t *attr)
 {
 	int ret;
 
@@ -55,7 +55,7 @@ static __always_inline int mutex_init(struct tmutex *m,
 }
 
 
-static __always_inline int mutex_lock(struct tmutex *m)
+static __hot __always_inline int mutex_lock(struct tmutex *m)
 {
 	int ret;
 	__asm__ volatile("":"+r"(m)::"memory");
@@ -67,7 +67,7 @@ static __always_inline int mutex_lock(struct tmutex *m)
 }
 
 
-static __always_inline int mutex_unlock(struct tmutex *m)
+static __hot __always_inline int mutex_unlock(struct tmutex *m)
 {
 	int ret;
 	__asm__ volatile("":"+r"(m)::"memory");
@@ -86,7 +86,7 @@ static __always_inline int mutex_trylock(struct tmutex *m)
 }
 
 
-static inline int mutex_destroy(struct tmutex *m)
+static __cold inline int mutex_destroy(struct tmutex *m)
 {
 	if (m->need_destroy) {
 		int ret = pthread_mutex_destroy(&m->mutex);
