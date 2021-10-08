@@ -17,7 +17,9 @@ NAME = Green Grass
 TARGET_BIN = teavpn2
 
 ifneq ($(MAKECMDGOALS),clean)
+ifneq ($(MAKECMDGOALS),clean_all)
 	include config-host.mak
+endif
 endif
 
 override USER_CFLAGS := $(CFLAGS)
@@ -86,10 +88,6 @@ override CLANG_WARN_FLAGS := \
 	-Wno-used-but-marked-unused \
 	-Wno-gnu-statement-expression $(CLANG_WARN_FLAGS)
 
-ifeq ($(CONFIG_HPC_EMERGENCY),y)
-	override LIB_LDFLAGS += -ldl
-endif
-
 include $(BASE_DIR)/src/build/flags.make
 include $(BASE_DIR)/src/build/print.make
 
@@ -110,8 +108,13 @@ OBJ_PRE_CC	:=
 #
 OBJ_TMP_CC	:=
 
+#
+# Extension dependency file, not always supposed to be compiled.
+#
+EXT_DEP_FILE	:= $(MAKEFILE_FILE) config-host.mak config-host.h
 
-all: $(TARGET_BIN)
+
+all: __all
 
 
 config-host.mak: configure
@@ -132,6 +135,7 @@ config-host.mak: configure
 	  sed -n "/.*Configured with/s/[^:]*: //p" "$@" | sh;	\
 	fi
 
+
 include $(BASE_DIR)/src/Makefile
 
 
@@ -147,8 +151,8 @@ $(DEP_DIRS):
 # Add more dependency chain to objects that are not compiled from the main
 # Makefile (the main Makefile is *this* Makefile).
 #
-$(OBJ_CC): $(MAKEFILE_FILE) config-host.mak config-host.h | $(DEP_DIRS)
-$(OBJ_PRE_CC): $(MAKEFILE_FILE) config-host.mak config-host.h | $(DEP_DIRS)
+$(OBJ_CC): $(EXT_DEP_FILE) | $(DEP_DIRS)
+$(OBJ_PRE_CC): $(EXT_DEP_FILE) | $(DEP_DIRS)
 
 
 #
@@ -174,6 +178,9 @@ $(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC)
 	$(Q)$(LD) $(PIE_FLAGS) $(LDFLAGS) $(^) -o "$(@)" $(LIB_LDFLAGS)
 
 
+__all: $(EXT_DEP_FILE) $(TARGET_BIN)
+
+
 clean:
 	$(Q)$(RM) -vf \
 		$(TARGET_BIN) \
@@ -183,5 +190,7 @@ clean:
 		config-host.h \
 		config.log;
 
+clean_all: clean
 
-.PHONY: all clean
+
+.PHONY: __all all clean clean_all
