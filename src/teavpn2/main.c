@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 
-#if defined(__x86_64__)
+#ifdef CONFIG_HPC_EMERGENCY
 	if (emerg_init_handler(EMERG_INIT_BUG | EMERG_INIT_WARN)) {
 		int ret = errno;
 		printf("Cannot set emerg handler: %s\n", strerror(ret));

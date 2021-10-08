@@ -15,51 +15,30 @@ SUBLEVEL = 2
 EXTRAVERSION := -rc1
 NAME = Green Grass
 TARGET_BIN = teavpn2
-PACKAGE_NAME = $(TARGET_BIN)-$(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)
 
-GIT_HASH = $(shell git log --pretty=format:'%H' -n 1)
-EXTRAVERSION := $(EXTRAVERSION)-$(GIT_HASH)
+ifneq ($(MAKECMDGOALS),clean)
+	include config-host.mak
+endif
 
-#
-# Bin
-#
-AS	:= as
-CC 	:= cc
-CXX	:= c++
-LD	:= $(CXX)
-VG	:= valgrind
-RM	:= rm
-MKDIR	:= mkdir
-STRIP	:= strip
-OBJCOPY	:= objcopy
-OBJDUMP	:= objdump
-READELF	:= readelf
-HOSTCC	:= $(CC)
-HOSTCXX	:= $(CXX)
+override USER_CFLAGS := $(CFLAGS)
+override USER_CXXFLAGS := $(CXXFLAGS)
+override USER_LDFLAGS := $(LDFLAGS)
+override USER_LIB_LDFLAGS := $(LIB_LDFLAGS)
+
+MKDIR		:= mkdir
+BASE_DIR	:= $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
+BASE_DIR	:= $(strip $(patsubst %/, %, $(BASE_DIR)))
+BASE_DEP_DIR	:= $(BASE_DIR)/.deps
+MAKEFILE_FILE	:= $(lastword $(MAKEFILE_LIST))
+INCLUDE_DIR	= -I$(BASE_DIR)
+PACKAGE_NAME	:= $(TARGET_BIN)-$(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)
 
 
-# Flag to link any library to $(TARGET_BIN)
-# (middle argumets)
-LDFLAGS		:= -ggdb3 -rdynamic
-
-# Flag to link any library to $(TARGET_BIN)
-# (end arguments)
-LIB_LDFLAGS	:= -lpthread
-
-# Flags that only apply to C
-CFLAGS		:= -std=c11
-
-# Flags that only apply to C++
-CXXFLAGS	:= -std=c++2a
-
-# Flags that only apply to PIC objects.
-PIC_FLAGS	:= -fPIC -fpic
-
-# Flags that only apply to PIE objects.
-PIE_FLAGS	:= -fPIE -fpie
-
-# `C_CXX_FLAGS` will be appended to `CFLAGS` and `CXXFLAGS`.
-C_CXX_FLAGS := \
+STACK_USAGE_WARN	:= 8192
+override PIE_FLAGS	:= -fpie -fPIE
+override LDFLAGS	:= -ggdb3 -rdynamic $(LDFLAGS)
+override LIB_LDFLAGS	:= -lpthread $(LIB_LDFLAGS)
+override C_CXX_FLAGS	:= \
 	-ggdb3 \
 	-fstrict-aliasing \
 	-fstack-protector-strong \
@@ -71,35 +50,10 @@ C_CXX_FLAGS := \
 	-DPATCHLEVEL=$(PATCHLEVEL) \
 	-DSUBLEVEL=$(SUBLEVEL) \
 	-DEXTRAVERSION="\"$(EXTRAVERSION)\"" \
-	-DNAME="\"$(NAME)\""
+	-DNAME="\"$(NAME)\"" \
+	-include $(BASE_DIR)/config-host.h $(C_CXX_FLAGS)
 
-C_CXX_FLAGS_RELEASE := -DNDEBUG
-C_CXX_FLAGS_DEBUG :=
-
-# Valgrind flags
-VGFLAGS	:= \
-	--leak-check=full \
-	--show-leak-kinds=all \
-	--track-origins=yes \
-	--track-fds=yes \
-	--error-exitcode=99 \
-	-s
-
-ifeq ($(LTO),1)
-	LDFLAGS += -flto
-	C_CXX_FLAGS += -flto
-endif
-
-
-ifndef DEFAULT_OPTIMIZATION
-	DEFAULT_OPTIMIZATION := -O0
-endif
-
-
-STACK_USAGE_SIZE := 2097152
-
-
-GCC_WARN_FLAGS := \
+override GCC_WARN_FLAGS := \
 	-Wall \
 	-Wextra \
 	-Wformat \
@@ -107,10 +61,10 @@ GCC_WARN_FLAGS := \
 	-Wformat-signedness \
 	-Wsequence-point \
 	-Wstrict-aliasing=3 \
-	-Wstack-usage=$(STACK_USAGE_SIZE) \
-	-Wunsafe-loop-optimizations
+	-Wstack-usage=$(STACK_USAGE_WARN) \
+	-Wunsafe-loop-optimizations $(GCC_WARN_FLAGS)
 
-CLANG_WARN_FLAGS := \
+override CLANG_WARN_FLAGS := \
 	-Wall \
 	-Wextra \
 	-Weverything \
@@ -120,18 +74,11 @@ CLANG_WARN_FLAGS := \
 	-Wno-disabled-macro-expansion \
 	-Wno-language-extension-token \
 	-Wno-used-but-marked-unused \
-	-Wno-gnu-statement-expression
+	-Wno-gnu-statement-expression $(CLANG_WARN_FLAGS)
 
 
-BASE_DIR	:= $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
-BASE_DIR	:= $(strip $(patsubst %/, %, $(BASE_DIR)))
-BASE_DEP_DIR	:= $(BASE_DIR)/.deps
-MAKEFILE_FILE	:= $(lastword $(MAKEFILE_LIST))
-INCLUDE_DIR	= -I$(BASE_DIR)
-
-
-ifneq ($(words $(subst :, ,$(BASE_DIR))), 1)
-$(error Source directory cannot contain spaces or colons)
+ifeq ($(CONFIG_HPC_EMERGENCY),y)
+	override LIB_LDFLAGS += -ldl
 endif
 
 
@@ -158,7 +105,27 @@ OBJ_TMP_CC	:=
 
 all: $(TARGET_BIN)
 
+
+config-host.mak: configure
+	@if [ ! -e "$@" ]; then					\
+	  echo "Running configure ...";				\
+	  LDFLAGS="$(USER_LDFLAGS)"				\
+	  LIB_LDFLAGS="$(USER_LIB_LDFLAGS)"			\
+	  CFLAGS="$(USER_CFLAGS)" 				\
+	  CXXFLAGS="$(USER_CXXFLAGS)"				\
+	  ./configure;						\
+	else							\
+	  echo "$@ is out-of-date";				\
+	  echo "Running configure ...";				\
+	  LDFLAGS="$(USER_LDFLAGS)"				\
+	  LIB_LDFLAGS="$(USER_LIB_LDFLAGS)"			\
+	  CFLAGS="$(USER_CFLAGS)" 				\
+	  CXXFLAGS="$(USER_CXXFLAGS)"				\
+	  sed -n "/.*Configured with/s/[^:]*: //p" "$@" | sh;	\
+	fi
+
 include $(BASE_DIR)/src/Makefile
+
 
 #
 # Create dependency directories
@@ -172,8 +139,8 @@ $(DEP_DIRS):
 # Add more dependency chain to objects that are not compiled from the main
 # Makefile (the main Makefile is *this* Makefile).
 #
-$(OBJ_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
-$(OBJ_PRE_CC): $(MAKEFILE_FILE) | $(DEP_DIRS)
+$(OBJ_CC): $(MAKEFILE_FILE) config-host.mak config-host.h | $(DEP_DIRS)
+$(OBJ_PRE_CC): $(MAKEFILE_FILE) config-host.mak config-host.h | $(DEP_DIRS)
 
 
 #
@@ -200,7 +167,13 @@ $(TARGET_BIN): $(OBJ_CC) $(OBJ_PRE_CC)
 
 
 clean:
-	$(Q)$(RM) -vf $(TARGET_BIN) $(OBJ_CC) $(OBJ_PRE_CC)
+	$(Q)$(RM) -vf \
+		$(TARGET_BIN) \
+		$(OBJ_CC) \
+		$(OBJ_PRE_CC) \
+		config-host.mak \
+		config-host.h \
+		config.log;
 
 
 .PHONY: all clean

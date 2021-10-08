@@ -17,20 +17,22 @@ include $(BASE_DIR)/src/ext/inih/Makefile
 ## Build HPC emerg objects
 LIB_LDFLAGS += -ldl
 
+ifeq ($(CONFIG_HPC_EMERGENCY),y)
+# $(BASE_DIR)/src/ext/hpc_emerg/src/emerg/arch/x64/emerg.o:
+# 	+$(Q)$(MAKE) \
+# 	SANITIZE=$(SANITIZE) \
+# 	-s --no-print-directory \
+# 	-C $(BASE_DIR)/src/ext/hpc_emerg $(@)
 
-UNAME_P := $(shell uname -p)
-ifeq ($(UNAME_P),x86_64)
-
-$(BASE_DIR)/src/ext/hpc_emerg/src/emerg/arch/x64/emerg.o:
-	+$(Q)$(MAKE) -s --no-print-directory -C $(BASE_DIR)/src/ext/hpc_emerg $(@)
-
-OBJ_PRE_CC += \
-	$(BASE_DIR)/src/ext/hpc_emerg/src/emerg/arch/x64/emerg.o
-
+OBJ_CC += $(BASE_DIR)/src/ext/hpc_emerg/src/emerg/arch/x64/emerg.o
+DEP_DIRS += $(BASE_DEP_DIR)/src/ext/hpc_emerg/src/emerg/arch/x64
 endif
 
+
 hpc_emerg_clean:
-	+$(Q)$(MAKE) --no-print-directory -C $(BASE_DIR)/src/ext/hpc_emerg clean
+	+$(Q)$(MAKE) \
+	--no-print-directory \
+	-C $(BASE_DIR)/src/ext/hpc_emerg clean
 
 clean: hpc_emerg_clean
 

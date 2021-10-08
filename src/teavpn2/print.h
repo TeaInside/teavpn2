@@ -56,7 +56,7 @@ static inline void set_notice_level(uint8_t level)
 #define pr_dbg		__pr_debug
 #define pr_warn		__pr_warn
 
-#if defined(__x86_64__)
+#ifdef CONFIG_HPC_EMERGENCY
 #define panic(...)					\
 do {							\
 	__emerg_release_bug = true;			\
