@@ -19,8 +19,8 @@ endif
 # Release or debug?
 #
 ifeq ($(DEBUG_MODE),1)
-	override LDFLAGS	+= $(DEFAULT_OPTIMIZATION)
-	override C_CXX_FLAGS	+= $(DEFAULT_OPTIMIZATION) $(C_CXX_FLAGS_DEBUG)
+	override LDFLAGS	+= $(DEBUG_OPTIMIZATION_FLAG)
+	override C_CXX_FLAGS	+= $(DEBUG_OPTIMIZATION_FLAG) $(C_CXX_FLAGS_DEBUG)
 	#
 	# Always sanitize debug build, unless otherwise specified.
 	#
@@ -28,8 +28,8 @@ ifeq ($(DEBUG_MODE),1)
 		SANITIZE := 1
 	endif
 else
-	override LDFLAGS	+= -O3
-	override C_CXX_FLAGS	+= -O3
+	override LDFLAGS	+= $(OPTIMIZATION_FLAGS)
+	override C_CXX_FLAGS	+= $(OPTIMIZATION_FLAGS)
 endif
 
 

@@ -33,7 +33,15 @@ MAKEFILE_FILE	:= $(lastword $(MAKEFILE_LIST))
 INCLUDE_DIR	= -I$(BASE_DIR)
 PACKAGE_NAME	:= $(TARGET_BIN)-$(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)
 
+ifndef DEBUG_MODE
+	DEBUG_MODE := 0
+endif
 
+ifndef OPTIMIZATION_FLAG
+	OPTIMIZATION_FLAG := -O2
+endif
+
+DEBUG_OPTIMIZATION_FLAG	:= -O0
 STACK_USAGE_WARN	:= 8192
 override PIE_FLAGS	:= -fpie -fPIE
 override LDFLAGS	:= -ggdb3 -rdynamic $(LDFLAGS)
@@ -52,6 +60,8 @@ override C_CXX_FLAGS	:= \
 	-DEXTRAVERSION="\"$(EXTRAVERSION)\"" \
 	-DNAME="\"$(NAME)\"" \
 	-include $(BASE_DIR)/config-host.h $(C_CXX_FLAGS)
+
+override C_CXX_FLAGS_DEBUG := $(C_CXX_FLAGS_DEBUG)
 
 override GCC_WARN_FLAGS := \
 	-Wall \
@@ -76,11 +86,9 @@ override CLANG_WARN_FLAGS := \
 	-Wno-used-but-marked-unused \
 	-Wno-gnu-statement-expression $(CLANG_WARN_FLAGS)
 
-
 ifeq ($(CONFIG_HPC_EMERGENCY),y)
 	override LIB_LDFLAGS += -ldl
 endif
-
 
 include $(BASE_DIR)/src/build/flags.make
 include $(BASE_DIR)/src/build/print.make
