@@ -43,7 +43,11 @@ ifndef OPTIMIZATION_FLAG
 	OPTIMIZATION_FLAG := -O2
 endif
 
+
+# This will be appended to {C,CXX,LD}FLAGS only when DEBUG_MODE is 1.
 DEBUG_OPTIMIZATION_FLAG	:= -O0
+
+
 STACK_USAGE_WARN	:= 8192
 override PIE_FLAGS	:= -fpie -fPIE
 override LDFLAGS	:= -ggdb3 -rdynamic $(LDFLAGS)
