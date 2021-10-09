@@ -19,6 +19,8 @@
 #include <teavpn2/print.h>
 #include <teavpn2/allocator.h>
 
+#include <teavpn2/arch/x86/linux.h>
+
 #ifdef CONFIG_HPC_EMERGENCY
 #  include <emerg/emerg.h>
 #else

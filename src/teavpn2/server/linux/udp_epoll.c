@@ -344,13 +344,12 @@ static __hot ssize_t _do_recv_from(int udp_fd, char *buf, size_t recv_size,
 				   struct sockaddr *src_addr,
 				   socklen_t *saddr_len)
 {
-	int ret;
 	ssize_t recv_ret;
 
 	if (unlikely(recv_size == 0))
 		return 0;
 
-	recv_ret = recvfrom(udp_fd, buf, recv_size, 0, src_addr, saddr_len);
+	recv_ret = __sys_recvfrom(udp_fd, buf, recv_size, 0, src_addr, saddr_len);
 	if (unlikely(recv_ret < 0)) {
 
 		if (recv_ret == 0) {
@@ -358,12 +357,11 @@ static __hot ssize_t _do_recv_from(int udp_fd, char *buf, size_t recv_size,
 			return -ENETDOWN;
 		}
 
-		ret = errno;
-		if (ret == EAGAIN)
+		if (recv_ret == -EAGAIN)
 			return 0;
 
-		pr_err("recvfrom(udp_fd) (fd=%d): " PRERF, udp_fd, PREAR(ret));
-		return (ssize_t)-ret;
+		pr_err("recvfrom(udp_fd) (fd=%d): " PRERF, udp_fd,
+		       PREAR((int)-recv_ret));
 	}
 
 	return recv_ret;
@@ -648,21 +646,18 @@ static __hot ssize_t _handle_clpkt_tun_data(struct epl_thread *thread,
 	if (unlikely(data_len == 0))
 		return 0;
 
-	write_ret = write(tun_fd, srv_pkt->__raw, (size_t)data_len);
+	write_ret = __sys_write(tun_fd, srv_pkt->__raw, (size_t)data_len);
 	if (unlikely(write_ret <= 0)) {
-		int err;
 
 		if (write_ret == 0) {
 			pr_err("write() to TUN fd returned zero");
 			return -ENETDOWN;
 		}
 
-		err = errno;
-		if (err != EAGAIN)
-			pr_err("write(): " PRERF, PREAR(err));
-
-		return (ssize_t)-err;
+		if (write_ret != -EAGAIN)
+			pr_err("write(): " PRERF, PREAR((int)-write_ret));
 	}
+
 	return write_ret;
 }
 
@@ -890,19 +885,19 @@ static __hot int route_packet(struct epl_thread *thread, ssize_t len)
 
 static __hot int handle_event_from_tun(struct epl_thread *thread, int tun_fd)
 {
-	int ret;
 	ssize_t read_ret;
 	char *buf = thread->pkt->srv.__raw;
 	const size_t read_size = sizeof(thread->pkt->srv.__raw);
 
-	read_ret = read(tun_fd, buf, read_size);
+	read_ret = __sys_read(tun_fd, buf, read_size);
 	if (unlikely(read_ret < 0)) {
-		ret = errno;
-		if (likely(ret == EAGAIN))
+
+		if (likely(read_ret == -EAGAIN))
 			return 0;
 
-		pr_err("read(tun_fd) (fd=%d): " PRERF, tun_fd, PREAR(ret));
-		return -ret;
+		pr_err("read(tun_fd) (fd=%d): " PRERF, tun_fd,
+		       PREAR((int)-read_ret));
+		return read_ret;
 	}
 
 	thread->pkt->len = (size_t)read_ret;
@@ -935,18 +930,17 @@ static __hot int do_epoll_wait(struct epl_thread *thread)
 	int timeout = thread->epoll_timeout;
 	struct epoll_event *events = thread->events;
 
-	ret = epoll_wait(epoll_fd, events, EPOLL_EVT_ARR_NUM, timeout);
+	ret = __sys_epoll_wait(epoll_fd, events, EPOLL_EVT_ARR_NUM, timeout);
 	if (unlikely(ret < 0)) {
-		ret = errno;
 
-		if (likely(ret == EINTR)) {
+		if (likely(ret == -EINTR)) {
 			prl_notice(2, "[thread=%hu] Interrupted!", thread->idx);
 			return 0;
 		}
 
 		pr_err("[thread=%u] epoll_wait(): " PRERF, thread->idx,
-		       PREAR(ret));
-		return -ret;
+		       PREAR(-ret));
+		return ret;
 	}
 	return ret;
 }
