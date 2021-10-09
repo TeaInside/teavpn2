@@ -263,7 +263,8 @@ static __hot int handle_tun_data(struct epl_thread *thread)
 	write_ret = __sys_write(tun_fd, srv_pkt->__raw, data_len);
 	pr_debug("[thread=%hu] write(tun_fd=%d) %zd bytes", thread->idx, tun_fd,
 		 write_ret);
-	return (write_ret < 0) ? write_ret : 0;
+
+	return (write_ret < 0) ? (int) write_ret : 0;
 }
 
 
@@ -336,7 +337,7 @@ static __hot int handle_event_tun(struct epl_thread *thread, int tun_fd)
 
 		pr_err("read(tun_fd) (fd=%d): " PRERF, tun_fd,
 		       PREAR((int)-read_ret));
-		return read_ret;
+		return (int) read_ret;
 	}
 
 	pr_debug("[thread=%hu] read(tun_fd=%d) %zd bytes", thread->idx, tun_fd,
@@ -344,7 +345,7 @@ static __hot int handle_event_tun(struct epl_thread *thread, int tun_fd)
 
 	send_len = cli_pprep(cli_pkt, TCLI_PKT_TUN_DATA, (uint16_t)read_ret, 0);
 	send_ret = do_send_to(thread, cli_pkt, send_len);
-	return (send_ret < 0) ? (int)send_ret : 0;
+	return (send_ret < 0) ? (int) send_ret : 0;
 }
 
 

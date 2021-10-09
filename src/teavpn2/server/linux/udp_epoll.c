@@ -205,7 +205,6 @@ static __hot ssize_t _send_to_client(struct srv_udp_state *state,
 				     const void *buf, size_t pkt_len,
 				     struct sockaddr *dst_addr)
 {
-	int err;
 	ssize_t send_ret;
 	int udp_fd = state->udp_fd;
 	const socklen_t addr_len = sizeof(struct sockaddr_in);
@@ -213,7 +212,7 @@ static __hot ssize_t _send_to_client(struct srv_udp_state *state,
 	if (unlikely(pkt_len == 0))
 		return 0;
 
-	send_ret = sendto(udp_fd, buf, pkt_len, 0, dst_addr, addr_len);
+	send_ret = __sys_sendto(udp_fd, buf, pkt_len, 0, dst_addr, addr_len);
 	if (unlikely(send_ret <= 0)) {
 
 		if (send_ret == 0) {
@@ -221,11 +220,8 @@ static __hot ssize_t _send_to_client(struct srv_udp_state *state,
 			return -ENETDOWN;
 		}
 
-		err = errno;
-		if (err != EAGAIN)
-			pr_err("sendto(): " PRERF, PREAR(err));
-
-		return -err;
+		if (send_ret != -EAGAIN)
+			pr_err("sendto(): " PRERF, PREAR((int)-send_ret));
 	}
 
 	return send_ret;
@@ -892,12 +888,13 @@ static __hot int handle_event_from_tun(struct epl_thread *thread, int tun_fd)
 	read_ret = __sys_read(tun_fd, buf, read_size);
 	if (unlikely(read_ret < 0)) {
 
-		if (likely(read_ret == -EAGAIN))
+		if (read_ret == -EAGAIN)
 			return 0;
 
 		pr_err("read(tun_fd) (fd=%d): " PRERF, tun_fd,
 		       PREAR((int)-read_ret));
-		return read_ret;
+
+		return (int) read_ret;
 	}
 
 	thread->pkt->len = (size_t)read_ret;
@@ -1010,7 +1007,7 @@ static __cold void thread_wait(struct epl_thread *thread,
 }
 
 
-static __cold noinline void *_run_event_loop(void *thread_p)
+static __cold noinline void *server_udp_epoll_run_event_loop(void *thread_p)
 {
 	int ret = 0;
 	struct epl_thread *thread;
@@ -1201,7 +1198,7 @@ static __cold int spawn_tun_worker_thread(struct epl_thread *thread)
 	pthread_t *tr = &thread->thread;
 
 	prl_notice(2, "Spawning thread %u...", thread->idx);
-	ret = pthread_create(tr, NULL, _run_event_loop, thread);
+	ret = pthread_create(tr, NULL, server_udp_epoll_run_event_loop, thread);
 	if (unlikely(ret)) {
 		pr_err("pthread_create(): " PRERF, PREAR(ret));
 		return -ret;
@@ -1219,7 +1216,7 @@ static __cold int spawn_tun_worker_thread(struct epl_thread *thread)
 }
 
 
-static int run_event_loop(struct srv_udp_state *state)
+static __cold int run_event_loop(struct srv_udp_state *state)
 {
 	int ret;
 	void *ret_p;
@@ -1243,7 +1240,7 @@ static int run_event_loop(struct srv_udp_state *state)
 			goto out;
 	}
 
-	ret_p = _run_event_loop(&threads[0]);
+	ret_p = server_udp_epoll_run_event_loop(&threads[0]);
 	ret   = (int)((intptr_t)ret_p);
 out:
 	return ret;
