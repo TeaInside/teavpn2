@@ -18,33 +18,6 @@ static __always_inline struct udp_map_bucket *addr_to_bkt(
 }
 
 
-struct udp_sess *map_find_udp_sess(struct srv_udp_state *state, uint32_t addr,
-				   uint16_t port)
-	__acquires(&state->sess_map_lock)
-	__releases(&state->sess_map_lock)
-{
-	struct udp_map_bucket *bkt;
-	struct udp_sess *ret;
-
-	bkt = addr_to_bkt(state->sess_map, addr);
-	mutex_lock(&state->sess_map_lock);
-	do {
-		ret = bkt->sess;
-		if (ret) {
-			if ((ret->src_addr == addr) && (ret->src_port == port))
-				goto out;
-			else
-				ret = NULL;
-		}
-
-		bkt = bkt->next;
-	} while (bkt);
-out:
-	mutex_unlock(&state->sess_map_lock);
-	return ret;
-}
-
-
 static struct udp_sess *map_insert_udp_sess(struct srv_udp_state *state,
 					    uint32_t addr,
 					    struct udp_sess *sess)
@@ -83,10 +56,10 @@ out:
 }
 
 
-struct udp_sess *get_udp_sess(struct srv_udp_state *state, uint32_t addr,
-			      uint16_t port)
-	__acquires(&state->sess_stk_lock)
-	__releases(&state->sess_stk_lock)
+struct udp_sess *create_udp_sess(struct srv_udp_state *state, uint32_t addr,
+				 uint16_t port)
+	__acquires(&state->sess_map_lock)
+	__releases(&state->sess_map_lock)
 {
 	int err = 0;
 	uint16_t idx;
@@ -117,12 +90,39 @@ struct udp_sess *get_udp_sess(struct srv_udp_state *state, uint32_t addr,
 	WARN_ON(!inet_ntop(AF_INET, &addr, sess->str_src_addr,
 			   sizeof(sess->str_src_addr)));
 
-	udp_sess_tv_update(sess);
+	udp_sess_update_last_act(sess);
 	atomic_store(&sess->is_connected, true);
 	atomic_fetch_add(&state->n_on_sess, 1);
 out:
 	mutex_unlock(&state->sess_stk_lock);
 	errno = err;
+	return ret;
+}
+
+
+struct udp_sess *lookup_udp_sess(struct srv_udp_state *state, uint32_t addr,
+				 uint16_t port)
+	__acquires(&state->sess_map_lock)
+	__releases(&state->sess_map_lock)
+{
+	struct udp_sess *ret;
+	struct udp_map_bucket *bkt;
+
+	bkt = addr_to_bkt(state->sess_map, addr);
+	mutex_lock(&state->sess_map_lock);
+	do {
+		ret = bkt->sess;
+		if (ret) {
+			if ((ret->src_addr == addr) && (ret->src_port == port))
+				goto out;
+			else
+				ret = NULL;
+		}
+
+		bkt = bkt->next;
+	} while (bkt);
+out:
+	mutex_unlock(&state->sess_map_lock);
 	return ret;
 }
 
@@ -181,7 +181,7 @@ out:
 }
 
 
-int put_udp_session(struct srv_udp_state *state, struct udp_sess *sess)
+int delete_udp_session(struct srv_udp_state *state, struct udp_sess *sess)
 	__acquires(&state->sess_stk_lock)
 	__releases(&state->sess_stk_lock)
 {

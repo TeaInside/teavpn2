@@ -19,9 +19,9 @@
 #include <teavpn2/client/common.h>
 
 
-#define EPOLL_EVT_ARR_NUM 3u
-#define UDP_SESS_TIMEOUT  30
-
+#define EPOLL_EVT_ARR_NUM 	3u
+#define UDP_LOOP_C_DEADLINE	64
+#define UDP_SESS_TIMEOUT	180
 
 struct cli_udp_state;
 

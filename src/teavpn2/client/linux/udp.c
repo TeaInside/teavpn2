@@ -102,7 +102,7 @@ static int init_state(struct cli_udp_state *state)
 	if (unlikely(ret))
 		return ret;
 
-	pkt = calloc_wrp(1u, sizeof(*pkt));
+	pkt = al4096_malloc_mmap(sizeof(*pkt));
 	if (unlikely(!pkt))
 		return -errno;
 
@@ -678,7 +678,7 @@ static void destroy_state(struct cli_udp_state *state)
 
 	close_tun_fds(state);
 	close_udp_fd(state);
-	al64_free(state->pkt);
+	al4096_free_munmap(state->pkt, sizeof(*state->pkt));
 	al64_free(state);
 }
 

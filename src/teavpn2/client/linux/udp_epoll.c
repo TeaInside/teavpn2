@@ -161,7 +161,7 @@ static int init_epoll_thread_array(struct cli_udp_state *state)
 		if (unlikely(ret))
 			return ret;
 
-		pkt = calloc_wrp(1ul, sizeof(*pkt));
+		pkt = al4096_malloc_mmap(sizeof(*pkt));
 		if (unlikely(!pkt))
 			return -errno;
 
@@ -247,10 +247,6 @@ static ssize_t recv_from_server(struct epl_thread *thread, int udp_fd)
 		return -ret;
 	}
 	thread->pkt->len = (size_t)recv_ret;
-
-	if ((++thread->state->loop_c % 64) == 0)
-		get_unix_time(&thread->state->last_t);
-
 	return recv_ret;
 }
 
@@ -285,6 +281,7 @@ static int handle_req_sync(struct epl_thread *thread)
 static int _handle_event_udp(struct epl_thread *thread,
 			     struct cli_udp_state *state)
 {
+	int ret = 0;
 	struct srv_pkt *srv_pkt = &thread->pkt->srv;
 
 	switch (srv_pkt->type) {
@@ -294,10 +291,11 @@ static int _handle_event_udp(struct epl_thread *thread,
 	case TSRV_PKT_TUN_DATA:
 		return handle_tun_data(thread);
 	case TSRV_PKT_REQSYNC:
-		return handle_req_sync(thread);
+		ret = handle_req_sync(thread);
+		fallthrough;
 	case TSRV_PKT_SYNC:
 		get_unix_time(&thread->state->last_t);
-		return 0;
+		return ret;
 	case TSRV_PKT_CLOSE:
 		state->stop = true;
 		return 0;
@@ -358,6 +356,9 @@ static int handle_event(struct epl_thread *thread, struct cli_udp_state *state,
 		ret = handle_event_udp(thread, state, fd);
 	else
 		ret = handle_event_tun(thread, fd);
+
+	if ((state->loop_c++ % UDP_LOOP_C_DEADLINE) == 0)
+		get_unix_time(&state->last_t);
 
 	return ret;
 }
@@ -453,7 +454,7 @@ static void thread_wait(struct epl_thread *thread, struct cli_udp_state *state)
 }
 
 
-static __no_inline void *_run_event_loop(void *thread_p)
+static noinline void *_run_event_loop(void *thread_p)
 {
 	int ret = 0;
 	struct epl_thread *thread;
@@ -516,6 +517,7 @@ static void tt_send_reqsync(struct cli_udp_state *state)
 
 static void _run_timer_thread(struct cli_udp_state *state)
 {
+	int i = 0;
 	time_t time_diff = 0;
 	const time_t max_diff = UDP_SESS_TIMEOUT;
 
@@ -530,7 +532,31 @@ static void _run_timer_thread(struct cli_udp_state *state)
 		return;
 	}
 
-	if (time_diff > (max_diff / 2))
+	if (time_diff > ((max_diff * 4) / 5)) {
+		i = 7;
+		goto send_reqsync;
+	}
+
+	if (time_diff > ((max_diff * 3) / 5)) {
+		i = 5;
+		goto send_reqsync;
+	}
+
+	if (time_diff > ((max_diff * 2) / 5)) {
+		i = 3;
+		goto send_reqsync;
+	}
+
+	if (time_diff > ((max_diff * 1) / 5)) {
+		i = 1;
+		goto send_reqsync;
+	}
+
+
+	return;
+
+send_reqsync:
+	while (i-- > 0)
 		tt_send_reqsync(state);
 }
 
@@ -547,7 +573,7 @@ static void *run_timer_thread(void *arg)
 	atomic_store(&state->tt.is_online, true);
 	state->timeout_disconnect = false;
 	while (likely(!state->stop)) {
-		sleep(5);
+		sleep(3);
 		_run_timer_thread(state);
 	}
 	atomic_store(&state->tt.is_online, false);
@@ -709,7 +735,7 @@ static void destroy_epoll(struct cli_udp_state *state)
 	if (threads) {
 		close_epoll_fds(threads, nn);
 		for (i = 0; i < nn; i++)
-			al64_free(threads[i].pkt);
+			al4096_free_munmap(threads[i].pkt, sizeof(*threads[i].pkt));
 	}
 	al64_free(threads);
 }

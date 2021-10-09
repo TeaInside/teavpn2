@@ -22,13 +22,13 @@
 #include <ctype.h>
 
 
-static __inline int is_ws(int the_chr)
+static __always_inline int is_ws(int the_chr)
 {
 	return isspace((int)((unsigned)the_chr));
 }
 
 
-static __no_inline char *strtriml_move(char *str, size_t len)
+static noinline char *strtriml_move(char *str, size_t len)
 {
 	size_t trimmed_len;
 	char *orig = str, *end;
@@ -77,7 +77,7 @@ static __no_inline char *strtriml_move(char *str, size_t len)
 
 
 
-static __no_inline char *strtrim_move(char *str)
+static noinline char *strtrim_move(char *str)
 {
 	/* TODO: Don't waste time just for strlen */
 	return strtriml_move(str, strlen(str));
@@ -99,7 +99,7 @@ static char *sane_strncpy(char *__restrict__ dst, char *__restrict__ src,
  * https://github.com/php/php-src/blob/e9d78339e7ff2edb8a1eda93d047ccaac25efa24/ext/standard/exec.c#L388-L468
  *
  */
-static __no_inline char *escapeshellarg(char *alloc, const char *str,
+static noinline char *escapeshellarg(char *alloc, const char *str,
 					size_t len, size_t *res_len)
 {
 	size_t y = 0;
@@ -339,7 +339,7 @@ static __always_inline const char *find_ip_cmd(void)
 	return NULL;
 }
 
-static __no_inline bool teavpn_iface_toggle(struct if_info *iface, bool up,
+static noinline bool teavpn_iface_toggle(struct if_info *iface, bool up,
 					    bool suppress_err);
 
 
@@ -355,7 +355,7 @@ bool teavpn_iface_down(struct if_info *iface)
 }
 
 
-static __no_inline bool teavpn_iface_toggle(struct if_info *iface, bool up,
+static noinline bool teavpn_iface_toggle(struct if_info *iface, bool up,
 					    bool suppress_err)
 {
 #ifdef TEAVPN_IPV6_SUPPORT

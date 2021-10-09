@@ -21,6 +21,8 @@
 
 #include <emerg/emerg.h>
 
+#include <teavpn2/compiler_attributes.h>
+
 #ifndef unlikely
 #  define unlikely(X) __builtin_expect((bool)(X), 0)
 #endif
@@ -29,31 +31,9 @@
 #  define likely(X) __builtin_expect((bool)(X), 1)
 #endif
 
-#define fallthrough __attribute__((fallthrough))
-
 #if defined(__clang__)
 #  pragma clang diagnostic push
 #  pragma clang diagnostic ignored "-Wreserved-id-macro"
-#endif
-
-#ifndef __maybe_unused
-#  define __maybe_unused __attribute__((unused))
-#endif
-
-#ifndef __inline
-#  define __inline inline
-#endif
-
-#ifndef __always_inline
-#  define __always_inline __inline __attribute__((always_inline))
-#endif
-
-#ifndef __no_inline
-#  define __no_inline __attribute__((noinline))
-#endif
-
-#ifndef __no_return
-#  define __no_return __attribute__((noreturn))
 #endif
 
 #ifndef ____stringify
