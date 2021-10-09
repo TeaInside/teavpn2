@@ -1319,7 +1319,7 @@ static __cold bool wait_for_tun_wrk_threads_to_exit(struct srv_udp_state *state)
 }
 
 
-static __hot bool wait_for_threads_to_exit(struct srv_udp_state *state)
+static __cold bool wait_for_threads_to_exit(struct srv_udp_state *state)
 {
 
 	if (!wait_for_zr_thread_to_exit(state))
