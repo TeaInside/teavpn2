@@ -196,15 +196,15 @@ do_cc() {
 }
 
 compile_prog() {
-  local local_cflags="$1";
-  local local_ldflags="$2 $LIBS";
+  local_cflags="$1";
+  local_ldflags="$2 $LIBS";
   echo "Compiling test case $3" >> config.log;
   do_cc -D_GNU_SOURCE $CFLAGS $local_cflags -o $TMPE $TMPC $LDFLAGS $local_ldflags;
 }
 
 compile_prog_cxx() {
-  local local_cflags="$1";
-  local local_ldflags="$2 $LIBS";
+  local_cflags="$1";
+  local_ldflags="$2 $LIBS";
   echo "Compiling test case $3" >> config.log;
   do_cxx -D_GNU_SOURCE $CXXFLAGS $local_cflags -o $TMPE $TMPC $LDFLAGS $local_ldflags;
 }
