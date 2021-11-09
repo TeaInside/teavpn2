@@ -5,6 +5,8 @@
 
 #include <poll.h>
 #include <unistd.h>
+#include <signal.h>
+#include <pthread.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <teavpn2/net/linux/iface.h>

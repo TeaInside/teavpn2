@@ -4,6 +4,8 @@
  */
 
 #include <unistd.h>
+#include <signal.h>
+#include <pthread.h>
 #include <teavpn2/net/linux/iface.h>
 #include <teavpn2/server/linux/udp.h>
 

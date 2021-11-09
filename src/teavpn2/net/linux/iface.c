@@ -99,8 +99,8 @@ static char *sane_strncpy(char *__restrict__ dst, char *__restrict__ src,
  * https://github.com/php/php-src/blob/e9d78339e7ff2edb8a1eda93d047ccaac25efa24/ext/standard/exec.c#L388-L468
  *
  */
-static noinline char *escapeshellarg(char *alloc, const char *str,
-					size_t len, size_t *res_len)
+__cold static noinline char *escapeshellarg(char *alloc, const char *str,
+					    size_t len, size_t *res_len)
 {
 	size_t y = 0;
 	size_t l = (len > 0) ? len : strlen(str);
@@ -170,7 +170,7 @@ static noinline char *escapeshellarg(char *alloc, const char *str,
  *        IFF_NO_PI - Do not provide packet information
  *        IFF_MULTI_QUEUE - Create a queue of multiqueue device
  */
-int tun_alloc(const char *dev, short flags)
+__cold int tun_alloc(const char *dev, short flags)
 {
 	int fd;
 	int err;
@@ -218,7 +218,7 @@ again:
 }
 
 
-int fd_set_nonblock(int fd)
+__cold int fd_set_nonblock(int fd)
 {
 	int err;
 	int flags;
@@ -247,8 +247,8 @@ int fd_set_nonblock(int fd)
 
 
 
-static char *shell_exec(const char *cmd, char *buf, size_t buflen,
-			size_t *outlen)
+static __cold char *shell_exec(const char *cmd, char *buf, size_t buflen,
+			       size_t *outlen)
 {
 	int err;
 	FILE *handle;
@@ -308,13 +308,13 @@ do {									\
 } while (0)
 
 
-static __always_inline char *simple_esc_arg(char *buf, const char *str)
+static __cold __always_inline char *simple_esc_arg(char *buf, const char *str)
 {
 	return escapeshellarg(buf, str, strlen(str), NULL);
 }
 
 
-static __always_inline const char *find_ip_cmd(void)
+static __cold __always_inline const char *find_ip_cmd(void)
 {
 	int ret;
 	static const char * const ip_bin[] = {
@@ -343,20 +343,20 @@ static noinline bool teavpn_iface_toggle(struct if_info *iface, bool up,
 					    bool suppress_err);
 
 
-bool teavpn_iface_up(struct if_info *iface)
+__cold bool teavpn_iface_up(struct if_info *iface)
 {
 	return teavpn_iface_toggle(iface, true, false);
 }
 
 
-bool teavpn_iface_down(struct if_info *iface)
+__cold bool teavpn_iface_down(struct if_info *iface)
 {
 	return teavpn_iface_toggle(iface, false, true);
 }
 
 
-static noinline bool teavpn_iface_toggle(struct if_info *iface, bool up,
-					    bool suppress_err)
+static __cold noinline bool teavpn_iface_toggle(struct if_info *iface, bool up,
+						bool suppress_err)
 {
 #ifdef TEAVPN_IPV6_SUPPORT
 	static_assert(0, "Fixme: Handle IPv6 assignment.");

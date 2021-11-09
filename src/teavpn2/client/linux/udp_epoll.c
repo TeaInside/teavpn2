@@ -4,12 +4,14 @@
  */
 
 #include <unistd.h>
+#include <signal.h>
+#include <pthread.h>
 #include <sys/epoll.h>
 #include <teavpn2/client/common.h>
 #include <teavpn2/client/linux/udp.h>
 
 
-static int create_epoll_fd(void)
+static __cold int create_epoll_fd(void)
 {
 	int ret = 0;
 	int epoll_fd;
@@ -25,8 +27,8 @@ static int create_epoll_fd(void)
 }
 
 
-static int epoll_add(struct epl_thread *thread, int fd, uint32_t events,
-		     epoll_data_t data)
+static __cold int epoll_add(struct epl_thread *thread, int fd, uint32_t events,
+			    epoll_data_t data)
 {
 	int ret;
 	struct epoll_event evt;
@@ -51,8 +53,8 @@ static int epoll_add(struct epl_thread *thread, int fd, uint32_t events,
 }
 
 
-static int do_epoll_fd_registration(struct cli_udp_state *state,
-				    struct epl_thread *thread)
+static __cold int do_epoll_fd_registration(struct cli_udp_state *state,
+					   struct epl_thread *thread)
 {
 	int ret;
 	epoll_data_t data;
@@ -110,8 +112,8 @@ static int do_epoll_fd_registration(struct cli_udp_state *state,
 }
 
 
-static int init_epoll_thread(struct cli_udp_state *state,
-			     struct epl_thread *thread)
+static __cold int init_epoll_thread(struct cli_udp_state *state,
+				    struct epl_thread *thread)
 {
 	int ret;
 
@@ -130,7 +132,7 @@ static int init_epoll_thread(struct cli_udp_state *state,
 }
 
 
-static int init_epoll_thread_array(struct cli_udp_state *state)
+static __cold int init_epoll_thread_array(struct cli_udp_state *state)
 {
 	int ret = 0;
 	struct epl_thread *threads;
@@ -172,36 +174,34 @@ static int init_epoll_thread_array(struct cli_udp_state *state)
 }
 
 
-static ssize_t _do_send_to(int udp_fd, const void *pkt, size_t send_len)
+static __hot ssize_t _do_send_to(int udp_fd, const void *pkt, size_t send_len)
 {
-	int ret;
 	ssize_t send_ret;
-	send_ret = sendto(udp_fd, pkt, send_len, 0, NULL, 0);
+
+	send_ret = __sys_sendto(udp_fd, pkt, send_len, 0, NULL, 0);
 	if (unlikely(send_ret < 0)) {
-		ret = errno;
-		pr_err("sendto(): " PRERF, PREAR(ret));
-		return (ssize_t)-ret;
+		pr_err("sendto(): " PRERF, PREAR((int)-send_ret));
+		return send_ret;
 	}
 	return send_ret;
 }
 
 
-static ssize_t _do_recv_from(int udp_fd, void *pkt, size_t recv_len)
+static __hot ssize_t _do_recv_from(int udp_fd, void *pkt, size_t recv_len)
 {
-	int ret;
 	ssize_t recv_ret;
-	recv_ret = recvfrom(udp_fd, pkt, recv_len, 0, NULL, 0);
+
+	recv_ret = __sys_recvfrom(udp_fd, pkt, recv_len, 0, NULL, 0);
 	if (unlikely(recv_ret < 0)) {
-		ret = errno;
-		pr_err("recvfrom(): " PRERF, PREAR(ret));
-		return (ssize_t)-ret;
+		pr_err("recvfrom(): " PRERF, PREAR((int)-recv_ret));
+		return recv_ret;
 	}
 	return recv_ret;
 }
 
 
-static ssize_t do_send_to(struct epl_thread *thread, const void *buf,
-			  size_t pkt_len)
+static __hot ssize_t do_send_to(struct epl_thread *thread, const void *buf,
+				size_t pkt_len)
 {
 	int udp_fd = thread->state->udp_fd;
 	ssize_t send_ret = _do_send_to(udp_fd, buf, pkt_len);
@@ -211,7 +211,8 @@ static ssize_t do_send_to(struct epl_thread *thread, const void *buf,
 }
 
 
-static ssize_t do_recv_from(struct epl_thread *thread, void *buf, size_t len)
+static __hot ssize_t do_recv_from(struct epl_thread *thread, void *buf,
+				  size_t len)
 {
 	int udp_fd = thread->state->udp_fd;
 	ssize_t recv_ret = _do_recv_from(udp_fd, buf, len);
@@ -221,9 +222,8 @@ static ssize_t do_recv_from(struct epl_thread *thread, void *buf, size_t len)
 }
 
 
-static ssize_t recv_from_server(struct epl_thread *thread, int udp_fd)
+static __hot ssize_t recv_from_server(struct epl_thread *thread, int udp_fd)
 {
-	int ret;
 	ssize_t recv_ret;
 	char *buf = thread->pkt->__raw;
 	const size_t recv_size = sizeof(thread->pkt->cli.__raw);
@@ -239,19 +239,20 @@ static ssize_t recv_from_server(struct epl_thread *thread, int udp_fd)
 			return -ENETDOWN;
 		}
 
-		ret = errno;
-		if (ret == EAGAIN)
+		if (recv_ret == -EAGAIN)
 			return 0;
 
-		pr_err("recvfrom(udp_fd) (fd=%d): " PRERF, udp_fd, PREAR(ret));
-		return -ret;
+		pr_err("recvfrom(udp_fd) (fd=%d): " PRERF, udp_fd,
+		       PREAR((int)-recv_ret));
+	} else {
+		thread->pkt->len = (size_t)recv_ret;
 	}
-	thread->pkt->len = (size_t)recv_ret;
+
 	return recv_ret;
 }
 
 
-static int handle_tun_data(struct epl_thread *thread)
+static __hot int handle_tun_data(struct epl_thread *thread)
 {
 	uint16_t data_len;
 	ssize_t write_ret;
@@ -259,14 +260,15 @@ static int handle_tun_data(struct epl_thread *thread)
 	struct srv_pkt *srv_pkt = &thread->pkt->srv;
 
 	data_len  = ntohs(srv_pkt->len);
-	write_ret = write(tun_fd, srv_pkt->__raw, data_len);
+	write_ret = __sys_write(tun_fd, srv_pkt->__raw, data_len);
 	pr_debug("[thread=%hu] write(tun_fd=%d) %zd bytes", thread->idx, tun_fd,
 		 write_ret);
-	return write_ret < 0 ? -errno : 0;
+
+	return (write_ret < 0) ? (int) write_ret : 0;
 }
 
 
-static int handle_req_sync(struct epl_thread *thread)
+static __hot int handle_req_sync(struct epl_thread *thread)
 {
 	size_t send_len;
 	ssize_t send_ret;
@@ -278,8 +280,8 @@ static int handle_req_sync(struct epl_thread *thread)
 }
 
 
-static int _handle_event_udp(struct epl_thread *thread,
-			     struct cli_udp_state *state)
+static __hot int _handle_event_udp(struct epl_thread *thread,
+				   struct cli_udp_state *state)
 {
 	int ret = 0;
 	struct srv_pkt *srv_pkt = &thread->pkt->srv;
@@ -306,8 +308,8 @@ static int _handle_event_udp(struct epl_thread *thread,
 }
 
 
-static int handle_event_udp(struct epl_thread *thread,
-			    struct cli_udp_state *state, int udp_fd)
+static __hot int handle_event_udp(struct epl_thread *thread,
+				  struct cli_udp_state *state, int udp_fd)
 {
 	ssize_t recv_ret;
 
@@ -319,22 +321,23 @@ static int handle_event_udp(struct epl_thread *thread,
 }
 
 
-static int handle_event_tun(struct epl_thread *thread, int tun_fd)
+static __hot int handle_event_tun(struct epl_thread *thread, int tun_fd)
 {
-	int ret;
 	size_t send_len;
 	ssize_t read_ret;
 	ssize_t send_ret;
 	struct cli_pkt *cli_pkt = &thread->pkt->cli;
+	const size_t read_size = sizeof(thread->pkt->cli.__raw);
 
-	read_ret = read(tun_fd, cli_pkt->__raw, sizeof(thread->pkt->cli.__raw));
+	read_ret = __sys_read(tun_fd, cli_pkt->__raw, read_size);
 	if (unlikely(read_ret < 0)) {
-		ret = errno;
-		if (likely(ret == EAGAIN))
+
+		if (read_ret == -EAGAIN)
 			return 0;
 
-		pr_err("read(tun_fd) (fd=%d): " PRERF, tun_fd, PREAR(ret));
-		return -ret;
+		pr_err("read(tun_fd) (fd=%d): " PRERF, tun_fd,
+		       PREAR((int)-read_ret));
+		return (int) read_ret;
 	}
 
 	pr_debug("[thread=%hu] read(tun_fd=%d) %zd bytes", thread->idx, tun_fd,
@@ -342,12 +345,13 @@ static int handle_event_tun(struct epl_thread *thread, int tun_fd)
 
 	send_len = cli_pprep(cli_pkt, TCLI_PKT_TUN_DATA, (uint16_t)read_ret, 0);
 	send_ret = do_send_to(thread, cli_pkt, send_len);
-	return (send_ret < 0) ? (int)send_ret : 0;
+	return (send_ret < 0) ? (int) send_ret : 0;
 }
 
 
-static int handle_event(struct epl_thread *thread, struct cli_udp_state *state,
-			struct epoll_event *event)
+static __hot int handle_event(struct epl_thread *thread,
+			      struct cli_udp_state *state,
+			      struct epoll_event *event)
 {
 	int ret = 0;
 	int fd = event->data.fd;
@@ -364,32 +368,33 @@ static int handle_event(struct epl_thread *thread, struct cli_udp_state *state,
 }
 
 
-static int _do_epoll_wait(struct epl_thread *thread)
+static __hot int _do_epoll_wait(struct epl_thread *thread)
 {
 	int ret;
 	int epoll_fd = thread->epoll_fd;
 	int timeout = thread->epoll_timeout;
 	struct epoll_event *events = thread->events;
 
-	ret = epoll_wait(epoll_fd, events, EPOLL_EVT_ARR_NUM, timeout);
+	ret = __sys_epoll_wait(epoll_fd, events, EPOLL_EVT_ARR_NUM, timeout);
 	if (unlikely(ret < 0)) {
-		ret = errno;
 
-		if (likely(ret == EINTR)) {
+		if (likely(ret == -EINTR)) {
 			prl_notice(2, "[thread=%u] Interrupted!", thread->idx);
 			return 0;
 		}
 
 		pr_err("[thread=%u] epoll_wait(): " PRERF, thread->idx,
-		       PREAR(ret));
-		return -ret;
+		       PREAR(-ret));
+
+		return ret;
 	}
 
 	return ret;
 }
 
 
-static int do_epoll_wait(struct epl_thread *thread, struct cli_udp_state *state)
+static __hot int do_epoll_wait(struct epl_thread *thread,
+			       struct cli_udp_state *state)
 {
 	int ret, i, tmp;
 	struct epoll_event *events;
@@ -411,7 +416,8 @@ static int do_epoll_wait(struct epl_thread *thread, struct cli_udp_state *state)
 }
 
 
-static void thread_wait(struct epl_thread *thread, struct cli_udp_state *state)
+static __cold void thread_wait(struct epl_thread *thread,
+			       struct cli_udp_state *state)
 {
 	static _Atomic(bool) release_sub_thread = false;
 	uint8_t nn = state->cfg->sys.thread_num;
@@ -454,7 +460,7 @@ static void thread_wait(struct epl_thread *thread, struct cli_udp_state *state)
 }
 
 
-static noinline void *_run_event_loop(void *thread_p)
+static __cold noinline void *client_udp_epoll_run_event_loop(void *thread_p)
 {
 	int ret = 0;
 	struct epl_thread *thread;
@@ -481,12 +487,13 @@ static noinline void *_run_event_loop(void *thread_p)
 }
 
 
-static int spawn_thread(struct epl_thread *thread)
+static __cold int spawn_thread(struct epl_thread *thread)
 {
 	int ret;
 
 	prl_notice(2, "Spawning thread %u...", thread->idx);
-	ret = pthread_create(&thread->thread, NULL, _run_event_loop, thread);
+	ret = pthread_create(&thread->thread, NULL,
+			     client_udp_epoll_run_event_loop, thread);
 	if (unlikely(ret)) {
 		pr_err("pthread_create(): " PRERF, PREAR(ret));
 		return -ret;
@@ -502,7 +509,7 @@ static int spawn_thread(struct epl_thread *thread)
 }
 
 
-static void tt_send_reqsync(struct cli_udp_state *state)
+static __cold void tt_send_reqsync(struct cli_udp_state *state)
 {
 	size_t send_len;
 	struct cli_pkt pkt;
@@ -515,7 +522,7 @@ static void tt_send_reqsync(struct cli_udp_state *state)
 }
 
 
-static void _run_timer_thread(struct cli_udp_state *state)
+static __cold void _run_timer_thread(struct cli_udp_state *state)
 {
 	int i = 0;
 	time_t time_diff = 0;
@@ -561,7 +568,7 @@ send_reqsync:
 }
 
 
-static void *run_timer_thread(void *arg)
+static __cold void *run_timer_thread(void *arg)
 {
 	struct cli_udp_state *state = (struct cli_udp_state *)arg;
 
@@ -581,7 +588,7 @@ static void *run_timer_thread(void *arg)
 }
 
 
-static int spawn_timer_thread(struct cli_udp_state *state)
+static __cold int spawn_timer_thread(struct cli_udp_state *state)
 {
 	int ret;
 	pthread_t *tt = &state->tt.thread;
@@ -604,7 +611,7 @@ static int spawn_timer_thread(struct cli_udp_state *state)
 }
 
 
-static int run_event_loop(struct cli_udp_state *state)
+static __cold int run_event_loop(struct cli_udp_state *state)
 {
 	int ret;
 	void *ret_p;
@@ -628,14 +635,14 @@ static int run_event_loop(struct cli_udp_state *state)
 			goto out;
 	}
 
-	ret_p = _run_event_loop(&threads[0]);
+	ret_p = client_udp_epoll_run_event_loop(&threads[0]);
 	ret   = (int)((intptr_t)ret_p);
 out:
 	return ret;
 }
 
 
-static bool wait_for_threads_to_exit(struct cli_udp_state *state)
+static __cold bool wait_for_threads_to_exit(struct cli_udp_state *state)
 {
 	int ret;
 	unsigned wait_c = 0;
@@ -696,7 +703,7 @@ static bool wait_for_threads_to_exit(struct cli_udp_state *state)
 }
 
 
-static void close_epoll_fds(struct epl_thread *threads, uint8_t nn)
+static __cold void close_epoll_fds(struct epl_thread *threads, uint8_t nn)
 {
 	uint8_t i;
 	struct epl_thread *thread;
@@ -719,7 +726,7 @@ static void close_epoll_fds(struct epl_thread *threads, uint8_t nn)
 }
 
 
-static void destroy_epoll(struct cli_udp_state *state)
+static __cold void destroy_epoll(struct cli_udp_state *state)
 {
 	struct epl_thread *threads;
 	uint8_t i, nn = state->cfg->sys.thread_num;

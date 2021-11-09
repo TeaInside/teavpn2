@@ -15,3 +15,5 @@
 /.deps/
 /teavpn2*
 /dump.txt
+/config-host.h
+/config-host.mak

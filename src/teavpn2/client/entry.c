@@ -135,7 +135,7 @@ static const struct option long_options[] = {
 static const char short_opt[] = "hVv::c:d:t:D:s:H:P:Eu:p:";
 
 
-static int parse_argv(int argc, char *argv[], struct cli_cfg *cfg)
+static __cold int parse_argv(int argc, char *argv[], struct cli_cfg *cfg)
 {
 	int c;
 	struct cli_cfg_sys *sys = &cfg->sys;
@@ -348,8 +348,9 @@ static int cfg_parse_section_auth(struct cfg_parse_ctx *ctx, const char *name,
  * If success, returns 1.
  * If failure, returns 0.
  */
-static int client_cfg_parser(void *user, const char *section, const char *name,
-			     const char *val, int lineno)
+static __cold int client_cfg_parser(void *user, const char *section,
+				    const char *name, const char *val,
+				    int lineno)
 {
 	struct cfg_parse_ctx *ctx = (struct cfg_parse_ctx *)user;
 	struct cli_cfg *cfg = ctx->cfg;
@@ -370,7 +371,7 @@ static int client_cfg_parser(void *user, const char *section, const char *name,
 }
 
 
-static int parse_cfg_file(const char *cfg_file, struct cli_cfg *cfg)
+static __cold int parse_cfg_file(const char *cfg_file, struct cli_cfg *cfg)
 {
 	int ret;
 	FILE *handle;
@@ -406,7 +407,7 @@ static int parse_cfg_file(const char *cfg_file, struct cli_cfg *cfg)
  * The parser returns -errno value, hence we negate the return
  * value inside this function.
  */
-int run_client(int argc, char *argv[])
+__cold int run_client(int argc, char *argv[])
 {
 	int ret;
 	struct cli_cfg cfg;

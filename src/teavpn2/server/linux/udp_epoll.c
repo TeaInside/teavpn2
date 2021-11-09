@@ -5,12 +5,14 @@
 
 #include <poll.h>
 #include <unistd.h>
+#include <signal.h>
+#include <pthread.h>
 #include <teavpn2/server/common.h>
 #include <teavpn2/net/linux/iface.h>
 #include <teavpn2/server/linux/udp.h>
 
 
-static int create_epoll_fd(void)
+static __cold int create_epoll_fd(void)
 {
 	int ret = 0;
 	int epoll_fd;
@@ -26,8 +28,8 @@ static int create_epoll_fd(void)
 }
 
 
-static int epoll_add(struct epl_thread *thread, int fd, uint32_t events,
-		     epoll_data_t data)
+static __cold int epoll_add(struct epl_thread *thread, int fd, uint32_t events,
+			    epoll_data_t data)
 {
 	int ret;
 	struct epoll_event evt;
@@ -53,8 +55,8 @@ static int epoll_add(struct epl_thread *thread, int fd, uint32_t events,
 }
 
 
-static int init_epoll_fd_add(struct srv_udp_state *state,
-			     struct epl_thread *thread)
+static __cold int init_epoll_fd_add(struct srv_udp_state *state,
+				    struct epl_thread *thread)
 {
 	int ret;
 	epoll_data_t data;
@@ -134,8 +136,8 @@ static int wait_for_fd_be_writable(int fd, int timeout)
 }
 
 
-static int init_epoll_thread(struct srv_udp_state *state,
-			     struct epl_thread *thread)
+static __cold int init_epoll_thread(struct srv_udp_state *state,
+				    struct epl_thread *thread)
 {
 	int ret;
 
@@ -150,7 +152,7 @@ static int init_epoll_thread(struct srv_udp_state *state,
 }
 
 
-static int init_epoll_thread_array(struct srv_udp_state *state)
+static __cold int init_epoll_thread_array(struct srv_udp_state *state)
 {
 	int ret = 0;
 	struct epl_thread *threads;
@@ -199,11 +201,10 @@ static int init_epoll_thread_array(struct srv_udp_state *state)
 }
 
 
-static ssize_t _send_to_client(struct srv_udp_state *state,
-			       const void *buf, size_t pkt_len,
-			       struct sockaddr *dst_addr)
+static __hot ssize_t _send_to_client(struct srv_udp_state *state,
+				     const void *buf, size_t pkt_len,
+				     struct sockaddr *dst_addr)
 {
-	int err;
 	ssize_t send_ret;
 	int udp_fd = state->udp_fd;
 	const socklen_t addr_len = sizeof(struct sockaddr_in);
@@ -211,7 +212,7 @@ static ssize_t _send_to_client(struct srv_udp_state *state,
 	if (unlikely(pkt_len == 0))
 		return 0;
 
-	send_ret = sendto(udp_fd, buf, pkt_len, 0, dst_addr, addr_len);
+	send_ret = __sys_sendto(udp_fd, buf, pkt_len, 0, dst_addr, addr_len);
 	if (unlikely(send_ret <= 0)) {
 
 		if (send_ret == 0) {
@@ -219,11 +220,8 @@ static ssize_t _send_to_client(struct srv_udp_state *state,
 			return -ENETDOWN;
 		}
 
-		err = errno;
-		if (err != EAGAIN)
-			pr_err("sendto(): " PRERF, PREAR(err));
-
-		return -err;
+		if (send_ret != -EAGAIN)
+			pr_err("sendto(): " PRERF, PREAR((int)-send_ret));
 	}
 
 	return send_ret;
@@ -290,9 +288,9 @@ give_up:
 }
 
 
-static ssize_t send_to_client(struct epl_thread *thread,
-			      struct udp_sess *sess, const void *buf,
-			      size_t pkt_len)
+static __hot ssize_t send_to_client(struct epl_thread *thread,
+				    struct udp_sess *sess, const void *buf,
+				    size_t pkt_len)
 {
 	ssize_t send_ret;
 	struct sockaddr *dst_addr = (struct sockaddr *)&sess->addr;
@@ -338,16 +336,16 @@ static int close_udp_session(struct epl_thread *thread, struct udp_sess *sess)
 }
 
 
-static ssize_t _do_recv_from(int udp_fd, char *buf, size_t recv_size,
-			     struct sockaddr *src_addr, socklen_t *saddr_len)
+static __hot ssize_t _do_recv_from(int udp_fd, char *buf, size_t recv_size,
+				   struct sockaddr *src_addr,
+				   socklen_t *saddr_len)
 {
-	int ret;
 	ssize_t recv_ret;
 
 	if (unlikely(recv_size == 0))
 		return 0;
 
-	recv_ret = recvfrom(udp_fd, buf, recv_size, 0, src_addr, saddr_len);
+	recv_ret = __sys_recvfrom(udp_fd, buf, recv_size, 0, src_addr, saddr_len);
 	if (unlikely(recv_ret < 0)) {
 
 		if (recv_ret == 0) {
@@ -355,21 +353,20 @@ static ssize_t _do_recv_from(int udp_fd, char *buf, size_t recv_size,
 			return -ENETDOWN;
 		}
 
-		ret = errno;
-		if (ret == EAGAIN)
+		if (recv_ret == -EAGAIN)
 			return 0;
 
-		pr_err("recvfrom(udp_fd) (fd=%d): " PRERF, udp_fd, PREAR(ret));
-		return (ssize_t)-ret;
+		pr_err("recvfrom(udp_fd) (fd=%d): " PRERF, udp_fd,
+		       PREAR((int)-recv_ret));
 	}
 
 	return recv_ret;
 }
 
 
-static ssize_t do_recv_from(struct epl_thread *thread,
-			    int udp_fd, struct sockaddr_in *saddr,
-			    socklen_t *saddr_len)
+static __hot ssize_t do_recv_from(struct epl_thread *thread,
+				  int udp_fd, struct sockaddr_in *saddr,
+				  socklen_t *saddr_len)
 {
 	ssize_t recv_ret;
 	char *buf = thread->pkt->__raw;
@@ -498,7 +495,8 @@ reject:
 }
 
 
-static int _handle_new_client(struct epl_thread *thread, struct udp_sess *sess)
+static __cold int _handle_new_client(struct epl_thread *thread,
+				     struct udp_sess *sess)
 {
 	int ret = 0;
 
@@ -534,8 +532,8 @@ static inline bool skip_session_creation(struct epl_thread *thread)
 }
 
 
-static int handle_new_client(struct epl_thread *thread, uint32_t addr,
-			     uint16_t port, struct sockaddr_in *saddr)
+static __cold int handle_new_client(struct epl_thread *thread, uint32_t addr,
+				    uint16_t port, struct sockaddr_in *saddr)
 {
 	int ret;
 	struct udp_sess *sess;
@@ -561,7 +559,8 @@ static int handle_new_client(struct epl_thread *thread, uint32_t addr,
 }
 
 
-static int handle_clpkt_auth(struct epl_thread *thread, struct udp_sess *sess)
+static __cold int handle_clpkt_auth(struct epl_thread *thread,
+				    struct udp_sess *sess)
 {
 	int ret = 0;
 	size_t send_len;
@@ -631,7 +630,8 @@ out:
 }
 
 
-static ssize_t _handle_clpkt_tun_data(struct epl_thread *thread, int tun_fd)
+static __hot ssize_t _handle_clpkt_tun_data(struct epl_thread *thread,
+					    int tun_fd)
 {
 	uint16_t data_len;
 	ssize_t write_ret;
@@ -642,27 +642,24 @@ static ssize_t _handle_clpkt_tun_data(struct epl_thread *thread, int tun_fd)
 	if (unlikely(data_len == 0))
 		return 0;
 
-	write_ret = write(tun_fd, srv_pkt->__raw, (size_t)data_len);
+	write_ret = __sys_write(tun_fd, srv_pkt->__raw, (size_t)data_len);
 	if (unlikely(write_ret <= 0)) {
-		int err;
 
 		if (write_ret == 0) {
 			pr_err("write() to TUN fd returned zero");
 			return -ENETDOWN;
 		}
 
-		err = errno;
-		if (err != EAGAIN)
-			pr_err("write(): " PRERF, PREAR(err));
-
-		return (ssize_t)-err;
+		if (write_ret != -EAGAIN)
+			pr_err("write(): " PRERF, PREAR((int)-write_ret));
 	}
+
 	return write_ret;
 }
 
 
-static int handle_clpkt_tun_data(struct epl_thread *thread,
-				 struct udp_sess *sess)
+static __hot int handle_clpkt_tun_data(struct epl_thread *thread,
+				       struct udp_sess *sess)
 {	
 	ssize_t write_ret;
 	int tun_fd = thread->state->tun_fds[0];
@@ -698,7 +695,8 @@ write_again:
  * Handle request sync from client.
  * If the client requests a sync, we (the server) send a sync packet.
  */
-static int handle_clpkt_reqsync(struct epl_thread *thread, struct udp_sess *sess)
+static __hot int handle_clpkt_reqsync(struct epl_thread *thread,
+				      struct udp_sess *sess)
 {
 	int ret = 0;
 	size_t send_len;
@@ -714,8 +712,8 @@ static int handle_clpkt_reqsync(struct epl_thread *thread, struct udp_sess *sess
 }
 
 
-static int __handle_event_from_udp(struct epl_thread *thread,
-				   struct udp_sess *sess)
+static __hot int __handle_event_from_udp(struct epl_thread *thread,
+					 struct udp_sess *sess)
 {
 	int ret = 0;
 	struct cli_pkt *cli_pkt = &thread->pkt->cli;
@@ -743,8 +741,8 @@ static int __handle_event_from_udp(struct epl_thread *thread,
 }
 
 
-static int _handle_event_from_udp(struct epl_thread *thread,
-				  struct sockaddr_in *saddr)
+static __hot int _handle_event_from_udp(struct epl_thread *thread,
+					struct sockaddr_in *saddr)
 {
 	int ret;
 	uint32_t addr;
@@ -785,7 +783,7 @@ static int _handle_event_from_udp(struct epl_thread *thread,
 }
 
 
-static int handle_event_from_udp(struct epl_thread *thread, int udp_fd)
+static __hot int handle_event_from_udp(struct epl_thread *thread, int udp_fd)
 {
 	ssize_t recv_ret;
 	struct sockaddr_in saddr;
@@ -804,8 +802,8 @@ static int handle_event_from_udp(struct epl_thread *thread, int udp_fd)
  * return 0 if it finds the destination.
  * return -errno if it errors.
  */
-static int route_ipv4_packet(struct epl_thread *thread, __be32 dst_addr,
-			     struct udp_sess *sess_arr, size_t send_len)
+static __hot int route_ipv4_packet(struct epl_thread *thread, __be32 dst_addr,
+				   struct udp_sess *sess_arr, size_t send_len)
 {
 	uint16_t idx;
 	int32_t find;
@@ -826,7 +824,7 @@ static int route_ipv4_packet(struct epl_thread *thread, __be32 dst_addr,
 }
 
 
-static int broadcast_packet(struct epl_thread *thread, size_t send_len)
+static __hot int broadcast_packet(struct epl_thread *thread, size_t send_len)
 {
 	struct srv_pkt *srv_pkt = &thread->pkt->srv;
 	struct srv_udp_state *state = thread->state;
@@ -852,7 +850,7 @@ static int broadcast_packet(struct epl_thread *thread, size_t send_len)
 }
 
 
-static int _route_packet(struct epl_thread *thread, size_t send_len)
+static __hot int _route_packet(struct epl_thread *thread, size_t send_len)
 {
 	struct srv_pkt *srv_pkt = &thread->pkt->srv;
 	struct iphdr *iphdr = &srv_pkt->tun_data.iphdr;
@@ -871,7 +869,7 @@ static int _route_packet(struct epl_thread *thread, size_t send_len)
 }
 
 
-static int route_packet(struct epl_thread *thread, ssize_t len)
+static __hot int route_packet(struct epl_thread *thread, ssize_t len)
 {
 	size_t send_len;
 	struct srv_pkt *srv_pkt = &thread->pkt->srv;
@@ -881,21 +879,22 @@ static int route_packet(struct epl_thread *thread, ssize_t len)
 }
 
 
-static int handle_event_from_tun(struct epl_thread *thread, int tun_fd)
+static __hot int handle_event_from_tun(struct epl_thread *thread, int tun_fd)
 {
-	int ret;
 	ssize_t read_ret;
 	char *buf = thread->pkt->srv.__raw;
 	const size_t read_size = sizeof(thread->pkt->srv.__raw);
 
-	read_ret = read(tun_fd, buf, read_size);
+	read_ret = __sys_read(tun_fd, buf, read_size);
 	if (unlikely(read_ret < 0)) {
-		ret = errno;
-		if (likely(ret == EAGAIN))
+
+		if (read_ret == -EAGAIN)
 			return 0;
 
-		pr_err("read(tun_fd) (fd=%d): " PRERF, tun_fd, PREAR(ret));
-		return -ret;
+		pr_err("read(tun_fd) (fd=%d): " PRERF, tun_fd,
+		       PREAR((int)-read_ret));
+
+		return (int) read_ret;
 	}
 
 	thread->pkt->len = (size_t)read_ret;
@@ -906,7 +905,8 @@ static int handle_event_from_tun(struct epl_thread *thread, int tun_fd)
 }
 
 
-static int handle_event(struct epl_thread *thread, struct epoll_event *event)
+static __hot int handle_event(struct epl_thread *thread,
+			      struct epoll_event *event)
 {
 	int ret = 0;
 	int fd = event->data.fd;
@@ -920,31 +920,30 @@ static int handle_event(struct epl_thread *thread, struct epoll_event *event)
 }
 
 
-static int do_epoll_wait(struct epl_thread *thread)
+static __hot int do_epoll_wait(struct epl_thread *thread)
 {
 	int ret;
 	int epoll_fd = thread->epoll_fd;
 	int timeout = thread->epoll_timeout;
 	struct epoll_event *events = thread->events;
 
-	ret = epoll_wait(epoll_fd, events, EPOLL_EVT_ARR_NUM, timeout);
+	ret = __sys_epoll_wait(epoll_fd, events, EPOLL_EVT_ARR_NUM, timeout);
 	if (unlikely(ret < 0)) {
-		ret = errno;
 
-		if (likely(ret == EINTR)) {
+		if (likely(ret == -EINTR)) {
 			prl_notice(2, "[thread=%hu] Interrupted!", thread->idx);
 			return 0;
 		}
 
 		pr_err("[thread=%u] epoll_wait(): " PRERF, thread->idx,
-		       PREAR(ret));
-		return -ret;
+		       PREAR(-ret));
+		return ret;
 	}
 	return ret;
 }
 
 
-static int __run_event_loop(struct epl_thread *thread)
+static __hot int __run_event_loop(struct epl_thread *thread)
 {
 	int i, ret, tmp;
 	struct epoll_event *events;
@@ -964,7 +963,8 @@ static int __run_event_loop(struct epl_thread *thread)
 }
 
 
-static void thread_wait(struct epl_thread *thread, struct srv_udp_state *state)
+static __cold void thread_wait(struct epl_thread *thread,
+			       struct srv_udp_state *state)
 {
 	static _Atomic(bool) release_sub_thread = false;
 	uint8_t nn = state->cfg->sys.thread_num;
@@ -1007,7 +1007,7 @@ static void thread_wait(struct epl_thread *thread, struct srv_udp_state *state)
 }
 
 
-static noinline void *_run_event_loop(void *thread_p)
+static __cold noinline void *server_udp_epoll_run_event_loop(void *thread_p)
 {
 	int ret = 0;
 	struct epl_thread *thread;
@@ -1032,7 +1032,8 @@ static noinline void *_run_event_loop(void *thread_p)
 }
 
 
-static void zr_send_reqsync(struct srv_udp_state *state, struct udp_sess *sess)
+static __cold void zr_send_reqsync(struct srv_udp_state *state,
+				   struct udp_sess *sess)
 {
 	size_t send_len;
 	struct srv_pkt *srv_pkt = &state->zr.pkt->srv;
@@ -1045,7 +1046,8 @@ static void zr_send_reqsync(struct srv_udp_state *state, struct udp_sess *sess)
 }
 
 
-static int zr_close_sess(struct srv_udp_state *state, struct udp_sess *sess)
+static __cold int zr_close_sess(struct srv_udp_state *state,
+				struct udp_sess *sess)
 {
 	size_t send_len;
 	struct srv_pkt *srv_pkt = &state->zr.pkt->srv;
@@ -1062,8 +1064,8 @@ static int zr_close_sess(struct srv_udp_state *state, struct udp_sess *sess)
 }
 
 
-static void zr_chk_auth(struct srv_udp_state *state, struct udp_sess *sess,
-			time_t time_diff)
+static __cold void zr_chk_auth(struct srv_udp_state *state,
+			       struct udp_sess *sess, time_t time_diff)
 {
 	int i = 0;
 	const time_t max_diff = UDP_SESS_TIMEOUT_AUTH;
@@ -1101,8 +1103,8 @@ send_reqsync:
 }
 
 
-static void zr_chk_no_auth(struct srv_udp_state *state, struct udp_sess *sess,
-			   time_t time_diff)
+static __cold void zr_chk_no_auth(struct srv_udp_state *state,
+				  struct udp_sess *sess, time_t time_diff)
 {
 	const time_t max_diff = UDP_SESS_TIMEOUT_NO_AUTH;
 
@@ -1111,7 +1113,7 @@ static void zr_chk_no_auth(struct srv_udp_state *state, struct udp_sess *sess,
 }
 
 
-static void zombie_reaper_do_scan(struct srv_udp_state *state)
+static __cold void zombie_reaper_do_scan(struct srv_udp_state *state)
 {
 	uint16_t i, j, max_conn = state->cfg->sock.max_conn;
 	struct udp_sess *sess, *sess_arr = state->sess_arr;
@@ -1137,7 +1139,7 @@ static void zombie_reaper_do_scan(struct srv_udp_state *state)
 }
 
 
-static void *run_zombie_reaper_thread(void *arg)
+static __cold void *run_zombie_reaper_thread(void *arg)
 {
 	struct srv_udp_state *state = (struct srv_udp_state *)arg;
 
@@ -1166,7 +1168,7 @@ static void *run_zombie_reaper_thread(void *arg)
 }
 
 
-static int spawn_zombie_reaper_thread(struct srv_udp_state *state)
+static __cold int spawn_zombie_reaper_thread(struct srv_udp_state *state)
 {
 	int ret;
 	pthread_t *tr = &state->zr.thread;
@@ -1189,14 +1191,14 @@ static int spawn_zombie_reaper_thread(struct srv_udp_state *state)
 }
 
 
-static int spawn_tun_worker_thread(struct epl_thread *thread)
+static __cold int spawn_tun_worker_thread(struct epl_thread *thread)
 {
 	int ret;
 	char buf[sizeof("tun-worker-xxxx")];
 	pthread_t *tr = &thread->thread;
 
 	prl_notice(2, "Spawning thread %u...", thread->idx);
-	ret = pthread_create(tr, NULL, _run_event_loop, thread);
+	ret = pthread_create(tr, NULL, server_udp_epoll_run_event_loop, thread);
 	if (unlikely(ret)) {
 		pr_err("pthread_create(): " PRERF, PREAR(ret));
 		return -ret;
@@ -1214,7 +1216,7 @@ static int spawn_tun_worker_thread(struct epl_thread *thread)
 }
 
 
-static int run_event_loop(struct srv_udp_state *state)
+static __cold int run_event_loop(struct srv_udp_state *state)
 {
 	int ret;
 	void *ret_p;
@@ -1238,14 +1240,14 @@ static int run_event_loop(struct srv_udp_state *state)
 			goto out;
 	}
 
-	ret_p = _run_event_loop(&threads[0]);
+	ret_p = server_udp_epoll_run_event_loop(&threads[0]);
 	ret   = (int)((intptr_t)ret_p);
 out:
 	return ret;
 }
 
 
-static bool wait_for_zombie_reaper_thread_to_exit(struct srv_udp_state *state)
+static __cold bool wait_for_zr_thread_to_exit(struct srv_udp_state *state)
 {
 	int ret;
 	unsigned wait_c = 0;
@@ -1270,7 +1272,7 @@ static bool wait_for_zombie_reaper_thread_to_exit(struct srv_udp_state *state)
 }
 
 
-static bool wait_for_tun_worker_threads_to_exit(struct srv_udp_state *state)
+static __cold bool wait_for_tun_wrk_threads_to_exit(struct srv_udp_state *state)
 {
 	int ret;
 	uint8_t nn, i;
@@ -1317,20 +1319,20 @@ static bool wait_for_tun_worker_threads_to_exit(struct srv_udp_state *state)
 }
 
 
-static bool wait_for_threads_to_exit(struct srv_udp_state *state)
+static __cold bool wait_for_threads_to_exit(struct srv_udp_state *state)
 {
 
-	if (!wait_for_zombie_reaper_thread_to_exit(state))
+	if (!wait_for_zr_thread_to_exit(state))
 		return false;
 
-	if (!wait_for_tun_worker_threads_to_exit(state))
+	if (!wait_for_tun_wrk_threads_to_exit(state))
 		return false;
 
 	return true;
 }
 
 
-static void close_epoll_fds(struct srv_udp_state *state)
+static __cold void close_epoll_fds(struct srv_udp_state *state)
 {
 	uint8_t i, nn = state->cfg->sys.thread_num;
 	struct epl_thread *threads = state->epl_threads;
@@ -1350,7 +1352,7 @@ static void close_epoll_fds(struct srv_udp_state *state)
 }
 
 
-static void close_client_sess(struct srv_udp_state *state)
+static __cold void close_client_sess(struct srv_udp_state *state)
 {
 	struct udp_sess *sess_arr = state->sess_arr;
 	uint16_t i, max_conn = state->cfg->sock.max_conn;
@@ -1368,7 +1370,7 @@ static void close_client_sess(struct srv_udp_state *state)
 }
 
 
-static void free_pkt_buffer(struct srv_udp_state *state)
+static __cold void free_pkt_buffer(struct srv_udp_state *state)
 {
 	uint8_t i, nn = state->cfg->sys.thread_num;
 	struct epl_thread *threads = state->epl_threads;
@@ -1381,7 +1383,7 @@ static void free_pkt_buffer(struct srv_udp_state *state)
 }
 
 
-static void destroy_epoll(struct srv_udp_state *state)
+static __cold void destroy_epoll(struct srv_udp_state *state)
 {
 	if (!wait_for_threads_to_exit(state)) {
 		/*

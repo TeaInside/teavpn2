@@ -6,7 +6,6 @@
 #define TEAVPN2__STACK_H
 
 #include <stdint.h>
-#include <emerg/emerg.h>
 #include <teavpn2/common.h>
 
 

@@ -27,7 +27,7 @@ static const uint8_t d_num_of_threads = 2;
 static const uint16_t d_srv_max_conn = 32;
 
 
-static void set_default_config(struct srv_cfg *cfg)
+static __cold void set_default_config(struct srv_cfg *cfg)
 {
 	struct srv_cfg_sys *sys = &cfg->sys;
 	struct srv_cfg_sock *sock = &cfg->sock;
@@ -51,7 +51,7 @@ static void set_default_config(struct srv_cfg *cfg)
 }
 
 
-static void teavpn_server_show_help(const char *app)
+static __cold void teavpn_server_show_help(const char *app)
 {
 	printf("Usage: %s server [options]\n", app);
 
@@ -171,7 +171,7 @@ static const struct option long_options[] = {
 };
 static const char short_opt[] = "hVv::c:d:t:D:m:4:N:s:H:P:B:E:";
 
-static int parse_argv(int argc, char *argv[], struct srv_cfg *cfg)
+static __cold int parse_argv(int argc, char *argv[], struct srv_cfg *cfg)
 {
 	int c;
 	struct srv_cfg_sys *sys = &cfg->sys;
@@ -400,7 +400,7 @@ static int server_cfg_parser(void *user, const char *section, const char *name,
 }
 
 
-static int parse_cfg_file(const char *cfg_file, struct srv_cfg *cfg)
+static __cold int parse_cfg_file(const char *cfg_file, struct srv_cfg *cfg)
 {
 	int ret;
 	FILE *handle;
@@ -430,7 +430,7 @@ static int parse_cfg_file(const char *cfg_file, struct srv_cfg *cfg)
 }
 
 
-int run_server(int argc, char *argv[])
+__cold int run_server(int argc, char *argv[])
 {
 	int ret;
 	struct srv_cfg cfg;

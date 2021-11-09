@@ -18,9 +18,6 @@
 
 #include <teavpn2/print.h>
 #include <teavpn2/allocator.h>
-
-#include <emerg/emerg.h>
-
 #include <teavpn2/compiler_attributes.h>
 
 #ifndef unlikely
@@ -54,6 +51,14 @@
 
 #ifndef __must_hold
 #  define __must_hold(LOCK)
+#endif
+
+#ifndef __hot
+#  define __hot __attribute__((__hot__))
+#endif
+
+#ifndef __cold
+#  define __cold __attribute__((__cold__))
 #endif
 
 #if defined(__clang__)
@@ -218,5 +223,21 @@ static inline char *strncpy2(char *__restrict__ dst,
 #  pragma GCC diagnostic pop
 #endif
 
+#if defined(__x86_64__)
+#  include <teavpn2/arch/x86/linux.h>
+#else
+#  include <teavpn2/arch/generic/linux.h>
+#endif
+
+#ifdef CONFIG_HPC_EMERGENCY
+#  include <emerg/emerg.h>
+#else
+#  define WARN()
+#  define WARN_ONCE()
+#  define WARN_ON(COND) ({ COND; })
+#  define WARN_ON_ONCE(COND) ({ COND; })
+#  define BUG()
+#  define BUG_ON(COND) ({ COND; })
+#endif
 
 #endif
