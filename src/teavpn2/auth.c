@@ -19,6 +19,30 @@ struct user_parse_ctx {
 	struct if_info	iff;
 };
 
+static inline bool validate_username_char(unsigned char c)
+{
+	return (
+		('0' <= c && c <= '9') ||
+		('A' <= c && c <= 'Z') ||
+		('a' <= c && c <= 'z') ||
+		(c == '_' || c == '-')
+	);
+}
+
+static bool validate_username(const char *u)
+{
+
+	while (1) {
+		unsigned char c = (unsigned char) *u++;
+		if (!c)
+			break;
+
+		if (!validate_username_char(c))
+			return false;
+	}
+
+	return true;
+}
 
 static int userfile_parse_auth(struct user_parse_ctx *ctx, const char *name,
 			       const char *val, int lineno)
@@ -131,6 +155,11 @@ bool teavpn2_auth(const char *username, const char *password,
 
 	if (unlikely(!data_dir))
 		panic("data_dir is NULL");
+
+	if (!validate_username(username)) {
+		prl_notice(2, "Invalid username %s", username);
+		return false;
+	}
 
 	snprintf(userfile, sizeof(userfile), "%s/users/%s.ini", data_dir,
 		 username);
