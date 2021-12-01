@@ -13,7 +13,11 @@
 #include <sys/socket.h>
 #include <sys/syscall.h>
 
-#define ASM_ABR_RW 0xffffffff
+#if defined(__clang__)
+#  define ASM_ABR_RW 0xffffffff
+#else
+#  define ASM_ABR_RW
+#endif
 
 static inline int __sys_epoll_wait(int epfd, struct epoll_event *events,
 				   int maxevents, int timeout)
