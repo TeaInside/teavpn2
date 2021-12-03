@@ -13,6 +13,10 @@ include $(BASE_DIR)/src/teavpn2/client/Makefile
 include $(BASE_DIR)/src/teavpn2/server/Makefile
 include $(BASE_DIR)/src/teavpn2/net/Makefile
 
+ifeq ($(CONFIG_GUI),y)
+include $(BASE_DIR)/src/teavpn2/gui/Makefile
+endif
+
 OBJ_TMP_CC := \
 	$(BASE_DIR)/src/teavpn2/allocator.o \
 	$(BASE_DIR)/src/teavpn2/auth.o \
