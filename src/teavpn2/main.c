@@ -28,6 +28,9 @@ static void show_general_usage(const char *app)
 	printf("    %s --version, -V\n\n", app);
 }
 
+#ifdef CONFIG_GUI
+int gui_entry(int argc, char *argv[]);
+#endif
 
 static int run_teavpn2(int argc, char *argv[])
 {
@@ -36,6 +39,15 @@ static int run_teavpn2(int argc, char *argv[])
 
 	if (!strcmp("client", argv[1]))
 		return run_client(argc, argv);
+
+	if (!strcmp("gui", argv[1])) {
+#ifdef CONFIG_GUI
+		return gui_entry(1, argv);
+#else
+		printf("This binary is not compiled with GUI support!\n");
+		return 1;
+#endif
+	}
 
 	if (!strcmp("--version", argv[1]) || !strcmp("-V", argv[1])) {
 		show_version();
