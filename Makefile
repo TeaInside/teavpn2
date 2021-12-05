@@ -51,7 +51,7 @@ DEBUG_OPTIMIZATION_FLAG	:= -O0
 STACK_USAGE_WARN	:= 8192
 override PIE_FLAGS	:= -fpie -fPIE
 override LDFLAGS	:= -ggdb3 -rdynamic $(LDFLAGS)
-override LIB_LDFLAGS	:= -lpthread $(LIB_LDFLAGS)
+override LIB_LDFLAGS	:= -lpthread $(LIB_LDFLAGS) $(shell pkg-config --libs gtk+-3.0)
 override C_CXX_FLAGS	:= \
 	-ggdb3 \
 	-fstrict-aliasing \
@@ -64,7 +64,8 @@ override C_CXX_FLAGS	:= \
 	-DSUBLEVEL=$(SUBLEVEL) \
 	-DEXTRAVERSION="\"$(EXTRAVERSION)\"" \
 	-DNAME="\"$(NAME)\"" \
-	-include $(BASE_DIR)/config-host.h $(C_CXX_FLAGS)
+	-include $(BASE_DIR)/config-host.h $(C_CXX_FLAGS) \
+	$(shell pkg-config --cflags gtk+-3.0)
 
 override C_CXX_FLAGS_DEBUG := $(C_CXX_FLAGS_DEBUG)
 

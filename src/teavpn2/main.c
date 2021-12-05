@@ -28,6 +28,7 @@ static void show_general_usage(const char *app)
 	printf("    %s --version, -V\n\n", app);
 }
 
+int gui_entry(int argc, char *argv[]);
 
 static int run_teavpn2(int argc, char *argv[])
 {
@@ -36,6 +37,9 @@ static int run_teavpn2(int argc, char *argv[])
 
 	if (!strcmp("client", argv[1]))
 		return run_client(argc, argv);
+
+	if (!strcmp("gui", argv[1]))
+		return gui_entry(1, argv);
 
 	if (!strcmp("--version", argv[1]) || !strcmp("-V", argv[1])) {
 		show_version();
