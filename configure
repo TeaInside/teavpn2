@@ -52,6 +52,8 @@ for opt do
   ;;
   --32-bit) USE_32_BIT=y
   ;;
+  --gui) CONFIG_GUI=y
+  ;;
   *)
     echo "ERROR: unknown option $opt"
     echo "Try '$0 --help' for more information"
@@ -111,6 +113,7 @@ Options: [defaults in brackets after descriptions]
   --ldflags=FLAGS          set linker flags
   --lib-ldflags=FLAGS      set library linker flags (end of the command)
   --32-bit                 set 32-bit build flags
+  --gui                    compile with GUI support (GTK-3)
 EOF
 exit 0
 fi
@@ -308,6 +311,10 @@ else
 fi
 ########################################################################
 
+if test "$CONFIG_GUI" = "y"; then
+  output_sym "CONFIG_GUI";
+fi;
+print_config "CONFIG_GUI" "$CONFIG_GUI";
 
 if test "$CONFIG_LINUX" = "y"; then
   output_sym "CONFIG_LINUX";
