@@ -31,7 +31,9 @@ jobs:
 
     - name: Install tools
       run: |
-        sudo apt-get install clang gcc g++ make libc6-dev-i386 gcc-multilib g++-multilib libgtk-3-common libgtk-3-dev -y;
+        sudo apt-get install -y clang gcc g++ make libc6-dev-i386 gcc-multilib \
+        g++-multilib libgtk-3-common libgtk-3-dev libgtk-3-common:i386 \
+        libgtk-3-dev:i386;
 
     - name: Show tools version
       run: |
@@ -44,10 +46,17 @@ jobs:
         make -j$(nproc) clean_all;
         ./configure --cc=${{matrix.cc}} --cxx=${{matrix.cxx}} --ld=${{matrix.cc}};
         make -j$(nproc) DEBUG_MODE=1;
+        make -j$(nproc) clean_all;
+        ./configure --cc=${{matrix.cc}} --cxx=${{matrix.cxx}} --ld=${{matrix.cc}} --gui;
+        make -j$(nproc) DEBUG_MODE=1;
 
     - name: Build
       run: |
+        make -j$(nproc) clean_all;
         ./configure --cc=${{matrix.cc}} --cxx=${{matrix.cxx}} --ld=${{matrix.cc}};
+        make -j$(nproc);
+        make -j$(nproc) clean_all;
+        ./configure --cc=${{matrix.cc}} --cxx=${{matrix.cxx}} --ld=${{matrix.cc}} --gui;
         make -j$(nproc);
 
     - name: Build 32-bit (Debug Mode)
@@ -55,8 +64,15 @@ jobs:
         make -j$(nproc) clean_all;
         ./configure --cc=${{matrix.cc}} --cxx=${{matrix.cxx}} --ld=${{matrix.cc}} --32-bit;
         make -j$(nproc) DEBUG_MODE=1;
+        make -j$(nproc) clean_all;
+        ./configure --cc=${{matrix.cc}} --cxx=${{matrix.cxx}} --ld=${{matrix.cc}} --32-bit --gui;
+        make -j$(nproc) DEBUG_MODE=1;
 
     - name: Build 32-bit
       run: |
+        make -j$(nproc) clean_all;
         ./configure --cc=${{matrix.cc}} --cxx=${{matrix.cxx}} --ld=${{matrix.cc}} --32-bit;
+        make -j$(nproc);
+        make -j$(nproc) clean_all;
+        ./configure --cc=${{matrix.cc}} --cxx=${{matrix.cxx}} --ld=${{matrix.cc}} --32-bit --gui;
         make -j$(nproc);
