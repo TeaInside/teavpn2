@@ -25,6 +25,10 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v2
 
+    - name: Add 32-bit repo
+      run: |
+        sudo dpkg --add-architecture i386;
+
     - name: Update repo
       run: |
         sudo apt-get update --fix-missing -y;
