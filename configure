@@ -66,6 +66,9 @@ if test "$USE_32_BIT" = "y"; then
   USER_CFLAGS="-m32 ${USER_CFLAGS}";
   USER_CXXFLAGS="-m32 ${USER_CXXFLAGS}";
   USER_LDFLAGS="-m32 ${USER_LDFLAGS}";
+  PKG_CONFIG=i686-linux-gnu-pkg-config
+else
+  PKG_CONFIG=pkg-config
 fi
 
 if test -z "$prefix"; then
@@ -337,6 +340,8 @@ echo "CXX := $cxx" >> $config_host_mak;
 print_config "CXX" "$cxx";
 echo "LD := $ld" >> $config_host_mak;
 print_config "LD" "$ld";
+echo "PKG_CONFIG := $PKG_CONFIG" >> $config_host_mak;
+print_config "PKG_CONFIG" "$PKG_CONFIG";
 
 echo "CFLAGS := $CFLAGS" >> $config_host_mak;
 print_config "USER_CFLAGS" "$USER_CFLAGS";
