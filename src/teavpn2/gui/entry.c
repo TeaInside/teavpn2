@@ -1,43 +1,27 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (C) 2021  Khaerul Ilham <khaerulilham163@gmail.com>
+ */
 
-#include <gtk/gtk.h>
+#include "gui.h"
 
-static void print_hello(GtkWidget *widget, gpointer data)
+static void app_activate(GtkApplication *self, gpointer user_data)
 {
-	(void) widget;
-	(void) data;
-	g_print("Hello World\n");
+	(void) self;
+	gui_window_create((Gui *) user_data);
 }
 
-static void activate(GtkApplication *app, gpointer user_data)
+
+int gui_entry(int argc, char *argv[])
 {
-	GtkWidget *window;
-	GtkWidget *button;
-	GtkWidget *button_box;
+	int ret;
+	Gui gui = {
+		.self = gtk_application_new(GUI_ID, G_APPLICATION_FLAGS_NONE)
+	};
 
-	(void) user_data;
-	window = gtk_application_window_new(app);
-	gtk_window_set_title(GTK_WINDOW(window), "TeaVPN2");
-	gtk_window_set_default_size(GTK_WINDOW(window), 200, 200);
+	g_signal_connect(gui.self, "activate", G_CALLBACK(app_activate), &gui);
+	ret = g_application_run(G_APPLICATION(gui.self), argc, argv);
+	g_object_unref(gui.self);
 
-	button_box = gtk_button_box_new(GTK_ORIENTATION_HORIZONTAL);
-	gtk_container_add(GTK_CONTAINER(window), button_box);
-
-	button = gtk_button_new_with_label("Click Me");
-	g_signal_connect(button, "clicked", G_CALLBACK(print_hello), NULL);
-	gtk_container_add(GTK_CONTAINER(button_box), button);
-
-	gtk_widget_show_all(window);
-}
-
-int gui_entry(int argc, char **argv)
-{
-	GtkApplication *app;
-	int status;
-
-	app = gtk_application_new("org.gtk.example", G_APPLICATION_FLAGS_NONE);
-	g_signal_connect(app, "activate", G_CALLBACK(activate), NULL);
-	status = g_application_run(G_APPLICATION(app), argc, argv);
-	g_object_unref(app);
-
-	return status;
+	return ret;
 }
