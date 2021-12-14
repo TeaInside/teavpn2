@@ -7,6 +7,7 @@
 #include <teavpn2/common.h>
 
 #ifdef CONFIG_GUI
+#undef fallthrough
 #include <teavpn2/gui/gui.h>
 #endif
 
