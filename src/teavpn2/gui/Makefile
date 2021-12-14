@@ -11,6 +11,7 @@ DEP_DIRS += $(BASE_DEP_DIR)/src/teavpn2/gui
 
 OBJ_TMP_CC := \
 	$(BASE_DIR)/src/teavpn2/gui/entry.o \
+	$(BASE_DIR)/src/teavpn2/gui/gui_config.o \
 	$(BASE_DIR)/src/teavpn2/gui/gui_header.o \
 	$(BASE_DIR)/src/teavpn2/gui/gui_home.o \
 	$(BASE_DIR)/src/teavpn2/gui/gui_utils.o \

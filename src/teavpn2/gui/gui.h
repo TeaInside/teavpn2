@@ -6,19 +6,19 @@
 #ifndef TEAVPN2__GUI_H
 #define TEAVPN2__GUI_H
 
-#define GUI_ID           "com.teainside.teavpn2"
-#define GUI_PROGRAM_NAME "TeaVPN2"
-#define GUI_WINDOW_TITLE "TeaVPN2 Client"
-#define GUI_WINDOW_RES   500, 600
+#define GUI_ID			"com.teainside.teavpn2"
+#define GUI_PROGRAM_NAME	"TeaVPN2"
+#define GUI_WINDOW_TITLE	"TeaVPN2 Client"
+#define GUI_WINDOW_RES		500, 600
 
 #include <gtk/gtk.h>
 
 
 typedef struct {
-	GtkApplication *self;
+	GtkApplication	*self;
 	struct {
-		GtkWidget     *self;
-		GtkWidget     *child;
+		GtkWidget	*self;
+		GtkWidget	*child;
 	} window;
 } Gui;
 
@@ -44,6 +44,11 @@ GtkWidget *gui_home_get_label_path(void);
 GtkWidget *gui_home_get_button_connect(void);
 GtkWidget *gui_home_get_text_logger(void);
 GtkWidget *gui_home_get_label_status(void);
+
+/* gui_config.c */
+void gui_config_create(GtkWidget *parent);
+GtkWidget *gui_config_get_button_save(void);
+GtkWidget *gui_config_get_button_save_as(void);
 
 /* gui_utils.h */
 void gui_utils_set_callback(GuiCallback dest[], guint size);

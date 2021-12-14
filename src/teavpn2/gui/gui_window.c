@@ -18,6 +18,10 @@ void gui_window_create(Gui *g)
 			gtk_box_new(GTK_ORIENTATION_VERTICAL, 5),
 			gtk_label_new("Home")
 		},
+		{
+			gtk_box_new(GTK_ORIENTATION_VERTICAL, 5),
+			gtk_label_new("Configuration")
+		}
 	};
 
 	g->window.self  = gtk_application_window_new(g->self);
@@ -29,6 +33,7 @@ void gui_window_create(Gui *g)
 
 	gui_header_create(g->window.self);
 	gui_home_create(notebook[0].self);
+	gui_config_create(notebook[1].self);
 	gtk_window_set_title(GTK_WINDOW(g->window.self), GUI_WINDOW_TITLE);
 	gtk_window_set_default_size(GTK_WINDOW(g->window.self), GUI_WINDOW_RES);
 	gtk_window_set_focus(GTK_WINDOW(g->window.self),
