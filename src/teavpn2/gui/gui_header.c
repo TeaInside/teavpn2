@@ -56,8 +56,7 @@ GtkWidget *gui_header_get_button_about(void)
 
 /* Private functions */
 /* Callbacks */
-static void _button_open_callback(GtkWidget *self,
-				  gpointer   user_data)
+static void _button_open_callback(GtkWidget *self, gpointer user_data)
 {
 	(void)self;
 	(void)user_data;
@@ -66,8 +65,7 @@ static void _button_open_callback(GtkWidget *self,
 }
 
 
-static void _button_about_callback(GtkWidget *self,
-				   gpointer   user_data)
+static void _button_about_callback(GtkWidget *self, gpointer user_data)
 {
 	(void)self;
 	(void)user_data;
