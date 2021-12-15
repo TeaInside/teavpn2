@@ -6,6 +6,10 @@
 #include <stdio.h>
 #include <teavpn2/common.h>
 
+#ifdef CONFIG_GUI
+#undef fallthrough
+#include <teavpn2/gui/gui.h>
+#endif
 
 void show_version(void)
 {
@@ -27,10 +31,6 @@ static void show_general_usage(const char *app)
 	printf("  [Version]\n");
 	printf("    %s --version, -V\n\n", app);
 }
-
-#ifdef CONFIG_GUI
-int gui_entry(int argc, char *argv[]);
-#endif
 
 static int run_teavpn2(int argc, char *argv[])
 {

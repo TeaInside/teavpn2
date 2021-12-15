@@ -3,7 +3,7 @@
  * Copyright (C) 2021  Khaerul Ilham <khaerulilham163@gmail.com>
  */
 
-#include "gui.h"
+#include <teavpn2/gui/gui.h>
 
 /* Private functions */
 /* Callbacks */

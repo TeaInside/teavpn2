@@ -3,11 +3,11 @@
  * Copyright (C) 2021  Khaerul Ilham <khaerulilham163@gmail.com>
  */
 
-#include "gui.h"
+#include <teavpn2/gui/gui.h>
 
 /* Private functions */
-static GtkWidget *_button_connect_create(const gchar *label);
-static GtkWidget *_text_log_create(GtkWidget **text_view);
+static GtkWidget *_box_top_create(void);
+static GtkWidget *_box_btm_create(void);
 
 /* Callbacks */
 static void _button_connect_callback(GtkWidget *self, gpointer user_data);
@@ -23,37 +23,8 @@ static GtkWidget *s_w_label_status;
 /* Public functions */
 void gui_home_create(GtkWidget *parent)
 {
-	GtkWidget *w_box_top, *w_box_btm;
-	GuiCallback callbacks[] = {
-		{ &s_w_button_connect, "clicked", _button_connect_callback, NULL },
-	};
-
-
-	w_box_top          = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
-	w_box_btm          = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
-	s_w_label_path     = gtk_label_new("Configuration file: /home/x/x.ini");
-	s_w_button_connect = _button_connect_create("Connect");
-	s_w_label_status   = gtk_label_new("Disconnected");
-
-	gui_utils_set_callback(callbacks, G_N_ELEMENTS(callbacks));
-
-	/* w_box_top */
-	gtk_box_pack_start(GTK_BOX(w_box_top), s_w_label_path, FALSE, FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(w_box_top), s_w_button_connect, FALSE, FALSE,
-			   0);
-	gtk_box_set_homogeneous(GTK_BOX(w_box_top), TRUE);
-	gui_utils_set_margins(w_box_top, 5);
-
-	/* w_box_btm */
-	gtk_box_pack_start(GTK_BOX(w_box_btm),
-			   _text_log_create(&s_w_text_logger), TRUE, TRUE, 0);
-	gtk_box_pack_start(GTK_BOX(w_box_btm), s_w_label_status, FALSE, FALSE,
-			   0);
-	gui_utils_set_margins(w_box_btm, 5);
-
-	/* parent */
-	gtk_box_pack_start(GTK_BOX(parent), w_box_top, FALSE, FALSE, 0);
-	gtk_box_pack_end(GTK_BOX(parent), w_box_btm, TRUE, TRUE, 0);
+	gtk_box_pack_start(GTK_BOX(parent), _box_top_create(), FALSE, FALSE, 0);
+	gtk_box_pack_end(GTK_BOX(parent), _box_btm_create(), TRUE, TRUE, 0);
 }
 
 
@@ -82,29 +53,51 @@ GtkWidget *gui_home_get_label_status(void)
 
 
 /* Private functions */
-static GtkWidget *_button_connect_create(const gchar *label)
+static GtkWidget *_box_top_create(void)
 {
-	GtkWidget *button = gtk_button_new_with_label(label);
+	GtkWidget *box;
+	GtkWidget *frame_conf;
+	GuiCallback callbacks[] = {
+		{ &s_w_button_connect, "clicked", _button_connect_callback, NULL },
+	};
 
-	gtk_widget_set_halign(button, GTK_ALIGN_CENTER);
+	box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+	s_w_button_connect = gtk_button_new_with_label("Connect");
+	frame_conf = gtk_frame_new("Configuration File");
+	s_w_label_path = gtk_label_new(NULL);
 
-	return button;
+	gui_utils_set_callback(callbacks, G_N_ELEMENTS(callbacks));
+
+	gui_utils_set_margins(s_w_label_path, 5);
+	gtk_widget_set_halign(s_w_button_connect, GTK_ALIGN_CENTER);
+	gtk_widget_set_margin_top(s_w_button_connect, 5);
+
+	gtk_container_add(GTK_CONTAINER(frame_conf), s_w_label_path);
+	gtk_container_add(GTK_CONTAINER(box), frame_conf);
+	gtk_container_add(GTK_CONTAINER(box), s_w_button_connect);
+	gui_utils_set_margins(box, 5);
+
+	return box;
 }
 
-
-static GtkWidget *_text_log_create(GtkWidget **text_view)
+static GtkWidget *_box_btm_create(void)
 {
-	GtkWidget *frame, *scroller;
+	GtkWidget *box;
+	GtkWidget *frame_log, *scroller;
 
-	frame      = gtk_frame_new("Logs:");
-	scroller   = gtk_scrolled_window_new(NULL, NULL);
-	*text_view = gtk_text_view_new();
+	box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+	frame_log = gtk_frame_new("Log:");
+	scroller = gtk_scrolled_window_new(NULL, NULL);
+	s_w_text_logger = gtk_text_view_new();
 
-	gtk_text_view_set_editable(GTK_TEXT_VIEW(*text_view), FALSE);
-	gtk_widget_set_vexpand(*text_view, TRUE);
-	gtk_container_add(GTK_CONTAINER(scroller), *text_view);
-	gtk_container_add(GTK_CONTAINER(frame), scroller);
-	return frame;
+	gtk_text_view_set_editable(GTK_TEXT_VIEW(s_w_text_logger), FALSE);
+	gtk_widget_set_vexpand(s_w_text_logger, TRUE);
+	gtk_container_add(GTK_CONTAINER(scroller), s_w_text_logger);
+	gtk_container_add(GTK_CONTAINER(frame_log), scroller);
+	gtk_container_add(GTK_CONTAINER(box), frame_log);
+	gui_utils_set_margins(frame_log, 5);
+
+	return box;
 }
 
 
@@ -113,5 +106,6 @@ static void _button_connect_callback(GtkWidget *self, gpointer user_data)
 {
 	(void) self;
 	(void) user_data;
+
 	g_print("Connect\n");
 }

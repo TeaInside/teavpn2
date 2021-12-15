@@ -50,9 +50,11 @@ void gui_config_create(GtkWidget *parent);
 GtkWidget *gui_config_get_button_save(void);
 GtkWidget *gui_config_get_button_save_as(void);
 
-/* gui_utils.h */
+/* gui_utils.c */
 void gui_utils_set_callback(GuiCallback dest[], guint size);
 void gui_utils_set_margins(GtkWidget *dest, gint size);
 
+/* entry.c */
+int gui_entry(int argc, char *argv[]);
 
 #endif /* TEAVPN2__GUI_H */
