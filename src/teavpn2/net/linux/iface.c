@@ -24,7 +24,7 @@
 
 static __always_inline int is_ws(int the_chr)
 {
-	return isspace((int)((unsigned)the_chr));
+	return isspace((unsigned char)the_chr);
 }
 
 
