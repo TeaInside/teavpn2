@@ -247,7 +247,7 @@ static __cold int parse_argv(int argc, char *argv[], struct srv_cfg *cfg)
 			tmp[sizeof(tmp) - 1] = '\0';
 
 			while (*p) {
-				*p = (char)tolower((int)((unsigned)*p));
+				*p = (char)tolower((unsigned char)*p);
 				p++;
 			}
 
@@ -315,7 +315,7 @@ static int cfg_parse_section_socket(struct cfg_parse_ctx *ctx, const char *name,
 		char tmp[8], *p = tmp;
 		strncpy2(tmp, val, sizeof(tmp));
 		while (*p) {
-			*p = (char)tolower((int)((unsigned)*p));
+			*p = (char)tolower((unsigned char)*p);
 			p++;
 		}
 
