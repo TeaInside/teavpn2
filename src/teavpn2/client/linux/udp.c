@@ -675,7 +675,7 @@ static void destroy_state(struct cli_udp_state *state)
 		teavpn_iface_down(&state->cfg->iface.iff);
 	}
 
-	if (state->threads_wont_exit)
+	if (WARN_ON(state->threads_wont_exit))
 		return;
 
 	close_tun_fds(state);

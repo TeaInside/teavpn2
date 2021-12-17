@@ -439,7 +439,7 @@ static void close_fds_state(struct srv_udp_state *state)
 static void destroy_state(struct srv_udp_state *state)
 {
 
-	if (state->threads_wont_exit)
+	if (WARN_ON(state->threads_wont_exit))
 		/*
 		 * When we're exiting, the main thread will wait for
 		 * the subthreads to exit for the given timeout. If

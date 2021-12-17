@@ -70,8 +70,9 @@ static inline void bt_stack_destroy(struct bt_stack *stk)
 }
 
 
-static inline void bt_stack_test(struct bt_stack *stk)
+static inline void bt_stack_test(__maybe_unused struct bt_stack * stk)
 {
+#ifndef NDEBUG
 	uint16_t i, j, capacity = stk->max_sp;
 
 	assert(capacity > 0);
@@ -117,6 +118,7 @@ static inline void bt_stack_test(struct bt_stack *stk)
 	}
 
 	pr_debug("bt_stack_test success!");
+#endif
 }
 
 

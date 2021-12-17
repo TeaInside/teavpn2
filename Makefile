@@ -94,6 +94,7 @@ override CLANG_WARN_FLAGS := \
 	-Wno-disabled-macro-expansion \
 	-Wno-language-extension-token \
 	-Wno-used-but-marked-unused \
+	-Wno-reserved-identifier \
 	-Wno-gnu-statement-expression $(CLANG_WARN_FLAGS)
 
 include $(BASE_DIR)/src/build/flags.make
