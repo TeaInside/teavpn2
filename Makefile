@@ -87,15 +87,7 @@ override GCC_WARN_FLAGS := \
 override CLANG_WARN_FLAGS := \
 	-Wall \
 	-Wextra \
-	-Weverything \
-	-Wno-padded \
-	-Wno-unused-macros \
-	-Wno-covered-switch-default \
-	-Wno-disabled-macro-expansion \
-	-Wno-language-extension-token \
-	-Wno-used-but-marked-unused \
-	-Wno-reserved-identifier \
-	-Wno-gnu-statement-expression $(CLANG_WARN_FLAGS)
+	$(CLANG_WARN_FLAGS)
 
 include $(BASE_DIR)/src/build/flags.make
 include $(BASE_DIR)/src/build/print.make
