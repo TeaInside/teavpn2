@@ -13,6 +13,7 @@
 *.tmp.c
 /*.patch
 /.deps/
+/.vscode/
 /teavpn2*
 /dump.txt
 /config-host.h
