@@ -11,7 +11,10 @@
 #define GUI_WINDOW_TITLE	"TeaVPN2 Client"
 #define GUI_WINDOW_RES		500, 600
 
+#define GUI_DEFAULT_CONFIG      "/etc/teavpn2/client.ini"
+
 #include <gtk/gtk.h>
+#include <teavpn2/common.h>
 
 
 typedef struct {
