@@ -21,8 +21,8 @@ void gui_header_create(GtkWidget *parent)
 {
 	GtkWidget   *w_header;
 	GuiCallback  callbacks[] = {
-		{ &s_w_button_open , "clicked", _button_open_callback , NULL },
-		{ &s_w_button_about, "clicked", _button_about_callback, NULL },
+		{ &s_w_button_open , "clicked", _button_open_callback , parent },
+		{ &s_w_button_about, "clicked", _button_about_callback, parent },
 	};
 
 
@@ -59,9 +59,35 @@ GtkWidget *gui_header_get_button_about(void)
 static void _button_open_callback(GtkWidget *self, gpointer user_data)
 {
 	(void)self;
-	(void)user_data;
 
-	g_print("Open\n");
+	GtkWindow *parent = GTK_WINDOW(user_data);
+	GtkFileChooserAction action = GTK_FILE_CHOOSER_ACTION_OPEN;
+
+	gchar *file_name;
+	GtkWidget *file_dialog;
+	GtkFileChooser *file_chooser;
+	GtkFileFilter *file_filter;
+
+	file_filter = gtk_file_filter_new();
+	file_dialog = gtk_file_chooser_dialog_new("Open Configuration File",
+						  parent, action, "_Cancel",
+						  GTK_RESPONSE_CANCEL, "_Open",
+						  GTK_RESPONSE_ACCEPT, NULL);
+	file_chooser = GTK_FILE_CHOOSER(file_dialog);
+
+	gtk_file_filter_set_name(file_filter, "Configuration file");
+	gtk_file_filter_add_pattern(file_filter, "*.ini");
+	gtk_file_chooser_add_filter(file_chooser, file_filter);
+
+	if (gtk_dialog_run(GTK_DIALOG(file_dialog)) == GTK_RESPONSE_ACCEPT) {
+		file_name = gtk_file_chooser_get_filename(file_chooser);
+
+		gtk_label_set_label(GTK_LABEL(gui_home_get_label_path()), file_name);
+
+		g_free(file_name);
+	}
+
+	gtk_widget_destroy(file_dialog);
 }
 
 
@@ -70,5 +96,10 @@ static void _button_about_callback(GtkWidget *self, gpointer user_data)
 	(void)self;
 	(void)user_data;
 
-	g_print("About\n");
+	gtk_show_about_dialog(GTK_WINDOW(user_data),
+			      "program-name", GUI_PROGRAM_NAME,
+			      "version", TEAVPN2_VERSION,
+			      "license-type", GTK_LICENSE_GPL_2_0,
+			      "website", "https://github.com/teainside/teavpn2",
+			      NULL);
 }

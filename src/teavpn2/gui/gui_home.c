@@ -64,7 +64,7 @@ static GtkWidget *_box_top_create(void)
 	box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
 	s_w_button_connect = gtk_button_new_with_label("Connect");
 	frame_conf = gtk_frame_new("Configuration File");
-	s_w_label_path = gtk_label_new(NULL);
+	s_w_label_path = gtk_label_new(GUI_DEFAULT_CONFIG);
 
 	gui_utils_set_callback(callbacks, G_N_ELEMENTS(callbacks));
 
