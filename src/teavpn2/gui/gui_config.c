@@ -1,32 +1,59 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2021  Khaerul Ilham <khaerulilham163@gmail.com>
+ * Copyright (C) 2021  Alviro Iskandar Setiawan <alviro.iskandar@gmail.com>
  */
 
 #include <teavpn2/gui/gui.h>
 
-/* Private functions */
-/* Callbacks */
-static void _btn_save_callback(GtkWidget *self, gpointer user_data);
-static void _btn_save_as_callback(GtkWidget *self, gpointer user_data);
-static void _btn_cancel_callback(GtkWidget *self, gpointer user_data);
+GtkWidget *s_w_button_save;
+GtkWidget *s_w_button_save_as;
 
+static void btn_save_callback(GtkWidget *self, gpointer user_data)
+{
+	pr_notice("Save");
+	(void) self;
+	(void) user_data;
+}
 
-/* Global (static) variables */
-static GtkWidget *s_w_button_save;
-static GtkWidget *s_w_button_save_as;
+static void btn_save_as_callback(GtkWidget *self, gpointer user_data)
+{
+	pr_notice("Save As");
+	(void) self;
+	(void) user_data;
+}
 
+static void btn_cancel_callback(GtkWidget *self, gpointer user_data)
+{
+	pr_notice("Cancel");
+	(void) self;
+	(void) user_data;
+}
 
-/* Public functions */
 void gui_config_create(GtkWidget *parent)
 {
 	GtkWidget *w_box_top, *w_box_btm, *w_frame_btm, *w_scroller,
 		  *w_button_cancel, *w_label_test;
 
-	GuiCallback  callbacks[] = {
-		{ &s_w_button_save   , "clicked", _btn_save_callback   , NULL },
-		{ &s_w_button_save_as, "clicked", _btn_save_as_callback, NULL },
-		{ &w_button_cancel   , "clicked", _btn_cancel_callback , NULL },
+	const struct gui_callback callbacks[] = {
+		{
+			.self		= &s_w_button_save,
+			.signal_name	= "clicked",
+			.func		= btn_save_callback,
+			.user_data	= NULL
+		},
+		{
+			.self		= &s_w_button_save_as,
+			.signal_name	= "clicked",
+			.func		= btn_save_as_callback,
+			.user_data	= NULL
+		},
+		{
+			.self		= &w_button_cancel,
+			.signal_name	= "clicked",
+			.func		= btn_cancel_callback,
+			.user_data	= NULL
+		},
 	};
 
 
@@ -60,45 +87,4 @@ void gui_config_create(GtkWidget *parent)
 	/* parent */
 	gtk_box_pack_start(GTK_BOX(parent), w_box_top, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(parent), w_frame_btm, TRUE, TRUE, 0);
-}
-
-
-GtkWidget *gui_config_get_button_save(void)
-{
-	return s_w_button_save;
-}
-
-
-GtkWidget *gui_config_get_button_save_as(void)
-{
-	return s_w_button_save_as;
-}
-
-
-/* Private functions */
-/* Callbacks */
-static void _btn_save_callback(GtkWidget *self, gpointer user_data)
-{
-	(void) self;
-	(void) user_data;
-
-	g_print("Save\n");
-}
-
-
-static void _btn_save_as_callback(GtkWidget *self, gpointer user_data)
-{
-	(void) self;
-	(void) user_data;
-
-	g_print("Save As\n");
-}
-
-
-static void _btn_cancel_callback(GtkWidget *self, gpointer user_data)
-{
-	(void) self;
-	(void) user_data;
-
-	g_print("Cancel\n");
 }
