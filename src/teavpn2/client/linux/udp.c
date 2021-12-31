@@ -11,7 +11,7 @@
 #include <netinet/in.h>
 #include <teavpn2/net/linux/iface.h>
 #include <teavpn2/client/linux/udp.h>
-#include <teavpn2/gui/event_callback.h>
+
 
 static struct cli_udp_state *g_state = NULL;
 
@@ -689,7 +689,6 @@ int teavpn2_client_udp_run(struct cli_cfg *cfg)
 {
 	int ret = 0;
 	struct cli_udp_state *state;
-	bool skip_invoke_cerr = false;
 
 	state = calloc_wrp(1ul, sizeof(*state));
 	if (unlikely(!state))
@@ -711,15 +710,10 @@ int teavpn2_client_udp_run(struct cli_cfg *cfg)
 	ret = do_auth(state);
 	if (unlikely(ret))
 		goto out;
-
-	skip_invoke_cerr = true;
 	ret = run_client_event_loop(state);
 out:
-	if (unlikely(ret)) {
-		if (!skip_invoke_cerr)
-			invoke_client_on_error(ret);
+	if (unlikely(ret))
 		pr_err("teavpn2_client_udp_run(): " PRERF, PREAR(-ret));
-	}
 
 	if (state->udp_fd != -1)
 		send_close_packet(state);
