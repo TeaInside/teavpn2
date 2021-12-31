@@ -3,6 +3,7 @@
  * Copyright (C) 2021  Ammar Faizi
  */
 
+#include <teavpn2/gui/gui.h>
 #include <poll.h>
 #include <unistd.h>
 #include <signal.h>
@@ -689,10 +690,13 @@ int teavpn2_client_udp_run(struct cli_cfg *cfg)
 {
 	int ret = 0;
 	struct cli_udp_state *state;
+	bool need_set_err_event = true;
 
 	state = calloc_wrp(1ul, sizeof(*state));
-	if (unlikely(!state))
+	if (unlikely(!state)) {
+		set_client_vpn_err_event(-ENOMEM);
 		return -ENOMEM;
+	}
 
 	state->cfg = cfg;
 	ret = init_state(state);
@@ -711,9 +715,13 @@ int teavpn2_client_udp_run(struct cli_cfg *cfg)
 	if (unlikely(ret))
 		goto out;
 	ret = run_client_event_loop(state);
+	need_set_err_event = false;
 out:
-	if (unlikely(ret))
+	if (unlikely(ret)) {
+		if (need_set_err_event)
+			set_client_vpn_err_event(ret);
 		pr_err("teavpn2_client_udp_run(): " PRERF, PREAR(-ret));
+	}
 
 	if (state->udp_fd != -1)
 		send_close_packet(state);

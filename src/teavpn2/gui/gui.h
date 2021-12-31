@@ -9,6 +9,9 @@
 
 #ifdef CONFIG_GUI
 #include <gtk/gtk.h>
+#else
+typedef struct GtkWidget GtkWidget;
+typedef struct GtkApplication GtkApplication;
 #endif
 
 #include <teavpn2/common.h>
@@ -31,7 +34,7 @@ struct gui {
 struct gui_callback {
 	GtkWidget		**self;
 	const char		*signal_name;
-	void			(*func)(GtkWidget *widget, gpointer);
+	void			(*func)(GtkWidget *widget, void *data);
 	void			*user_data;
 };
 

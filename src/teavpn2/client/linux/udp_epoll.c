@@ -3,6 +3,7 @@
  * Copyright (C) 2021  Ammar Faizi
  */
 
+#include <teavpn2/gui/gui.h>
 #include <unistd.h>
 #include <signal.h>
 #include <pthread.h>
@@ -457,6 +458,7 @@ static __cold void thread_wait(struct epl_thread *thread,
 
 	prl_notice(2, "Initialization Sequence Completed");
 	atomic_store(&release_sub_thread, true);
+	set_client_vpn_event(CLIENT_EVENT_CONNECTED);
 }
 
 
@@ -480,6 +482,11 @@ static __cold noinline void *client_udp_epoll_run_event_loop(void *thread_p)
 			break;
 		}
 	}
+
+	if (ret)
+		set_client_vpn_err_event(ret);
+	else
+		set_client_vpn_event(CLIENT_EVENT_DISCONNECTED);
 
 	atomic_store(&thread->is_online, false);
 	atomic_fetch_sub(&state->n_on_threads, 1);
