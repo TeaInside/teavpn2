@@ -6,7 +6,6 @@
 
 #include <teavpn2/gui/gui.h>
 
-
 GtkWidget *s_w_label_path;
 GtkWidget *s_w_button_connect;
 GtkWidget *s_w_text_logger;

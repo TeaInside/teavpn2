@@ -26,6 +26,8 @@ extern int teavpn2_gui_event_destroy(void);
 
 #ifdef CONFIG_GUI
 
+extern gboolean client_callback_event_loop(void *data);
+
 static inline void set_client_vpn_event(uint8_t state)
 {
 	assert(state < CLIENT_EVENT_ERROR);
