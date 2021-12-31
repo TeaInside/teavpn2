@@ -4,12 +4,15 @@
  * Copyright (C) 2021  Alviro Iskandar Setiawan <alviro.iskandar@gmail.com>
  */
 
-#ifndef TEAVPN2__GUI_H
-#define TEAVPN2__GUI_H
-#ifdef CONFIG_GUI
+#ifndef TEAVPN2__GUI__GUI_H
+#define TEAVPN2__GUI__GUI_H
 
+#ifdef CONFIG_GUI
 #include <gtk/gtk.h>
+#endif
+
 #include <teavpn2/common.h>
+#include <teavpn2/gui/events.h>
 
 #define GUI_ID			"com.teainside.teavpn2"
 #define GUI_PROGRAM_NAME	"TeaVPN2"
@@ -31,6 +34,10 @@ struct gui_callback {
 	void			(*func)(GtkWidget *widget, gpointer);
 	void			*user_data;
 };
+
+
+/* entry.c */
+extern int gui_entry(int argc, char *argv[]);
 
 
 /* gui_window.c */
@@ -101,9 +108,4 @@ static inline GtkWidget *gui_config_get_button_save_as(void)
 	return s_w_button_save_as;
 }
 
-
-/* entry.c */
-extern int gui_entry(int argc, char *argv[]);
-
-#endif /* #ifdef CONFIG_GUI */
-#endif /* #ifndef TEAVPN2__GUI_H */
+#endif /* #ifndef #ifndef TEAVPN2__GUI__GUI_H */

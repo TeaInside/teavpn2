@@ -21,9 +21,16 @@ int gui_entry(int argc, char *argv[])
 		.self = gtk_application_new(GUI_ID, G_APPLICATION_FLAGS_NONE)
 	};
 
+	ret = teavpn2_gui_event_init(&gui);
+	if (ret) {
+		g_object_unref(gui.self);
+		return ret;
+	}
+
 	g_signal_connect(gui.self, "activate", G_CALLBACK(app_activate), &gui);
 	ret = g_application_run(G_APPLICATION(gui.self), argc, argv);
 	g_object_unref(gui.self);
+	teavpn2_gui_event_destroy();
 
 	return ret;
 }
