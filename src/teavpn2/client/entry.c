@@ -371,7 +371,7 @@ static __cold int client_cfg_parser(void *user, const char *section,
 }
 
 
-static __cold int parse_cfg_file(const char *cfg_file, struct cli_cfg *cfg)
+__cold int client_parse_cfg_file(const char *cfg_file, struct cli_cfg *cfg)
 {
 	int ret;
 	FILE *handle;
@@ -420,7 +420,7 @@ __cold int run_client(int argc, char *argv[])
 	if (ret)
 		return -ret;
 
-	ret = parse_cfg_file(cfg.sys.cfg_file, &cfg);
+	ret = client_parse_cfg_file(cfg.sys.cfg_file, &cfg);
 	if (ret) {
 		if (!(ret == -ENOENT && !strcmp(cfg.sys.cfg_file, d_cli_cfg_file)))
 			return -ret;

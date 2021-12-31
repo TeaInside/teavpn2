@@ -50,6 +50,7 @@ struct cli_cfg {
 	struct cli_cfg_auth	auth;
 };
 
+extern int client_parse_cfg_file(const char *cfg_file, struct cli_cfg *cfg);
 extern int teavpn2_client_udp_run(struct cli_cfg *cfg);
 
 #endif
