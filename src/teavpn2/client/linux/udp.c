@@ -13,7 +13,7 @@
 #include <teavpn2/net/linux/iface.h>
 #include <teavpn2/client/linux/udp.h>
 
-
+static struct tmutex g_state_mutex;
 static struct cli_udp_state *g_state = NULL;
 
 
@@ -87,6 +87,7 @@ static int select_event_loop(struct cli_udp_state *state)
 
 
 static int init_state(struct cli_udp_state *state)
+	__must_hold(&g_state_mutex)
 {
 	int ret;
 	struct sc_pkt *pkt;
@@ -670,6 +671,7 @@ static void close_udp_fd(struct cli_udp_state *state)
 
 
 static void destroy_state(struct cli_udp_state *state)
+	__must_hold(&g_state_mutex)
 {
 	if (state->need_remove_iff) {
 		prl_notice(2, "Removing virtual network interface configuration...");
@@ -683,6 +685,7 @@ static void destroy_state(struct cli_udp_state *state)
 	close_udp_fd(state);
 	al4096_free_munmap(state->pkt, sizeof(*state->pkt));
 	al64_free(state);
+	g_state = NULL;
 }
 
 
@@ -692,40 +695,65 @@ int teavpn2_client_udp_run(struct cli_cfg *cfg)
 	struct cli_udp_state *state;
 	bool need_set_err_event = true;
 
-	state = calloc_wrp(1ul, sizeof(*state));
-	if (unlikely(!state)) {
-		set_client_vpn_err_event(-ENOMEM);
-		return -ENOMEM;
+	ret = mutex_init(&g_state_mutex, NULL);
+	if (unlikely(ret)) {
+		ret = -ret;
+		goto out;
 	}
 
-	state->cfg = cfg;
-	ret = init_state(state);
-	if (unlikely(ret))
+	ret = -ENOMEM;
+	state = calloc_wrp(1ul, sizeof(*state));
+	if (unlikely(!state))
 		goto out;
+
+	state->cfg = cfg;
+	mutex_lock(&g_state_mutex);
+	ret = init_state(state);
+	mutex_unlock(&g_state_mutex);
+	if (unlikely(ret))
+		goto out_free;
 	ret = init_socket(state);
 	if (unlikely(ret))
-		goto out;
+		goto out_free;
 	ret = init_iface(state);
 	if (unlikely(ret))
-		goto out;
+		goto out_free;
 	ret = do_handshake(state);
 	if (unlikely(ret))
-		goto out;
+		goto out_free;
 	ret = do_auth(state);
 	if (unlikely(ret))
-		goto out;
+		goto out_free;
 	ret = run_client_event_loop(state);
 	need_set_err_event = false;
-out:
-	if (unlikely(ret)) {
-		if (need_set_err_event)
-			set_client_vpn_err_event(ret);
+
+out_free:
+	if (unlikely(ret))
 		pr_err("teavpn2_client_udp_run(): " PRERF, PREAR(-ret));
-	}
 
 	if (state->udp_fd != -1)
 		send_close_packet(state);
 
+	mutex_lock(&g_state_mutex);
 	destroy_state(state);
+	mutex_unlock(&g_state_mutex);
+
+out:
+	if (ret && need_set_err_event)
+		set_client_vpn_err_event(ret);
+
 	return ret;
+}
+
+void teavpn2_client_udp_stop(void)
+	__acquires(&g_state_mutex)
+	__releases(&g_state_mutex)
+{
+	if (unlikely(!g_state))
+		return;
+
+	mutex_lock(&g_state_mutex);
+	if (g_state)
+		g_state->stop = true;
+	mutex_unlock(&g_state_mutex);
 }

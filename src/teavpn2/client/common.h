@@ -51,6 +51,7 @@ struct cli_cfg {
 };
 
 extern int client_parse_cfg_file(const char *cfg_file, struct cli_cfg *cfg);
+extern void teavpn2_client_udp_stop(void);
 extern int teavpn2_client_udp_run(struct cli_cfg *cfg);
 
 #endif
