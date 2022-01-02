@@ -3,13 +3,14 @@
  * Copyright (C) 2021  Ammar Faizi
  */
 
+#include <teavpn2/gui/gui.h>
 #include <unistd.h>
 #include <signal.h>
 #include <pthread.h>
 #include <sys/epoll.h>
 #include <teavpn2/client/common.h>
 #include <teavpn2/client/linux/udp.h>
-#include <teavpn2/gui/event_callback.h>
+
 
 static __cold int create_epoll_fd(void)
 {
@@ -456,8 +457,8 @@ static __cold void thread_wait(struct epl_thread *thread,
 		prl_notice(2, "All threads are ready!");
 
 	prl_notice(2, "Initialization Sequence Completed");
-	invoke_client_on_connect();
 	atomic_store(&release_sub_thread, true);
+	set_client_vpn_event(CLIENT_EVENT_CONNECTED);
 }
 
 
@@ -478,12 +479,15 @@ static __cold noinline void *client_udp_epoll_run_event_loop(void *thread_p)
 		ret = do_epoll_wait(thread, state);
 		if (unlikely(ret)) {
 			state->stop = true;
-			invoke_client_on_error(ret);
 			break;
 		}
 	}
 
-	invoke_client_on_disconnect();
+	if (ret)
+		set_client_vpn_err_event(ret);
+	else
+		set_client_vpn_event(CLIENT_EVENT_DISCONNECTED);
+
 	atomic_store(&thread->is_online, false);
 	atomic_fetch_sub(&state->n_on_threads, 1);
 	return (void *)((intptr_t)ret);
