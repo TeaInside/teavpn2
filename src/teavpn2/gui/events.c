@@ -26,19 +26,46 @@ int teavpn2_gui_event_destroy(void)
 static void client_event_connected_cb(void)
 	__must_hold(&g_client_vpn_state_lock)
 {
+	GtkWidget *btn;
+
+	btn = gui_home_get_button_connect();
+	if (!btn) {
+		pr_err("Cannot get button connect widget");
+		return;
+	}
+	gtk_button_set_label(GTK_BUTTON(btn), "Disconnect");
+	gtk_widget_set_sensitive(GTK_WIDGET(btn), TRUE);
 	pr_notice("Connected!");
 }
 
 static void client_event_disconnected_cb(void)
 	__must_hold(&g_client_vpn_state_lock)
 {
+	GtkWidget *btn;
+
+	btn = gui_home_get_button_connect();
+	if (!btn) {
+		pr_err("Cannot get button connect widget");
+		return;
+	}
+	gtk_button_set_label(GTK_BUTTON(btn), "Connect");
+	gtk_widget_set_sensitive(GTK_WIDGET(btn), TRUE);
 	pr_notice("Disconnected!");
 }
 
 static void client_event_error_cb(int err_code)
 	__must_hold(&g_client_vpn_state_lock)
 {
-	pr_err("Error: " PRERF, PREAR(-err_code));
+	GtkWidget *btn;
+
+	btn = gui_home_get_button_connect();
+	if (!btn) {
+		pr_err("Cannot get button connect widget");
+		return;
+	}
+	gtk_button_set_label(GTK_BUTTON(btn), "Connect");
+	gtk_widget_set_sensitive(GTK_WIDGET(btn), TRUE);
+	pr_err(PRERF, PREAR(-err_code));
 }
 
 gboolean client_callback_event_loop(void *user_data)
@@ -49,7 +76,6 @@ gboolean client_callback_event_loop(void *user_data)
 	unsigned try_num = 0;
 	const unsigned max_try = 10;
 
-	pr_notice("In callback event loop...");
 	while (unlikely(mutex_trylock(&g_client_vpn_state_lock))) {
 		cpu_relax();
 		if (unlikely(try_num++ >= max_try))

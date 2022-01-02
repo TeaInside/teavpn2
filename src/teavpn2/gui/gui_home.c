@@ -5,18 +5,88 @@
  */
 
 #include <teavpn2/gui/gui.h>
+#include <string.h>
+#include <pthread.h>
+#include <teavpn2/client/common.h>
 
 GtkWidget *s_w_label_path;
 GtkWidget *s_w_button_connect;
 GtkWidget *s_w_text_logger;
 GtkWidget *s_w_label_status;
 
+static void *run_vpn_thread(__maybe_unused void *p)
+{
+	int ret = -EINVAL;
+	const char *cfg_file;
+	struct cli_cfg cfg;
+
+	cfg_file = gtk_label_get_label(GTK_LABEL(gui_home_get_label_path()));
+	if (unlikely(!cfg_file))
+		goto out;
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.sys.cfg_file = cfg_file;
+	ret = client_parse_cfg_file(cfg.sys.cfg_file, &cfg);
+	if (unlikely(ret))
+		goto out;
+
+	ret = -ESOCKTNOSUPPORT;
+	switch (cfg.sock.type) {
+	case SOCK_UDP:
+		ret = teavpn2_client_udp_run(&cfg);
+		break;
+	case SOCK_TCP:
+		break;
+	default:
+		BUG();
+		break;
+	}
+out:
+	if (unlikely(ret))
+		set_client_vpn_err_event(ret);
+	return NULL;
+}
 
 static void button_connect_callback(GtkWidget *self, void *user_data)
 {
-	(void) self;
+	static pthread_t vpn_thread;
+	const char *btn_label;
+
+	btn_label = gtk_button_get_label(GTK_BUTTON(self));
+	if (BUG_ON(!btn_label))
+		return;
+
+	/*
+	 * When the button is clicked, disable it. The callback
+	 * in the events.c is responsible to enable it.
+	 */
+	gtk_widget_set_sensitive(GTK_WIDGET(self), FALSE);
+
+	if (btn_label[0] == 'C') {
+		int ret;
+
+		gtk_button_set_label(GTK_BUTTON(self), "Connecting...");
+		ret = pthread_create(&vpn_thread, NULL, &run_vpn_thread, NULL);
+		if (unlikely(ret)) {
+			pr_err("pthread_create(): " PRERF, PREAR(ret));
+			return;
+		}
+
+		ret = pthread_detach(vpn_thread);
+		if (unlikely(ret))
+			pr_err("pthread_detach(): " PRERF, PREAR(ret));
+
+	} else if (btn_label[0] == 'D') {
+stop_vpn:
+		gtk_button_set_label(GTK_BUTTON(self), "Disconnecting...");
+		teavpn2_client_udp_stop();
+		pthread_kill(vpn_thread, SIGTERM);
+	} else {
+		BUG();
+		goto stop_vpn;
+	}
+
 	(void) user_data;
-	g_print("Connect\n");
 }
 
 static GtkWidget *box_top_create(void)
