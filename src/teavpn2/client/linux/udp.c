@@ -746,8 +746,6 @@ out:
 }
 
 void teavpn2_client_udp_stop(void)
-	__acquires(&g_state_mutex)
-	__releases(&g_state_mutex)
 {
 	if (unlikely(!g_state))
 		return;
