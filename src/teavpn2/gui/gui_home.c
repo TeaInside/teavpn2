@@ -51,10 +51,17 @@ static void button_connect_callback(GtkWidget *self, void *user_data)
 {
 	static pthread_t vpn_thread;
 	const char *btn_label;
+	GtkTextBuffer *txt_buf;
+	GtkTextIter txt_iter;
 
 	btn_label = gtk_button_get_label(GTK_BUTTON(self));
 	if (BUG_ON(!btn_label))
 		return;
+
+	txt_buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(gui_home_get_text_logger()));
+	gtk_text_buffer_set_text(txt_buf, "", -1);
+	gtk_text_buffer_get_end_iter(txt_buf, &txt_iter);
+	gtk_text_buffer_create_mark(txt_buf, "main_log", &txt_iter, TRUE);
 
 	/*
 	 * When the button is clicked, disable it. The callback
@@ -140,6 +147,25 @@ static GtkWidget *box_btm_create(void)
 	gui_utils_set_margins(frame_log, 5);
 
 	return box;
+}
+
+void gui_home_insert_text_logger(const char *msg)
+{
+	GtkTextBuffer *buf;
+	GtkTextMark *mark;
+	GtkTextIter iter;
+
+
+	buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(gui_home_get_text_logger()));
+
+	gtk_text_buffer_get_end_iter(buf, &iter);
+	gtk_text_buffer_insert(buf, &iter, msg, -1);
+	gtk_text_iter_set_line_offset(&iter, 0);
+
+	mark = gtk_text_buffer_get_mark(buf, "main_log");
+	gtk_text_buffer_move_mark(buf, mark, &iter);
+	gtk_text_view_scroll_mark_onscreen(GTK_TEXT_VIEW(gui_home_get_text_logger()),
+					   mark);
 }
 
 void gui_home_create(GtkWidget *parent)

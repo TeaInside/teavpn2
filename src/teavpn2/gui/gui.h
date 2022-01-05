@@ -68,6 +68,7 @@ extern GtkWidget *s_w_label_path;
 extern GtkWidget *s_w_button_connect;
 extern GtkWidget *s_w_text_logger;
 extern GtkWidget *s_w_label_status;
+extern void gui_home_insert_text_logger(const char *msg);
 extern void gui_home_create(GtkWidget *parent);
 
 static inline GtkWidget *gui_home_get_label_path(void)
