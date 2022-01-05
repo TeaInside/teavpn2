@@ -17,11 +17,10 @@
 	#define pthread_mutex_trylock(MUTEX)
 #endif
 
-
 uint8_t __notice_level = DEFAULT_NOTICE_LEVEL;
 
-
 static __always_inline char *get_time(char *buf)
+	__must_hold(&print_lock)
 {
 	size_t len;
 	char *time_chr;
@@ -40,83 +39,42 @@ static __always_inline char *get_time(char *buf)
 }
 
 
-void __attribute__((format(printf, 1, 2))) __pr_notice(const char *fmt, ...)
-{
-	va_list vl;
-	char buf[32];
+#define PR_COPY_BUF(pr, buf, r, vbuf, ul, fmt, vl)			\
+do {									\
+	r += snprintf(&vbuf[r], ul - r, "[%s] " pr, get_time(buf));	\
+	r += vsnprintf(&vbuf[r], ul - r, fmt, vl);			\
+	vbuf[r++] = '\n';						\
+	vbuf[r] = '\0';							\
+} while (0)
 
-	va_start(vl, fmt);
-	pthread_mutex_lock(&print_lock);
-	printf("[%s] ", get_time(buf));
-	vprintf(fmt, vl);
-	putchar('\n');
-	pthread_mutex_unlock(&print_lock);
-	va_end(vl);
+
+#define DEFINE_PR_FUNC(NAME, PR)					\
+void __##NAME(const char *fmt, ...)					\
+{									\
+	int r = 0;							\
+	va_list vl;							\
+	char buf[32];							\
+	char vbuf[2048];						\
+	const int ul = (int) sizeof(vbuf) - 4;				\
+									\
+	va_start(vl, fmt);						\
+	pthread_mutex_lock(&print_lock);				\
+	PR_COPY_BUF(PR, buf, r, vbuf, ul, fmt, vl);			\
+	r = (int) fwrite(vbuf, sizeof(char), (size_t) r, stdout);	\
+	pthread_mutex_unlock(&print_lock);				\
+	va_end(vl);							\
+	(void) r;							\
 }
 
 
-void __attribute__((format(printf, 1, 2))) __pr_error(const char *fmt, ...)
-{
-	va_list vl;
-	char buf[32];
-
-	va_start(vl, fmt);
-	pthread_mutex_lock(&print_lock);
-	printf("[%s] Error: ", get_time(buf));
-	vprintf(fmt, vl);
-	putchar('\n');
-	pthread_mutex_unlock(&print_lock);
-	va_end(vl);
-}
+DEFINE_PR_FUNC(pr_notice, "");
+DEFINE_PR_FUNC(pr_error, "Error: ");
+DEFINE_PR_FUNC(pr_emerg, "Emergency: ");
+DEFINE_PR_FUNC(pr_debug, "Debug: ");
+DEFINE_PR_FUNC(pr_warn, "Warning: ");
 
 
-void __attribute__((format(printf, 1, 2)))__pr_emerg(const char *fmt, ...)
-{
-	va_list vl;
-	char buf[32];
-
-	va_start(vl, fmt);
-	pthread_mutex_lock(&print_lock);
-	printf("[%s] Emergency: ", get_time(buf));
-	vprintf(fmt, vl);
-	putchar('\n');
-	pthread_mutex_unlock(&print_lock);
-	va_end(vl);
-}
-
-
-void __attribute__((format(printf, 1, 2))) __pr_debug(const char *fmt, ...)
-{
-	va_list vl;
-	char buf[32];
-
-	va_start(vl, fmt);
-	pthread_mutex_lock(&print_lock);
-	printf("[%s] Debug: ", get_time(buf));
-	vprintf(fmt, vl);
-	putchar('\n');
-	pthread_mutex_unlock(&print_lock);
-	va_end(vl);
-}
-
-
-void __attribute__((format(printf, 1, 2))) __pr_warn(const char *fmt, ...)
-{
-	va_list vl;
-	char buf[32];
-
-	va_start(vl, fmt);
-	pthread_mutex_lock(&print_lock);
-	printf("[%s] Warning: ", get_time(buf));
-	vprintf(fmt, vl);
-	putchar('\n');
-	pthread_mutex_unlock(&print_lock);
-	va_end(vl);
-}
-
-
-void __attribute__((format(printf, 3, 4)))
-__panic(const char *file, int lineno, const char *fmt, ...)
+void __panic(const char *file, int lineno, const char *fmt, ...)
 {
 	va_list vl;
 #if defined(__x86_64__)
