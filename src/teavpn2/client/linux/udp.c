@@ -681,6 +681,11 @@ static void destroy_state(struct cli_udp_state *state)
 	if (WARN_ON(state->threads_wont_exit))
 		return;
 
+	signal(SIGINT, SIG_DFL);
+	signal(SIGTERM, SIG_DFL);
+	signal(SIGHUP, SIG_DFL);
+	signal(SIGPIPE, SIG_DFL);
+
 	close_tun_fds(state);
 	close_udp_fd(state);
 	al4096_free_munmap(state->pkt, sizeof(*state->pkt));
