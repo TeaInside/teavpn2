@@ -153,7 +153,7 @@ void gui_home_insert_text_logger(const char *msg)
 {
 	GtkTextBuffer *buf;
 	GtkTextMark *mark;
-	GtkTextIter iter;
+	static GtkTextIter iter;
 
 
 	buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(gui_home_get_text_logger()));
