@@ -4,7 +4,6 @@
  * Copyright (C) 2021  Alviro Iskandar Setiawan <alviro.iskandar@gmail.com>
  */
 
-#include <X11/Xlib.h>
 #include <teavpn2/gui/gui.h>
 
 static void app_activate(GtkApplication *self, void *user_data)
@@ -22,8 +21,7 @@ int gui_entry(int argc, char *argv[])
 		.self = gtk_application_new(GUI_ID, G_APPLICATION_FLAGS_NONE)
 	};
 
-	XInitThreads();
-	gdk_threads_add_timeout_full(G_PRIORITY_HIGH_IDLE, 500,
+	gdk_threads_add_timeout_full(G_PRIORITY_HIGH_IDLE, 100,
 				     client_callback_event_loop, &gui, NULL);
 	ret = teavpn2_gui_event_init(&gui);
 	if (ret) {
@@ -31,6 +29,7 @@ int gui_entry(int argc, char *argv[])
 		return ret;
 	}
 
+	gui_pr_buffer_init(4096);
 	g_signal_connect(gui.self, "activate", G_CALLBACK(app_activate), &gui);
 	ret = g_application_run(G_APPLICATION(gui.self), argc, argv);
 	g_object_unref(gui.self);

@@ -72,14 +72,21 @@ gboolean client_callback_event_loop(void *user_data)
 	__acquires(&g_client_vpn_state_lock)
 	__releases(&g_client_vpn_state_lock)
 {
-
 	unsigned try_num = 0;
 	const unsigned max_try = 10;
+	static char prbuf[4096];
+	size_t prbuf_len;
 
 	while (unlikely(mutex_trylock(&g_client_vpn_state_lock))) {
 		cpu_relax();
 		if (unlikely(try_num++ >= max_try))
 			return TRUE;
+	}
+
+	prbuf_len = gui_pr_consume_buffer(prbuf, sizeof(prbuf) - 1);
+	if (prbuf_len) {
+		prbuf[prbuf_len] = '\0';
+		gui_home_insert_text_logger(prbuf);
 	}
 
 	switch (g_client_vpn_state) {

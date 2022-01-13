@@ -39,6 +39,31 @@ __pr_warn(const char *fmt, ...);
 extern void __printf(3, 4) __noreturn
 __panic(const char *file, int lineno, const char *fmt, ...);
 
+#ifdef CONFIG_GUI
+extern int gui_pr_buffer_init(size_t len);
+extern size_t gui_pr_consume_buffer(char *buffer, size_t maxlen);
+extern size_t gui_pr_queue_buffer(const char *buffer, size_t len);
+#else /* #ifdef CONFIG_GUI */
+static inline int gui_pr_buffer_init(size_t len)
+{
+	(void) len;
+	return 0;
+}
+
+static inline size_t gui_pr_consume_buffer(char *buffer, size_t maxlen)
+{
+	(void) buffer;
+	(void) maxlen;
+	return 0;
+}
+
+static inline size_t gui_pr_queue_buffer(const char *buffer, size_t len)
+{
+	(void) buffer;
+	(void) len;
+	return 0;
+}
+#endif /* #ifdef CONFIG_GUI */
 
 static inline void set_notice_level(uint8_t level)
 {

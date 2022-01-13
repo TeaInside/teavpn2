@@ -33,6 +33,7 @@ void gui_window_create(struct gui *g)
 		gtk_notebook_append_page(GTK_NOTEBOOK(g->window.child),
 					 notebooks[i].self, notebooks[i].label);
 
+	gtk_application_add_window(g->self, GTK_WINDOW(g->window.self));
 	gui_header_create(g->window.self);
 	gui_home_create(notebooks[0].self);
 	gui_config_create(notebooks[1].self);

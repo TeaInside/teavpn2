@@ -67,7 +67,7 @@ override C_CXX_FLAGS	:= \
 	-include $(BASE_DIR)/config-host.h $(C_CXX_FLAGS)
 
 ifeq ($(CONFIG_GUI),y)
-override LIB_LDFLAGS += $(shell pkg-config --libs gtk+-3.0) -lX11
+override LIB_LDFLAGS += $(shell pkg-config --libs gtk+-3.0)
 override C_CXX_FLAGS += $(shell pkg-config --cflags gtk+-3.0)
 endif
 
