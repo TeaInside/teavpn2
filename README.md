@@ -14,7 +14,13 @@ welcomed).
 ```
 git clone https://github.com/TeaInside/teavpn2;
 cd teavpn2;
-make -j$(nproc) RELEASE_MODE=1;
+make -j$(nproc);
+```
+
+For build with GUI support:
+```
+./configure --gui;
+make -j$(nproc);
 ```
 
 # Issues
