@@ -17,6 +17,12 @@ cd teavpn2;
 make -j$(nproc);
 ```
 
+For build with GUI support:
+```
+./configure --gui;
+make -j$(nproc);
+```
+
 # Issues
 We welcome bug reports, feature requests and questions through GitHub
 repository https://github.com/TeaInside/teavpn2 (kindly to open an issue).
