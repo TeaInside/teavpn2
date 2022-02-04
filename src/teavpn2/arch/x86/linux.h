@@ -126,4 +126,19 @@ static inline ssize_t __sys_sendto(int sockfd, const void *buf, size_t len,
 	return rax;
 }
 
+static inline ssize_t __sys_close(int fd)
+{
+	int rax;
+
+	__asm__ volatile(
+		"syscall"
+		: "=a"(rax)		/* %rax */
+		: "a"(__NR_close),	/* %rax */
+		  "D"(fd)		/* %rdi */
+		: "rcx", "r11"
+	);
+	return rax;
+}
+
+
 #endif /* #ifndef TEAVPN2__ARCH__X86__LINUX_H */
