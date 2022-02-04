@@ -16,12 +16,10 @@ enum {
 	CLIENT_EVENT_ERROR		= 3,
 };
 
-struct gui;
-
 extern int g_client_err_code;
 extern uint8_t g_client_vpn_state;
 extern struct tmutex g_client_vpn_state_lock;
-extern int teavpn2_gui_event_init(struct gui *gui);
+extern int teavpn2_gui_event_init(void);
 extern int teavpn2_gui_event_destroy(void);
 
 #ifdef CONFIG_GUI

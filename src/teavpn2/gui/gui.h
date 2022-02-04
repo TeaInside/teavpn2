@@ -9,34 +9,70 @@
 
 #ifdef CONFIG_GUI
 #include <gtk/gtk.h>
-#else
-typedef struct GtkWidget GtkWidget;
-typedef struct GtkApplication GtkApplication;
 #endif
 
 #include <teavpn2/common.h>
+#include <teavpn2/client/common.h>
 #include <teavpn2/gui/events.h>
 
 #define GUI_ID			"com.teainside.teavpn2"
 #define GUI_PROGRAM_NAME	"TeaVPN2"
 #define GUI_WINDOW_TITLE	"TeaVPN2 Client"
-#define GUI_WINDOW_RES		500, 600
+#define GUI_WINDOW_WIDTH	500
+#define GUI_WINDOW_HEIGHT	600
 #define GUI_DEFAULT_CONFIG	"/etc/teavpn2/client.ini"
 
+#define GUI_CALLBACK(SF, SG, FC, DT)\
+{ .instance = (void **)SF, .signal = SG, .func = G_CALLBACK(FC), .data = DT }
+
+
+struct app;
+struct gui;
+struct gui_callback;
+
+#ifdef CONFIG_GUI
+struct app {
+	GtkApplication	*self;
+
+	GtkTextBuffer	*txt_buffer_log;
+	GString		*cfg_file;
+	struct cli_cfg	cli_cfg;
+};
+
 struct gui {
-	GtkApplication		*self;
-	struct {
-		GtkWidget	*self;
-		GtkWidget	*child;
-	} window;
+	struct app	app;
+
+	/* window */
+	GtkWindow	*window;
+	GtkWidget	*window_notebook;
+
+	/* header */
+	GtkHeaderBar	*header;
+	GtkWidget	*header_btn_open;
+	GtkWidget	*header_btn_about;
+
+	/* home */
+	GtkBox		*home;
+	GtkWidget	*home_lbl_path;
+	GtkWidget	*home_btn_connect;
+	GtkWidget	*home_txt_logger;
+	GtkWidget	*home_lbl_status;
+
+	/* config */
+	GtkBox		*config;
+	GtkWidget	*config_btn_save;
+	GtkWidget	*config_btn_save_as;
+
+	/* */
 };
 
 struct gui_callback {
-	GtkWidget		**self;
-	const char		*signal_name;
-	void			(*func)(GtkWidget *widget, void *data);
-	void			*user_data;
+	void		**instance;
+	const char	*signal;
+	void		(*func)(void);
+	void		*data;
 };
+#endif /* #ifdef CONFIG_GUI */
 
 
 /* entry.c */
@@ -48,68 +84,19 @@ extern void gui_window_create(struct gui *g);
 
 
 /* gui_header.c */
-extern GtkWidget *s_w_button_open;
-extern GtkWidget *s_w_button_about;
-extern void gui_header_create(GtkWidget *parent);
-
-static inline GtkWidget *gui_header_get_button_open(void)
-{
-	return s_w_button_open;
-}
-
-static inline GtkWidget *gui_header_get_button_about(void)
-{
-	return s_w_button_about;
-}
+extern void gui_header_create(struct gui *g);
 
 
 /* gui_home.c */
-extern GtkWidget *s_w_label_path;
-extern GtkWidget *s_w_button_connect;
-extern GtkWidget *s_w_text_logger;
-extern GtkWidget *s_w_label_status;
-extern void gui_home_insert_text_logger(const char *msg);
-extern void gui_home_create(GtkWidget *parent);
+extern void gui_home_create(struct gui *g);
+extern void gui_home_insert_txt_logger(struct gui *g, const char *msg);
 
-static inline GtkWidget *gui_home_get_label_path(void)
-{
-	return s_w_label_path;
-}
 
-static inline GtkWidget *gui_home_get_button_connect(void)
-{
-	return s_w_button_connect;
-}
-
-static inline GtkWidget *gui_home_get_text_logger(void)
-{
-	return s_w_text_logger;
-}
-
-static inline GtkWidget *gui_home_get_label_status(void)
-{
-	return s_w_label_status;
-}
+/* gui_config.c */
+extern void gui_config_create(struct gui *g);
 
 
 /* gui_utils.c */
 extern void gui_utils_set_callback(const struct gui_callback *dest, size_t size);
-extern void gui_utils_set_margins(GtkWidget *dest, int size);
-
-
-/* gui_config.c */
-extern GtkWidget *s_w_button_save;
-extern GtkWidget *s_w_button_save_as;
-extern void gui_config_create(GtkWidget *parent);
-
-static inline GtkWidget *gui_config_get_button_save(void)
-{
-	return s_w_button_save;
-}
-
-static inline GtkWidget *gui_config_get_button_save_as(void)
-{
-	return s_w_button_save_as;
-}
 
 #endif /* #ifndef #ifndef TEAVPN2__GUI__GUI_H */

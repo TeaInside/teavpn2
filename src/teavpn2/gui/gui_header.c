@@ -7,13 +7,9 @@
 #include <teavpn2/gui/gui.h>
 
 
-GtkWidget *s_w_button_open;
-GtkWidget *s_w_button_about;
-
-
-static void button_open_callback(GtkWidget *self, void *user_data)
+static void btn_open_callback(GtkWidget *self, void *user_data)
 {
-	GtkWindow *parent = GTK_WINDOW(user_data);
+	struct gui *gui = (struct gui *) user_data;
 	GtkFileChooserAction action = GTK_FILE_CHOOSER_ACTION_OPEN;
 	char *file_name;
 	GtkWidget *file_dialog;
@@ -22,7 +18,7 @@ static void button_open_callback(GtkWidget *self, void *user_data)
 
 	file_filter = gtk_file_filter_new();
 	file_dialog = gtk_file_chooser_dialog_new("Open Configuration File",
-						  parent, action, "_Cancel",
+						  gui->window, action, "_Cancel",
 						  GTK_RESPONSE_CANCEL, "_Open",
 						  GTK_RESPONSE_ACCEPT, NULL);
 	file_chooser = GTK_FILE_CHOOSER(file_dialog);
@@ -33,7 +29,9 @@ static void button_open_callback(GtkWidget *self, void *user_data)
 
 	if (gtk_dialog_run(GTK_DIALOG(file_dialog)) == GTK_RESPONSE_ACCEPT) {
 		file_name = gtk_file_chooser_get_filename(file_chooser);
-		gtk_label_set_label(GTK_LABEL(gui_home_get_label_path()), file_name);
+		g_string_assign(gui->app.cfg_file, file_name);
+		gtk_label_set_label(GTK_LABEL(gui->home_lbl_path),
+				    gui->app.cfg_file->str);
 		g_free(file_name);
 	}
 
@@ -41,7 +39,7 @@ static void button_open_callback(GtkWidget *self, void *user_data)
 	(void) self;
 }
 
-static void button_about_callback(GtkWidget *self, void *user_data)
+static void btn_about_callback(GtkWidget *self, void *user_data)
 {
 	gtk_show_about_dialog(GTK_WINDOW(user_data),
 			      "program-name", GUI_PROGRAM_NAME,
@@ -52,34 +50,26 @@ static void button_about_callback(GtkWidget *self, void *user_data)
 	(void) self;
 }
 
-void gui_header_create(GtkWidget *parent)
+void gui_header_create(struct gui *g)
 {
-	GtkWidget *w_header;
 	const struct gui_callback callbacks[] = {
-		{
-			.self		= &s_w_button_open,
-			.signal_name	= "clicked",
-			.func		= button_open_callback,
-			.user_data	= parent
-		},
-		{
-			.self		= &s_w_button_about,
-			.signal_name	= "clicked",
-			.func		= button_about_callback,
-			.user_data	= parent
-		},
+		GUI_CALLBACK(&g->header_btn_open, "clicked",
+			     btn_open_callback, g),
+		GUI_CALLBACK(&g->header_btn_about, "clicked",
+			     btn_about_callback, g->window),
 	};
 
 
-	w_header         = gtk_header_bar_new();
-	s_w_button_open  = gtk_button_new_from_icon_name("document-open",
+	g->header = GTK_HEADER_BAR(gtk_header_bar_new());
+	g->header_btn_open = gtk_button_new_from_icon_name("document-open",
 							 GTK_ICON_SIZE_MENU);
-	s_w_button_about = gtk_button_new_from_icon_name("help-about",
+	g->header_btn_about = gtk_button_new_from_icon_name("help-about",
 							 GTK_ICON_SIZE_MENU);
 
 	gui_utils_set_callback(callbacks, G_N_ELEMENTS(callbacks));
-	gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(w_header), TRUE);
-	gtk_header_bar_pack_start(GTK_HEADER_BAR(w_header), s_w_button_open);
-	gtk_header_bar_pack_end(GTK_HEADER_BAR(w_header), s_w_button_about);
-	gtk_window_set_titlebar(GTK_WINDOW(parent), w_header);
+	gtk_header_bar_set_title(g->header, GUI_WINDOW_TITLE);
+	gtk_header_bar_set_show_close_button(g->header, TRUE);
+	gtk_header_bar_pack_start(g->header, g->header_btn_open);
+	gtk_header_bar_pack_end(g->header, g->header_btn_about);
+	gtk_window_set_titlebar(g->window, GTK_WIDGET(g->header));
 }

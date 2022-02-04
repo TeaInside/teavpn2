@@ -5,15 +5,13 @@
 
 #include <teavpn2/gui/gui.h>
 
-static struct gui *g_gui;
 int g_client_err_code = 0;
 struct tmutex g_client_vpn_state_lock;
 uint8_t g_client_vpn_state = CLIENT_EVENT_IDLE;
 
 
-int teavpn2_gui_event_init(struct gui *gui)
+int teavpn2_gui_event_init(void)
 {
-	g_gui = gui;
 	return mutex_init(&g_client_vpn_state_lock, NULL);
 }
 
@@ -23,48 +21,39 @@ int teavpn2_gui_event_destroy(void)
 	return 0;
 }
 
-static void client_event_connected_cb(void)
+static void client_event_connected_cb(struct gui *g)
 	__must_hold(&g_client_vpn_state_lock)
 {
-	GtkWidget *btn;
-
-	btn = gui_home_get_button_connect();
-	if (!btn) {
+	if (!g->home_btn_connect) {
 		pr_err("Cannot get button connect widget");
 		return;
 	}
-	gtk_button_set_label(GTK_BUTTON(btn), "Disconnect");
-	gtk_widget_set_sensitive(GTK_WIDGET(btn), TRUE);
-	pr_notice("Connected!");
+	gtk_button_set_label(GTK_BUTTON(g->home_btn_connect), "Disconnect");
+	gtk_widget_set_sensitive(g->home_btn_connect, TRUE);
 }
 
-static void client_event_disconnected_cb(void)
+static void client_event_disconnected_cb(struct gui *g)
 	__must_hold(&g_client_vpn_state_lock)
 {
-	GtkWidget *btn;
-
-	btn = gui_home_get_button_connect();
-	if (!btn) {
+	if (!g->home_btn_connect) {
 		pr_err("Cannot get button connect widget");
 		return;
 	}
-	gtk_button_set_label(GTK_BUTTON(btn), "Connect");
-	gtk_widget_set_sensitive(GTK_WIDGET(btn), TRUE);
-	pr_notice("Disconnected!");
+	gtk_button_set_label(GTK_BUTTON(g->home_btn_connect), "Connect");
+	gtk_widget_set_sensitive(g->home_btn_connect, TRUE);
+	gtk_widget_set_sensitive(g->header_btn_open, TRUE);
 }
 
-static void client_event_error_cb(int err_code)
+static void client_event_error_cb(struct gui *g, int err_code)
 	__must_hold(&g_client_vpn_state_lock)
 {
-	GtkWidget *btn;
-
-	btn = gui_home_get_button_connect();
-	if (!btn) {
+	if (!g->home_btn_connect) {
 		pr_err("Cannot get button connect widget");
 		return;
 	}
-	gtk_button_set_label(GTK_BUTTON(btn), "Connect");
-	gtk_widget_set_sensitive(GTK_WIDGET(btn), TRUE);
+	gtk_button_set_label(GTK_BUTTON(g->home_btn_connect), "Connect");
+	gtk_widget_set_sensitive(g->home_btn_connect, TRUE);
+	gtk_widget_set_sensitive(g->header_btn_open, TRUE);
 	pr_err(PRERF, PREAR(-err_code));
 }
 
@@ -72,6 +61,7 @@ gboolean client_callback_event_loop(void *user_data)
 	__acquires(&g_client_vpn_state_lock)
 	__releases(&g_client_vpn_state_lock)
 {
+	struct gui *gui = (struct gui *) user_data;
 	unsigned try_num = 0;
 	const unsigned max_try = 10;
 	static char prbuf[4096];
@@ -86,7 +76,7 @@ gboolean client_callback_event_loop(void *user_data)
 	prbuf_len = gui_pr_consume_buffer(prbuf, sizeof(prbuf) - 1);
 	if (prbuf_len) {
 		prbuf[prbuf_len] = '\0';
-		gui_home_insert_text_logger(prbuf);
+		gui_home_insert_txt_logger(gui, prbuf);
 	}
 
 	switch (g_client_vpn_state) {
@@ -94,13 +84,13 @@ gboolean client_callback_event_loop(void *user_data)
 		cpu_relax();
 		goto skip_set;
 	case CLIENT_EVENT_CONNECTED:
-		client_event_connected_cb();
+		client_event_connected_cb(gui);
 		break;
 	case CLIENT_EVENT_DISCONNECTED:
-		client_event_disconnected_cb();
+		client_event_disconnected_cb(gui);
 		break;
 	case CLIENT_EVENT_ERROR:
-		client_event_error_cb(g_client_err_code);
+		client_event_error_cb(gui, g_client_err_code);
 		break;
 	default:
 		BUG();
@@ -111,6 +101,5 @@ gboolean client_callback_event_loop(void *user_data)
 
 skip_set:
 	mutex_unlock(&g_client_vpn_state_lock);
-	(void) user_data;
 	return TRUE;
 }
