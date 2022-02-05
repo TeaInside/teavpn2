@@ -40,13 +40,10 @@ out:
 
 static void btn_connect_callback(GtkWidget *self, void *user_data)
 {
+	int ret;
 	struct gui *gui = (struct gui *) user_data;
 	static pthread_t vpn_thread;
-	const char *btn_label;
 
-	btn_label = gtk_button_get_label(GTK_BUTTON(self));
-	if (BUG_ON(!btn_label))
-		return;
 
 	/*
 	 * When the button is clicked, disable them. The callback
@@ -55,9 +52,8 @@ static void btn_connect_callback(GtkWidget *self, void *user_data)
 	gtk_widget_set_sensitive(GTK_WIDGET(self), FALSE);
 	gtk_widget_set_sensitive(gui->header_btn_open, FALSE);
 
-	if (btn_label[0] == 'C') {
-		int ret;
-
+	switch (gui->app.cli_state) {
+	case CLIENT_STATE_DISCONNECTED:
 		pr_notice("Connecting...");
 		gtk_button_set_label(GTK_BUTTON(self), "Connecting...");
 		ret = pthread_create(&vpn_thread, NULL, &run_vpn_thread, gui);
@@ -69,14 +65,17 @@ static void btn_connect_callback(GtkWidget *self, void *user_data)
 		ret = pthread_detach(vpn_thread);
 		if (unlikely(ret))
 			pr_err("pthread_detach(): " PRERF, PREAR(ret));
+		break;
 
-	} else if (btn_label[0] == 'D') {
+	case CLIENT_STATE_CONNECTED:
 stop_vpn:
 		pr_notice("Disconnecting...");
 		gtk_button_set_label(GTK_BUTTON(self), "Disconnecting...");
 		teavpn2_client_udp_stop();
 		pthread_kill(vpn_thread, SIGTERM);
-	} else {
+		break;
+
+	default:
 		BUG();
 		goto stop_vpn;
 	}

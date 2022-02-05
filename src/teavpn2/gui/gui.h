@@ -31,11 +31,17 @@ struct gui;
 struct gui_callback;
 
 #ifdef CONFIG_GUI
+enum cli_state {
+	CLIENT_STATE_CONNECTED,
+	CLIENT_STATE_DISCONNECTED,
+};
+
 struct app {
 	GtkApplication	*self;
 
 	GtkTextBuffer	*txt_buffer_log;
 	GString		*cfg_file;
+	enum cli_state	cli_state;
 	struct cli_cfg	cli_cfg;
 };
 

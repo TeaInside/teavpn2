@@ -13,6 +13,7 @@ static void app_startup(GtkApplication *self, void *user_data)
 
 	gui->app.txt_buffer_log = gtk_text_buffer_new(NULL);
 	gui->app.cfg_file = g_string_new(GUI_DEFAULT_CONFIG);
+	gui->app.cli_state = CLIENT_STATE_DISCONNECTED;
 
 	(void) self;
 }
