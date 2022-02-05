@@ -247,7 +247,7 @@ static int init_socket(struct cli_udp_state *state)
 
 
 out_err:
-	close(udp_fd);
+	__sys_close(udp_fd);
 	return -ret;
 }
 
@@ -317,7 +317,7 @@ static int init_iface(struct cli_udp_state *state)
 			if (unlikely(ret < 0)) {
 				pr_err("fd_set_nonblock(%d): " PRERF, tun_fd,
 				       PREAR(-ret));
-				close(tun_fd);
+				__sys_close(tun_fd);
 				goto err;
 			}
 		}
@@ -331,7 +331,7 @@ static int init_iface(struct cli_udp_state *state)
 	return ret;
 err:
 	while (i--) {
-		close(tun_fds[i]);
+		__sys_close(tun_fds[i]);
 		tun_fds[i] = -1;
 	}
 	return ret;
@@ -664,7 +664,7 @@ static void close_udp_fd(struct cli_udp_state *state)
 {
 	if (state->udp_fd != -1) {
 		prl_notice(2, "Closing udp_fd (fd=%d)...", state->udp_fd);
-		close(state->udp_fd);
+		__sys_close(state->udp_fd);
 		state->udp_fd = -1;
 	}
 }
