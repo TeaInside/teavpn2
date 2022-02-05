@@ -28,6 +28,8 @@ static void client_event_connected_cb(struct gui *g)
 		pr_err("Cannot get button connect widget");
 		return;
 	}
+
+	g->app.cli_state = CLIENT_STATE_CONNECTED;
 	gtk_button_set_label(GTK_BUTTON(g->home_btn_connect), "Disconnect");
 	gtk_widget_set_sensitive(g->home_btn_connect, TRUE);
 }
@@ -39,6 +41,8 @@ static void client_event_disconnected_cb(struct gui *g)
 		pr_err("Cannot get button connect widget");
 		return;
 	}
+
+	g->app.cli_state = CLIENT_STATE_DISCONNECTED;
 	gtk_button_set_label(GTK_BUTTON(g->home_btn_connect), "Connect");
 	gtk_widget_set_sensitive(g->home_btn_connect, TRUE);
 	gtk_widget_set_sensitive(g->header_btn_open, TRUE);
@@ -51,6 +55,8 @@ static void client_event_error_cb(struct gui *g, int err_code)
 		pr_err("Cannot get button connect widget");
 		return;
 	}
+
+	g->app.cli_state = CLIENT_STATE_DISCONNECTED;
 	gtk_button_set_label(GTK_BUTTON(g->home_btn_connect), "Connect");
 	gtk_widget_set_sensitive(g->home_btn_connect, TRUE);
 	gtk_widget_set_sensitive(g->header_btn_open, TRUE);
