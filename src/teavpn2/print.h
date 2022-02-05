@@ -96,13 +96,13 @@ do {							\
 #endif
 
 
-#ifdef NDEBUG
-	/* No debug */
-	#define pr_debug(...)
-#else
+// #ifdef NDEBUG
+// 	/* No debug */
+// 	#define pr_debug(...)
+// #else
 	/* Yes, do debug */
 	#define pr_debug	__pr_debug
-#endif
+// #endif
 
 #ifndef MAX_NOTICE_LEVEL
 	/*

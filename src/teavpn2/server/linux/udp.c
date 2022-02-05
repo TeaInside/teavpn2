@@ -475,7 +475,7 @@ static __cold int init_socket(struct srv_state *state)
 	return 0;
 
 out_err:
-	close(udp_fd);
+	__sys_close(udp_fd);
 	return ret;
 }
 
@@ -495,7 +495,7 @@ static __cold int alloc_tun_fd(const char *dev, short flags, bool non_block)
 
 	tmp = fd_set_nonblock(ret);
 	if (unlikely(tmp < 0)) {
-		close(ret);
+		__sys_close(ret);
 		pr_err("fd_set_nonblock(%d): " PRERF, ret, PREAR(-tmp));
 		return tmp;
 	}
@@ -544,7 +544,7 @@ static __cold int init_iface(struct srv_state *state)
 
 err:
 	while (i--) {
-		close(tun_fds[i]);
+		__sys_close(tun_fds[i]);
 		tun_fds[i] = -1;
 	}
 	return ret;
@@ -889,17 +889,6 @@ static int _el_epoll_handle_new_conn(struct epoll_wrk *thread,
 	return ret;
 }
 
-static inline bool skip_session_creation(struct cli_pkt *cli_pkt)
-{
-	uint8_t type = cli_pkt->type;
-	return (
-		type == TCLI_PKT_TUN_DATA	||
-		type == TCLI_PKT_REQSYNC	||
-		type == TCLI_PKT_SYNC		||
-		type == TCLI_PKT_CLOSE
-	);
-}
-
 static int el_epoll_handle_new_conn(struct epoll_wrk *thread,
 				    uint32_t addr, uint16_t port,
 				    struct sockaddr_in *saddr)
@@ -907,6 +896,11 @@ static int el_epoll_handle_new_conn(struct epoll_wrk *thread,
 	struct udp_sess *sess;
 	int ret = 0;
 
+	/*
+	 * Only create a new session when a new client
+	 * sends a handshake pakcet. Otherwise, ignore
+	 * it.
+	 */
 	if (thread->pkt->cli.type != TCLI_PKT_HANDSHAKE)
 		return 0;
 
@@ -1377,7 +1371,7 @@ static void el_epoll_destroy(struct srv_state *state)
 		if (fd == -1)
 			continue;
 		prl_notice(2, "Closing epoll_threads[%zu] (fd=%d)...", i, fd);
-		close(fd);
+		__sys_close(fd);
 	}
 	munlock(threads, nn * sizeof(*threads));
 	munmap(threads, nn * sizeof(*threads));
@@ -1480,7 +1474,7 @@ static __cold void destroy_tun_fds(struct srv_state *state)
 		if (tun_fd == -1)
 			continue;
 		prl_notice(2, "Closing tun_fds[%hhu] (fd=%d)...", i, tun_fd);
-		close(tun_fd);
+		__sys_close(tun_fd);
 	}
 	free(tun_fds);
 	state->tun_fds = NULL;
