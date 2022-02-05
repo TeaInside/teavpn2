@@ -43,17 +43,10 @@ static void btn_connect_callback(GtkWidget *self, void *user_data)
 	struct gui *gui = (struct gui *) user_data;
 	static pthread_t vpn_thread;
 	const char *btn_label;
-	GtkTextBuffer *txt_buf;
-	GtkTextIter txt_iter;
 
 	btn_label = gtk_button_get_label(GTK_BUTTON(self));
 	if (BUG_ON(!btn_label))
 		return;
-
-	txt_buf = gui->app.txt_buffer_log;
-	//gtk_text_buffer_set_text(txt_buf, "", -1);
-	gtk_text_buffer_get_end_iter(txt_buf, &txt_iter);
-	gtk_text_buffer_create_mark(txt_buf, "main_log", &txt_iter, TRUE);
 
 	/*
 	 * When the button is clicked, disable them. The callback
@@ -92,15 +85,16 @@ stop_vpn:
 void gui_home_insert_txt_logger(struct gui *g, const char *msg)
 {
 	GtkTextMark *mark;
-	static GtkTextIter iter;
+	GtkTextIter iter;
+	GtkTextBuffer *txt_buffer_log = g->app.txt_buffer_log;
 
 
-	gtk_text_buffer_get_end_iter(g->app.txt_buffer_log, &iter);
-	gtk_text_buffer_insert(g->app.txt_buffer_log, &iter, msg, -1);
+	gtk_text_buffer_get_end_iter(txt_buffer_log, &iter);
+	gtk_text_buffer_insert(txt_buffer_log, &iter, msg, -1);
 	gtk_text_iter_set_line_offset(&iter, 0);
 
-	mark = gtk_text_buffer_get_mark(g->app.txt_buffer_log, "main_log");
-	gtk_text_buffer_move_mark(g->app.txt_buffer_log, mark, &iter);
+	mark = gtk_text_buffer_get_mark(txt_buffer_log, "main_log");
+	gtk_text_buffer_move_mark(txt_buffer_log, mark, &iter);
 	gtk_text_view_scroll_mark_onscreen(GTK_TEXT_VIEW(g->home_txt_logger),
 					   mark);
 }
