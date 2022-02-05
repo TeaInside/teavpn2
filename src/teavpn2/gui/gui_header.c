@@ -60,16 +60,18 @@ void gui_header_create(struct gui *g)
 	};
 
 
-	g->header = GTK_HEADER_BAR(gtk_header_bar_new());
+	g->header = g_object_new(GTK_TYPE_HEADER_BAR,
+				 "title", GUI_WINDOW_TITLE,
+				 "show-close-button", TRUE, NULL);
 	g->header_btn_open = gtk_button_new_from_icon_name("document-open",
 							 GTK_ICON_SIZE_MENU);
 	g->header_btn_about = gtk_button_new_from_icon_name("help-about",
 							 GTK_ICON_SIZE_MENU);
 
-	gui_utils_set_callback(callbacks, G_N_ELEMENTS(callbacks));
-	gtk_header_bar_set_title(g->header, GUI_WINDOW_TITLE);
-	gtk_header_bar_set_show_close_button(g->header, TRUE);
+
 	gtk_header_bar_pack_start(g->header, g->header_btn_open);
 	gtk_header_bar_pack_end(g->header, g->header_btn_about);
 	gtk_window_set_titlebar(g->window, GTK_WIDGET(g->header));
+
+	gui_utils_set_callback(callbacks, G_N_ELEMENTS(callbacks));
 }

@@ -37,14 +37,12 @@ int gui_entry(int argc, char *argv[])
 	struct gui gui;
 
 	memset(&gui, 0, sizeof(struct gui));
-	const struct gui_callback callbacks[] = {
-		GUI_CALLBACK(&gui.app.self, "startup", app_startup, &gui),
-		GUI_CALLBACK(&gui.app.self, "activate", app_activate, &gui),
-		GUI_CALLBACK(&gui.app.self, "shutdown", app_shutdown, &gui),
-	};
-
 
 	gui.app.self = gtk_application_new(GUI_ID, G_APPLICATION_FLAGS_NONE);
+	g_object_connect(gui.app.self,
+			 "signal::startup", app_startup, &gui,
+			 "signal::activate", app_activate, &gui,
+			 "signal::shutdown", app_shutdown, &gui, NULL);
 	gdk_threads_add_timeout_full(G_PRIORITY_HIGH_IDLE, 100,
 				     client_callback_event_loop, &gui, NULL);
 	if ((ret = teavpn2_gui_event_init())) {
@@ -53,7 +51,6 @@ int gui_entry(int argc, char *argv[])
 	}
 
 	gui_pr_buffer_init(4096);
-	gui_utils_set_callback(callbacks, G_N_ELEMENTS(callbacks));
 	ret = g_application_run(G_APPLICATION(gui.app.self), argc, argv);
 	g_object_unref(gui.app.self);
 	teavpn2_gui_event_destroy();
