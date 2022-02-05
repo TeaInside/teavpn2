@@ -55,4 +55,11 @@ static inline ssize_t __sys_sendto(int sockfd, const void *buf, size_t len,
 	return unlikely(ret < 0) ? (ssize_t) -errno : ret;
 }
 
+static inline int __sys_close(int fd)
+{
+	int ret;
+	ret = close(fd);
+	return unlikely(ret < 0) ? -errno : ret;
+}
+
 #endif /* #ifndef TEAVPN2__ARCH__GENERIC__LINUX_H */
