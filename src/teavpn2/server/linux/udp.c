@@ -868,7 +868,6 @@ static int _el_epoll_handle_new_conn(struct epoll_wrk *thread,
 	struct handshake_ctx hctx;
 	int ret;
 
-	pr_notice("test");
 	ret = check_client_handshake(&pkt->cli, pkt->len, &hctx, sess);
 	if (unlikely(ret)) {
 		/*
@@ -927,8 +926,6 @@ static int el_epoll_handle_new_conn(struct epoll_wrk *thread,
 	 * on the map. If we don't have, then it's a bug!
 	 */
 	BUG_ON(lookup_udp_sess_map4(thread->state, addr, port) != sess);
-	prl_notice(4, "test = %hhu; len = %zu", thread->pkt->cli.type,
-		   thread->pkt->len);
 	return _el_epoll_handle_new_conn(thread, sess);
 }
 
@@ -958,8 +955,8 @@ static __hot int el_epoll_handle_event_udp(struct epoll_wrk *thread, int fd)
 	ssize_t ret;
 	void *buf;
 	
-	buf    = thread->pkt->srv.__raw;
-	buflen = sizeof(thread->pkt->srv.__raw);
+	buf    = &thread->pkt->srv;
+	buflen = sizeof(thread->pkt->srv);
 	ret    = do_recvfrom(fd, buf, buflen, &saddr, &saddr_len);
 	if (unlikely(ret <= 0)) {
 
