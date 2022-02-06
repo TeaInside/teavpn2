@@ -435,7 +435,10 @@ static __cold int init_socket(struct srv_state *state)
 
 	prl_notice(2, "Initializing UDP socket...");
 
-	non_block = (state->evt_loop == EL_EPOLL);
+	/*
+	 * S
+	 */
+	non_block = (state->evt_loop != EL_IO_URING);
 	type = SOCK_DGRAM | (non_block ? SOCK_NONBLOCK : 0);
 
 	udp_fd = socket(AF_INET, type, 0);
