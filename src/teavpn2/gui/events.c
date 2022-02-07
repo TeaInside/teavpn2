@@ -24,13 +24,22 @@ int teavpn2_gui_event_destroy(void)
 static void client_event_connected_cb(struct gui *g)
 	__must_hold(&g_client_vpn_state_lock)
 {
+	char lbl_stat[0x250u];
+	struct cli_cfg *cfg = &g->app.cli_cfg;
+
+
 	if (!g->home_btn_connect) {
 		pr_err("Cannot get button connect widget");
 		return;
 	}
 
+	g_snprintf(lbl_stat, sizeof(lbl_stat), "Connected to \"%s@%s:%hu\"",
+		   cfg->auth.username, cfg->sock.server_addr,
+		   cfg->sock.server_port);
+
 	g->app.cli_state = CLIENT_STATE_CONNECTED;
 	gtk_button_set_label(GTK_BUTTON(g->home_btn_connect), "Disconnect");
+	gtk_label_set_label(GTK_LABEL(g->home_lbl_status), lbl_stat);
 	gtk_widget_set_sensitive(g->home_btn_connect, TRUE);
 }
 
@@ -44,6 +53,7 @@ static void client_event_disconnected_cb(struct gui *g)
 
 	g->app.cli_state = CLIENT_STATE_DISCONNECTED;
 	gtk_button_set_label(GTK_BUTTON(g->home_btn_connect), "Connect");
+	gtk_label_set_label(GTK_LABEL(g->home_lbl_status), "Disconnected");
 	gtk_widget_set_sensitive(g->home_btn_connect, TRUE);
 	gtk_widget_set_sensitive(g->header_btn_open, TRUE);
 }
@@ -58,6 +68,7 @@ static void client_event_error_cb(struct gui *g, int err_code)
 
 	g->app.cli_state = CLIENT_STATE_DISCONNECTED;
 	gtk_button_set_label(GTK_BUTTON(g->home_btn_connect), "Connect");
+	gtk_label_set_label(GTK_LABEL(g->home_lbl_status), "Disconnected");
 	gtk_widget_set_sensitive(g->home_btn_connect, TRUE);
 	gtk_widget_set_sensitive(g->header_btn_open, TRUE);
 	pr_err(PRERF, PREAR(-err_code));

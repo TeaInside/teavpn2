@@ -125,7 +125,6 @@ void gui_home_create(struct gui *g)
 					   "halign", GTK_ALIGN_CENTER, NULL);
 	frame_log = g_object_new(GTK_TYPE_FRAME,
 				 "label", "Log:",
-				 "margin-bottom", 5,
 				 "margin-start", 5,
 				 "margin-end", 5, NULL);
 	scroller = g_object_new(GTK_TYPE_SCROLLED_WINDOW,
@@ -136,6 +135,11 @@ void gui_home_create(struct gui *g)
 					  "monospace", TRUE,
 					  "editable", FALSE,
 					  "buffer", g->app.txt_buffer_log, NULL);
+	g->home_lbl_status = g_object_new(GTK_TYPE_LABEL,
+					  "label", "Disconnected",
+					  "wrap", TRUE,
+					  "selectable", TRUE,
+					  "margin-bottom", 5, NULL);
 
 	gtk_text_buffer_get_end_iter(g->app.txt_buffer_log, &txt_iter);
 	gtk_text_buffer_create_mark(g->app.txt_buffer_log, "main_log",
@@ -144,7 +148,8 @@ void gui_home_create(struct gui *g)
 
 	gtk_box_pack_start(home, frame_conf, FALSE, FALSE, 0);
 	gtk_box_pack_start(home, g->home_btn_connect, FALSE, FALSE, 0);
-	gtk_box_pack_end(home, frame_log, TRUE, TRUE, 0);
+	gtk_box_pack_start(home, frame_log, TRUE, TRUE, 0);
+	gtk_box_pack_end(home, g->home_lbl_status, FALSE, FALSE, 0);
 
 	gui_utils_set_callback(callbacks, G_N_ELEMENTS(callbacks));
 }
