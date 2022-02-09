@@ -8,10 +8,7 @@
 
 void gui_utils_set_callback(const struct gui_callback *dest, size_t size)
 {
-	do {
-		size--;
+	while (size--)
 		g_signal_connect(*dest[size].instance, dest[size].signal,
 				 dest[size].func, dest[size].data);
-	} while (size > 0);
 }
-
