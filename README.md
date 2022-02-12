@@ -14,6 +14,7 @@ welcomed).
 
 # Build
 ```
+sudo apt-get install gcc clang make build-essential -y;
 git clone https://github.com/TeaInside/teavpn2;
 cd teavpn2;
 make -j$(nproc);
