@@ -145,7 +145,7 @@ DEFINE_PR_FUNC(pr_warn, "Warning: ");
 void __panic(const char *file, int lineno, const char *fmt, ...)
 {
 	va_list vl;
-#if defined(__x86_64__)
+#if defined(CONFIG_HPC_EMERGENCY)
 	__emerg_release_bug = true;
 #endif
 	pthread_mutex_trylock(&print_lock);
