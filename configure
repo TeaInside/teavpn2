@@ -118,10 +118,11 @@ EOF
 exit 0
 fi
 
-TMPC="$(mktemp --tmpdir tmpfile-XXXXXXXXX.c)"
-TMPC2="$(mktemp --tmpdir tmpfile-XXXXXXXXX-2.c)"
-TMPO="$(mktemp --tmpdir tmpfile-XXXXXXXXX.o)"
-TMPE="$(mktemp --tmpdir tmpfile-XXXXXXXXX.exe)"
+TMPDIR="$(mktemp -d)"
+TMPC="$TMPDIR/tmpfile.c"
+TMPC2="$TMPDIR/tmpfile-2.c"
+TMPO="$TMPDIR/tmpfile.o"
+TMPE="$TMPDIR/tmpfile.exe"
 
 # NB: do not call "exit" in the trap handler; this is buggy with some shells;
 # see <1285349658-3122-1-git-send-email-loic.minier@linaro.org>
