@@ -85,6 +85,7 @@ static int select_event_loop(struct srv_udp_state *state)
 static int init_state(struct srv_udp_state *state)
 {
 	int ret;
+	struct sigaction act = { .sa_handler = signal_intr_handler };
 
 	prl_notice(2, "Initializing server state...");
 
@@ -101,13 +102,16 @@ static int init_state(struct srv_udp_state *state)
 		return ret;
 
 	prl_notice(2, "Setting up signal interrupt handler...");
-	if (unlikely(signal(SIGINT, signal_intr_handler) == SIG_ERR))
+
+	if (unlikely(sigaction(SIGINT, &act, NULL) < 0))
 		goto sig_err;
-	if (unlikely(signal(SIGTERM, signal_intr_handler) == SIG_ERR))
+	if (unlikely(sigaction(SIGTERM, &act, NULL) < 0))
 		goto sig_err;
-	if (unlikely(signal(SIGHUP, signal_intr_handler) == SIG_ERR))
+	if (unlikely(sigaction(SIGHUP, &act, NULL) < 0))
 		goto sig_err;
-	if (unlikely(signal(SIGPIPE, SIG_IGN) == SIG_ERR))
+
+	act.sa_handler = SIG_IGN;
+	if (unlikely(sigaction(SIGPIPE, &act, NULL) < 0))
 		goto sig_err;
 
 	prl_notice(2, "Server state is initialized successfully!");
@@ -115,7 +119,7 @@ static int init_state(struct srv_udp_state *state)
 
 sig_err:
 	ret = errno;
-	pr_err("signal(): " PRERF, PREAR(ret));
+	pr_err("sigaction(): " PRERF, PREAR(ret));
 	return -ret;
 }
 

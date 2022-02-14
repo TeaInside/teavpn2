@@ -91,6 +91,7 @@ static int init_state(struct cli_udp_state *state)
 {
 	int ret;
 	struct sc_pkt *pkt;
+	struct sigaction act = { .sa_handler = signal_intr_handler };
 
 	prl_notice(2, "Initializing client state...");
 
@@ -113,13 +114,16 @@ static int init_state(struct cli_udp_state *state)
 	state->pkt = pkt;
 
 	prl_notice(2, "Setting up signal interrupt handler...");
-	if (unlikely(signal(SIGINT, signal_intr_handler) == SIG_ERR))
+
+	if (unlikely(sigaction(SIGINT, &act, NULL) < 0))
 		goto sig_err;
-	if (unlikely(signal(SIGTERM, signal_intr_handler) == SIG_ERR))
+	if (unlikely(sigaction(SIGTERM, &act, NULL) < 0))
 		goto sig_err;
-	if (unlikely(signal(SIGHUP, signal_intr_handler) == SIG_ERR))
+	if (unlikely(sigaction(SIGHUP, &act, NULL) < 0))
 		goto sig_err;
-	if (unlikely(signal(SIGPIPE, SIG_IGN) == SIG_ERR))
+
+	act.sa_handler = SIG_IGN;
+	if (unlikely(sigaction(SIGPIPE, &act, NULL) < 0))
 		goto sig_err;
 
 	prl_notice(2, "Client state is initialized successfully!");
@@ -127,7 +131,7 @@ static int init_state(struct cli_udp_state *state)
 
 sig_err:
 	ret = errno;
-	pr_err("signal(): " PRERF, PREAR(ret));
+	pr_err("sigaction(): " PRERF, PREAR(ret));
 	return -ret;
 }
 
@@ -673,6 +677,8 @@ static void close_udp_fd(struct cli_udp_state *state)
 static void destroy_state(struct cli_udp_state *state)
 	__must_hold(&g_state_mutex)
 {
+	struct sigaction act = { .sa_handler = SIG_DFL };
+
 	if (state->need_remove_iff) {
 		prl_notice(2, "Removing virtual network interface configuration...");
 		teavpn_iface_down(&state->cfg->iface.iff);
@@ -681,10 +687,10 @@ static void destroy_state(struct cli_udp_state *state)
 	if (WARN_ON(state->threads_wont_exit))
 		return;
 
-	signal(SIGINT, SIG_DFL);
-	signal(SIGTERM, SIG_DFL);
-	signal(SIGHUP, SIG_DFL);
-	signal(SIGPIPE, SIG_DFL);
+	sigaction(SIGINT, &act, NULL);
+	sigaction(SIGTERM, &act, NULL);
+	sigaction(SIGHUP, &act, NULL);
+	sigaction(SIGPIPE, &act, NULL);
 
 	close_tun_fds(state);
 	close_udp_fd(state);
