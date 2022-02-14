@@ -124,6 +124,7 @@ TMPC2="$TMP_DIRECTORY/tmpfile-2.c"
 TMPO="$TMP_DIRECTORY/tmpfile.o"
 TMPE="$TMP_DIRECTORY/tmpfile.exe"
 
+touch $TMPC $TMPC2 $TMPO $TMPE
 # NB: do not call "exit" in the trap handler; this is buggy with some shells;
 # see <1285349658-3122-1-git-send-email-loic.minier@linaro.org>
 trap "rm -rf $TMP_DIRECTORY" EXIT INT QUIT TERM
