@@ -41,7 +41,7 @@ static void set_default_config(struct cli_cfg *cfg)
 
 static void teavpn_client_show_help(const char *app)
 {
-	printf("Usage: %s server [options]\n", app);
+	printf("Usage: %s client [options]\n", app);
 
 	printf("\n");
 	printf("TeaVPN Client Application\n");
