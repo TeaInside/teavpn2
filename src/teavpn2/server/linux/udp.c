@@ -222,6 +222,61 @@ struct srv_state {
 static DEFINE_MUTEX(g_state_mutex);
 static struct srv_state *g_state = NULL;
 
+static __always_inline size_t srv_pprep(struct srv_pkt *srv_pkt, uint8_t type,
+					uint16_t data_len, uint8_t pad_len)
+{
+	srv_pkt->type    = type;
+	srv_pkt->len     = htons(data_len);
+	srv_pkt->pad_len = pad_len;
+	return (size_t)(data_len + PKT_MIN_LEN);
+}
+
+
+static __always_inline size_t srv_pprep_handshake_reject(struct srv_pkt *srv_pkt,
+							 uint8_t reason,
+							 const char *msg)
+{
+	struct pkt_handshake_reject *rej = &srv_pkt->hs_reject;
+	uint16_t data_len = (uint16_t)sizeof(*rej);
+
+	rej->reason = reason;
+	if (!msg)
+		memset(rej->msg, 0, sizeof(rej->msg));
+	else
+		strncpy2(rej->msg, msg, sizeof(rej->msg));
+
+	return srv_pprep(srv_pkt, TSRV_PKT_HANDSHAKE_REJECT, data_len, 0);
+}
+
+
+static __always_inline size_t srv_pprep_handshake(struct srv_pkt *srv_pkt)
+{
+	struct pkt_handshake *hand = &srv_pkt->handshake;
+	struct teavpn2_version *cur = &hand->cur;
+	uint16_t data_len = (uint16_t)sizeof(*hand);
+
+	memset(hand, 0, sizeof(*hand));
+
+	cur->ver       = VERSION;
+	cur->patch_lvl = PATCHLEVEL;
+	cur->sub_lvl   = SUBLEVEL;
+	strncpy2(cur->extra, EXTRAVERSION, sizeof(cur->extra));
+
+	return srv_pprep(srv_pkt, TSRV_PKT_HANDSHAKE, data_len, 0);
+}
+
+
+static __always_inline size_t srv_pprep_sync(struct srv_pkt *srv_pkt)
+{
+	return srv_pprep(srv_pkt, TSRV_PKT_SYNC, 0, 0);
+}
+
+
+static __always_inline size_t srv_pprep_reqsync(struct srv_pkt *srv_pkt)
+{
+	return srv_pprep(srv_pkt, TSRV_PKT_REQSYNC, 0, 0);
+}
+
 __maybe_unused static inline int PTR_ERR(const void *ptr)
 {
 	return (int) (intptr_t) ptr;
@@ -435,9 +490,6 @@ static __cold int init_socket(struct srv_state *state)
 
 	prl_notice(2, "Initializing UDP socket...");
 
-	/*
-	 * S
-	 */
 	non_block = (state->evt_loop != EL_IO_URING);
 	type = SOCK_DGRAM | (non_block ? SOCK_NONBLOCK : 0);
 
@@ -864,8 +916,44 @@ out:
 	return ret;
 }
 
-static int _el_epoll_handle_new_conn(struct epoll_wrk *thread,
-				     struct udp_sess *sess)
+static __hot ssize_t el_epl_send_to_client(struct epoll_wrk *thread,
+					   struct udp_sess *sess,
+					   const void *buffer,
+					   size_t len)
+{
+	struct sockaddr *dst_addr = (struct sockaddr *)&sess->addr;
+	const socklen_t addr_len = sizeof(sess->addr);
+	int udp_fd = thread->state->udp_fd;
+	ssize_t send_ret;
+
+	send_ret = __sys_sendto(udp_fd, buffer, len, 0, dst_addr, addr_len);
+	if (unlikely(send_ret < 0))
+		pr_err("sendto(): " PRERF, PREAR((int)-send_ret));
+
+	return send_ret;
+}
+
+static int el_epl_send_handshake(struct epoll_wrk *thread,
+				 struct udp_sess *sess)
+{
+	struct sc_pkt *pkt = thread->pkt;
+	struct srv_pkt *srv_pkt = &pkt->srv;
+	ssize_t send_ret;
+	size_t send_len;
+
+	send_len = srv_pprep_handshake(srv_pkt);
+	send_ret = el_epl_send_to_client(thread, sess, srv_pkt, send_len);
+	if ((size_t)send_ret != send_len) {
+		pr_err("%s(): send_ret (%zd) != send_len (%zu), client: "
+			PRWIU, __func__, send_ret, send_len, W_IU(sess));
+		return -EAGAIN;
+	}
+
+	return (send_ret > 0) ? 0 : (int) send_ret;
+}
+
+static int _el_epl_handle_new_conn(struct epoll_wrk *thread,
+				   struct udp_sess *sess)
 {
 	struct sc_pkt *pkt = thread->pkt;
 	struct handshake_ctx hctx;
@@ -882,19 +970,30 @@ static int _el_epoll_handle_new_conn(struct epoll_wrk *thread,
 			prl_notice(2, "%s", hctx.rej_msg);
 
 			/*
-			 * If the handle_client_handshake() returns -EBADMSG,
-			 * this means the client has sent bad handshake packet.
-			 * It's not our fault, so return 0 as we are still fine.
+			 * If the handle_client_handshake() returns
+			 * -EBADMSG, this means the client has sent
+			 * a bad handshake packet. It's not our
+			 * fault, so return 0 as we are still fine.
 			 */
-			ret = 0;
+			return 0;
 		}
 	}
+
+	/*
+	 * We received a good packet, send a handshake
+	 * packet reply to the client.
+	 */
+	ret = el_epl_send_handshake(thread, sess);
+	if (unlikely(ret)) {
+		// do_drop();
+		return (ret == -EAGAIN) ? 0 : ret;
+	}
+
 	return ret;
 }
 
-static int el_epoll_handle_new_conn(struct epoll_wrk *thread,
-				    uint32_t addr, uint16_t port,
-				    struct sockaddr_in *saddr)
+static int el_epl_handle_new_conn(struct epoll_wrk *thread, uint32_t addr,
+				  uint16_t port, struct sockaddr_in *saddr)
 {
 	struct udp_sess *sess;
 	int ret = 0;
@@ -913,21 +1012,95 @@ static int el_epoll_handle_new_conn(struct epoll_wrk *thread,
 
 		/*
 		 * Don't fail if the failure reason is:
-		 * "session array is full".
+		 *   "the session array is full".
 		 */
 		return (ret == -EAGAIN) ? 0 : ret;
 	}
 
 	/*
-	 * If we succeed in calling create_udp_sess4(), we must have it
-	 * on the map. If we don't have, then it's a bug!
+	 * If we succeed in calling create_udp_sess4(),
+	 * we must have it on the map. If we don't have,
+	 * then, it's a bug!
 	 */
 	BUG_ON(lookup_udp_sess_map4(thread->state, addr, port) != sess);
-	return _el_epoll_handle_new_conn(thread, sess);
+	return _el_epl_handle_new_conn(thread, sess);
 }
 
-static __hot int _el_epoll_handle_event_udp(struct epoll_wrk *thread,
-					    struct sockaddr_in *saddr)
+static int el_epl_handle_pkt_handshake(struct epoll_wrk *thread,
+				       struct udp_sess *sess)
+{
+	static const size_t expected_len = PKT_MIN_LEN + sizeof(struct pkt_auth);
+	struct sc_pkt *pkt = thread->pkt;
+	struct cli_pkt *cli_pkt = &pkt->cli;
+	struct srv_pkt *srv_pkt = &pkt->srv;
+	struct pkt_auth_res *auth_res = &srv_pkt->auth_res;
+	struct pkt_auth auth;
+	ssize_t send_ret;
+	size_t send_len;
+
+	if (unlikely(pkt->len < expected_len)) {
+		pr_err("Invalid handshake packet from " PRWIU ": recvfrom() "
+		       "returned %zu but the expected_len is at least %zu.",
+		       W_IU(sess),
+		       pkt->len,
+		       expected_len);
+		return -EBADMSG;
+	}
+
+	/*
+	 * Note:
+	 * @thread->pkt is a union. @cli_pkt and @srv_pkt live in the
+	 * the same memory region. On teavpn2_auth() call, we will
+	 * clobber the content of @srv_pkt, so we need to copy the
+	 * auth packet here. Ohterwise, the client's auth packet
+	 * will be clobbered by that call.
+	 */
+	auth = cli_pkt->auth;
+
+	/*
+	 * Ensure we have NUL terminated credentials.
+	 */
+	auth.username[sizeof(auth.username) - 1] = '\0';
+	auth.password[sizeof(auth.password) - 1] = '\0';
+
+	prl_notice(2, "Got auth packet from (user: %s) " PRWIU, auth.username,
+		   W_IU(sess));
+
+	if (!teavpn2_auth(auth.username, auth.password, &auth_res->iff))
+		goto reject;
+
+	/*
+	 * Auth ok!
+	 *
+	 * Now, send the virtual network interface config to the
+	 * client. The config already lives in @auth_res->iff.
+	 *
+	 * We will send the whole @srv_pkt, so a raw prep here.
+	 */
+	send_len = srv_pprep(srv_pkt, TSRV_PKT_AUTH_OK, sizeof(*auth_res), 0);
+	send_ret = el_epl_send_to_client(thread, sess, srv_pkt, send_len);
+	if (unlikely(send_ret < 0)) {
+		
+	}
+
+reject:
+	return 0;
+}
+
+static __hot int __el_epl_handle_event_udp(struct epoll_wrk *thread,
+					   struct udp_sess *sess)
+{
+	switch (thread->pkt->cli.type) {
+	case TCLI_PKT_AUTH:
+		return el_epl_handle_pkt_handshake(thread, sess);
+	default:
+		return -EBADMSG;
+	}
+	__builtin_unreachable();
+}
+
+static __hot int _el_epl_handle_event_udp(struct epoll_wrk *thread,
+					  struct sockaddr_in *saddr)
 {
 	struct srv_state *state = thread->state;
 	struct udp_sess *sess;
@@ -939,12 +1112,12 @@ static __hot int _el_epoll_handle_event_udp(struct epoll_wrk *thread,
 	addr = ntohl(saddr->sin_addr.s_addr);
 	sess = lookup_udp_sess_map4(state, addr, port);
 	if (unlikely(!sess))
-		return el_epoll_handle_new_conn(thread, addr, port, saddr);
+		return el_epl_handle_new_conn(thread, addr, port, saddr);
 
-	return ret;
+	return __el_epl_handle_event_udp(thread, sess);
 }
 
-static __hot int el_epoll_handle_event_udp(struct epoll_wrk *thread, int fd)
+static __hot int el_epl_handle_event_udp(struct epoll_wrk *thread, int fd)
 {
 	struct sockaddr_in saddr;
 	socklen_t saddr_len = sizeof(saddr);
@@ -974,10 +1147,10 @@ static __hot int el_epoll_handle_event_udp(struct epoll_wrk *thread, int fd)
 	}
 	prl_notice(4, "recvfrom(): %zd bytes", ret);
 	thread->pkt->len = (size_t) ret;
-	return _el_epoll_handle_event_udp(thread, &saddr);
+	return _el_epl_handle_event_udp(thread, &saddr);
 }
 
-static __hot int el_epoll_handle_event_tun(struct epoll_wrk *thread, int fd)
+static __hot int el_epl_handle_event_tun(struct epoll_wrk *thread, int fd)
 {
 	const size_t read_size = sizeof(thread->pkt->srv.__raw);
 	void *buf = thread->pkt->srv.__raw;
@@ -996,17 +1169,17 @@ static __hot int el_epoll_handle_event_tun(struct epoll_wrk *thread, int fd)
 	return 0;
 }
 
-static __hot int el_epoll_handle_event(struct epoll_wrk *thread,
-				       struct epoll_event *event)
+static __hot int el_epl_handle_event(struct epoll_wrk *thread,
+				     struct epoll_event *event)
 {
 	struct srv_state *state = thread->state;
 	int fd = event->data.fd;
 	int ret;
 
 	if (fd == state->udp_fd)
-		ret = el_epoll_handle_event_udp(thread, fd);
+		ret = el_epl_handle_event_udp(thread, fd);
 	else
-		ret = el_epoll_handle_event_tun(thread, fd);
+		ret = el_epl_handle_event_tun(thread, fd);
 
 	/* TODO: Handle specific case before return. */
 	return ret;
@@ -1031,7 +1204,7 @@ static __hot int do_epoll_wait(struct epoll_wrk *thread)
 	return ret;
 }
 
-static __hot int el_epoll_run_event_loop(struct epoll_wrk *thread)
+static __hot int el_epl_run_event_loop(struct epoll_wrk *thread)
 {
 	struct epoll_event *events;
 	int ret;
@@ -1044,7 +1217,7 @@ static __hot int el_epoll_run_event_loop(struct epoll_wrk *thread)
 
 	events = thread->events;
 	for (i = 0; i < ret; i++) {
-		tmp = el_epoll_handle_event(thread, &events[i]);
+		tmp = el_epl_handle_event(thread, &events[i]);
 		if (unlikely(tmp))
 			return tmp;
 	}
@@ -1052,7 +1225,7 @@ static __hot int el_epoll_run_event_loop(struct epoll_wrk *thread)
 	return 0;
 }
 
-static noinline __cold void el_epoll_wait_threads(struct epoll_wrk *thread)
+static noinline __cold void el_epl_wait_threads(struct epoll_wrk *thread)
 {
 	static _Atomic(bool) release_sub_thread = false;
 	struct srv_state *state = thread->state;
@@ -1089,7 +1262,7 @@ static noinline __cold void el_epoll_wait_threads(struct epoll_wrk *thread)
 	return;
 }
 
-static noinline void *el_epoll_wrk(void *thread_p)
+static noinline void *el_epl_wrk(void *thread_p)
 {
 	struct epoll_wrk *thread = thread_p;
 	struct srv_state *state = thread->state;
@@ -1097,10 +1270,10 @@ static noinline void *el_epoll_wrk(void *thread_p)
 
 	atomic_fetch_add(&state->nr_on_threads, 1);
 	atomic_store(&thread->is_on, true);
-	el_epoll_wait_threads(thread);
+	el_epl_wait_threads(thread);
 
 	while (likely(!state->stop)) {
-		ret = el_epoll_run_event_loop(thread);
+		ret = el_epl_run_event_loop(thread);
 		if (unlikely(ret))
 			break;
 	}
@@ -1111,7 +1284,7 @@ static noinline void *el_epoll_wrk(void *thread_p)
 	return (void *) (intptr_t) ret;
 }
 
-static __cold int el_epoll_init_threads(struct srv_state *state)
+static __cold int el_epl_init_threads(struct srv_state *state)
 {
 	size_t nn = (size_t) state->cfg->sys.thread_num;
 	struct epoll_wrk *threads;
@@ -1185,7 +1358,7 @@ static __cold int el_epoll_init_threads(struct srv_state *state)
 	return 0;
 }
 
-static __cold int el_epoll_register_tun_fds(struct srv_state *state,
+static __cold int el_epl_register_tun_fds(struct srv_state *state,
 					    struct epoll_wrk *thread)
 {
 	const uint32_t events = EPOLLIN | EPOLLPRI;
@@ -1237,7 +1410,7 @@ static __cold int el_epoll_register_tun_fds(struct srv_state *state,
 	return 0;
 }
 
-static __cold int el_epoll_init_epoll(struct srv_state *state)
+static __cold int el_epl_init_epoll(struct srv_state *state)
 {
 	struct epoll_wrk *threads = state->epoll_threads;
 	size_t i, nn = (size_t) state->cfg->sys.thread_num;
@@ -1259,7 +1432,7 @@ static __cold int el_epoll_init_epoll(struct srv_state *state)
 		threads[i].fd = ret;
 		threads[i].timeout = 1000;
 
-		ret = el_epoll_register_tun_fds(state, &threads[i]);
+		ret = el_epl_register_tun_fds(state, &threads[i]);
 		if (unlikely(ret))
 			return ret;
 
@@ -1268,12 +1441,12 @@ static __cold int el_epoll_init_epoll(struct srv_state *state)
 	return 0;
 }
 
-static __cold int el_epoll_spawn_thread(struct epoll_wrk *thread)
+static __cold int el_epl_spawn_thread(struct epoll_wrk *thread)
 {
 	char tname[sizeof("epoll-wrk-xxxxx")];
 	int ret;
 
-	ret = pthread_create(&thread->thread, NULL, el_epoll_wrk, thread);
+	ret = pthread_create(&thread->thread, NULL, el_epl_wrk, thread);
 	if (unlikely(ret)) {
 		pr_err("pthread_create(): " PRERF, PREAR(ret));
 		return -ret;
@@ -1295,7 +1468,7 @@ static __cold int el_epoll_spawn_thread(struct epoll_wrk *thread)
 	return ret;
 }
 
-static __cold int el_epoll_spawn_threads(struct srv_state *state)
+static __cold int el_epl_spawn_threads(struct srv_state *state)
 {
 	struct epoll_wrk *threads = state->epoll_threads;
 	size_t i, nn = (size_t) state->cfg->sys.thread_num;
@@ -1308,7 +1481,7 @@ static __cold int el_epoll_spawn_threads(struct srv_state *state)
 		int ret;
 
 		prl_notice(2, "Spawning threads[%zu]...", i);
-		ret = el_epoll_spawn_thread(&threads[i]);
+		ret = el_epl_spawn_thread(&threads[i]);
 		if (unlikely(ret))
 			return ret;
 	}
@@ -1316,7 +1489,7 @@ static __cold int el_epoll_spawn_threads(struct srv_state *state)
 	return 0;
 }
 
-static void el_epoll_join_threads(struct srv_state *state)
+static void el_epl_join_threads(struct srv_state *state)
 {
 	struct epoll_wrk *threads = state->epoll_threads;
 	_Atomic(uint16_t) *nrp = &state->nr_on_threads;
@@ -1350,7 +1523,7 @@ static void el_epoll_join_threads(struct srv_state *state)
 	} while (r);
 }
 
-static void el_epoll_destroy(struct srv_state *state)
+static void el_epl_destroy(struct srv_state *state)
 {
 	struct epoll_wrk *threads = state->epoll_threads;
 	size_t i, nn = (size_t) state->cfg->sys.thread_num;
@@ -1358,7 +1531,7 @@ static void el_epoll_destroy(struct srv_state *state)
 	if (!threads)
 		return;
 
-	el_epoll_join_threads(state);
+	el_epl_join_threads(state);
 
 	for (i = 0; i < nn; i++) {
 		struct epoll_wrk *thread = &threads[i];
@@ -1380,24 +1553,24 @@ static void el_epoll_destroy(struct srv_state *state)
 	munmap(threads, nn * sizeof(*threads));
 }
 
-static int el_epoll_run_server(struct srv_state *state)
+static int el_epl_run_server(struct srv_state *state)
 {
 	void *ret_p;
 	int ret;
 
-	ret = el_epoll_init_threads(state);
+	ret = el_epl_init_threads(state);
 	if (unlikely(ret))
 		goto out;
-	ret = el_epoll_init_epoll(state);
+	ret = el_epl_init_epoll(state);
 	if (unlikely(ret))
 		goto out;
-	ret = el_epoll_spawn_threads(state);
+	ret = el_epl_spawn_threads(state);
 	if (unlikely(ret))
 		goto out;
-	ret_p = el_epoll_wrk(&state->epoll_threads[0]);
+	ret_p = el_epl_wrk(&state->epoll_threads[0]);
 	ret   = (int) (intptr_t) ret_p;
 out:
-	el_epoll_destroy(state);
+	el_epl_destroy(state);
 	return ret;
 }
 
@@ -1405,7 +1578,7 @@ static int run_server_event_loop(struct srv_state *state)
 {
 	switch (state->evt_loop) {
 	case EL_EPOLL:
-		return el_epoll_run_server(state);
+		return el_epl_run_server(state);
 	case EL_IO_URING:
 		pr_err("run_client_event_loop() with io_uring: " PRERF,
 			PREAR(EOPNOTSUPP));
