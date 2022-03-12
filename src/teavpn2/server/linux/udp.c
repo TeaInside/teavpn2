@@ -928,7 +928,7 @@ static __hot ssize_t el_epl_send_to_client(struct epoll_wrk *thread,
 
 	send_ret = __sys_sendto(udp_fd, buffer, len, 0, dst_addr, addr_len);
 	if (unlikely(send_ret < 0))
-		pr_err("sendto(): " PRERF, PREAR((int)-send_ret));
+		pr_err("sendto(): " PRERF, PREAR(-send_ret));
 
 	return send_ret;
 }
@@ -1026,10 +1026,19 @@ static int el_epl_handle_new_conn(struct epoll_wrk *thread, uint32_t addr,
 	return _el_epl_handle_new_conn(thread, sess);
 }
 
+#define VOLATILE_MEM_R(X) __asm__ volatile (""::"r"(X):"memory");
+
+static void zero_sensitive(void *ptr, size_t len)
+{
+	VOLATILE_MEM_R(ptr);
+	memset(ptr, 0, len);
+	VOLATILE_MEM_R(ptr);
+}
+
 static int el_epl_handle_pkt_handshake(struct epoll_wrk *thread,
 				       struct udp_sess *sess)
 {
-	static const size_t expected_len = PKT_MIN_LEN + sizeof(struct pkt_auth);
+	const size_t expected_len = PKT_MIN_LEN + sizeof(struct pkt_auth);
 	struct sc_pkt *pkt = thread->pkt;
 	struct cli_pkt *cli_pkt = &pkt->cli;
 	struct srv_pkt *srv_pkt = &pkt->srv;
@@ -1037,6 +1046,7 @@ static int el_epl_handle_pkt_handshake(struct epoll_wrk *thread,
 	struct pkt_auth auth;
 	ssize_t send_ret;
 	size_t send_len;
+	bool tmp;
 
 	if (unlikely(pkt->len < expected_len)) {
 		pr_err("Invalid handshake packet from " PRWIU ": recvfrom() "
@@ -1066,7 +1076,15 @@ static int el_epl_handle_pkt_handshake(struct epoll_wrk *thread,
 	prl_notice(2, "Got auth packet from (user: %s) " PRWIU, auth.username,
 		   W_IU(sess));
 
-	if (!teavpn2_auth(auth.username, auth.password, &auth_res->iff))
+	/*
+	 * Make sure we clear the sensitive string from
+	 * memory as soon as it's no longer used.
+	 */
+	zero_sensitive(cli_pkt->auth.password, sizeof(cli_pkt->auth.password));
+	tmp = teavpn2_auth(auth.username, auth.password, &auth_res->iff);
+	zero_sensitive(auth.password, sizeof(auth.password));
+
+	if (!tmp)
 		goto reject;
 
 	/*
@@ -1087,16 +1105,79 @@ reject:
 	return 0;
 }
 
+static __cold int el_epl_handle_pkt_write_error(struct udp_sess *sess,
+						int tun_fd,
+						size_t len,
+						ssize_t ret)
+{
+	if (ret == 0) {
+		pr_err("Network is down, write(tun_fd=%d) returns 0 when "
+		       "receiving tun data from " PRWIU, tun_fd, W_IU(sess));
+		return -ENETDOWN;
+	}
+
+	if (ret > 0) {
+		pr_err("Got short write(tun_fd=%d) (ret = %zd; expected = %zu) "
+		       "when receiving tun data from " PRWIU, tun_fd, ret, len,
+		       W_IU(sess));
+		return 0;
+	}
+
+	pr_err("write(tun_fd=%d) error when receiving data from " PRWIU ": "
+	       PRERF, tun_fd, W_IU(sess), PREAR(-ret));
+
+	return (int) ret;
+}
+
+static __hot int el_epl_handle_pkt_tun_data(struct epoll_wrk *thread,
+					    struct udp_sess *sess)
+{
+	int tun_fd = thread->state->tun_fds[0];
+	struct sc_pkt *pkt = thread->pkt;
+	struct cli_pkt *cli_pkt = &pkt->cli;
+	size_t recv_ret;
+	size_t expt_len;
+	ssize_t ret;
+	size_t len;
+
+	/*
+	 *
+	 * The returned size by recvfrom() must be equal to:
+	 *
+	 *   PKT_MIN_LEN + @cli_pkt->len + @cli_pkt->pad_len
+	 *
+	 * Otherwise, something goes wrong.
+	 *
+	 */
+
+	len      = ntohs(cli_pkt->len);
+	recv_ret = pkt->len;
+	expt_len = PKT_MIN_LEN + len + cli_pkt->pad_len;
+	if (unlikely(recv_ret != expt_len)) {
+		pr_err("%s(): recv_ret (%zu) != expt_len (%zu) from " PRWIU,
+		       __func__, recv_ret, expt_len, W_IU(sess));
+		return -EBADMSG;
+	}
+
+	ret = __sys_write(tun_fd, cli_pkt->__raw, len);
+	if (unlikely((size_t)ret != len))
+		return el_epl_handle_pkt_write_error(sess, tun_fd, len, ret);
+
+	return 0;
+}
+
 static __hot int __el_epl_handle_event_udp(struct epoll_wrk *thread,
 					   struct udp_sess *sess)
 {
 	switch (thread->pkt->cli.type) {
 	case TCLI_PKT_AUTH:
 		return el_epl_handle_pkt_handshake(thread, sess);
-	default:
-		return -EBADMSG;
+	case TCLI_PKT_TUN_DATA:
+		return el_epl_handle_pkt_tun_data(thread, sess);
 	}
-	__builtin_unreachable();
+
+	pr_notice("Bad message!");
+	return -EBADMSG;
 }
 
 static __hot int _el_epl_handle_event_udp(struct epoll_wrk *thread,
@@ -1106,7 +1187,7 @@ static __hot int _el_epl_handle_event_udp(struct epoll_wrk *thread,
 	struct udp_sess *sess;
 	uint32_t addr;
 	uint16_t port;
-	int ret = 0;
+	int ret;
 
 	port = ntohs(saddr->sin_port);
 	addr = ntohl(saddr->sin_addr.s_addr);
@@ -1114,7 +1195,17 @@ static __hot int _el_epl_handle_event_udp(struct epoll_wrk *thread,
 	if (unlikely(!sess))
 		return el_epl_handle_new_conn(thread, addr, port, saddr);
 
-	return __el_epl_handle_event_udp(thread, sess);
+	ret = __el_epl_handle_event_udp(thread, sess);
+	if (likely(!ret))
+		return 0;
+
+	if (ret == -EBADMSG) {
+		/* TODO: Drop the client connection based on err_c here. */
+		sess->err_c++;
+		return 0;
+	}
+
+	return ret;
 }
 
 static __hot int el_epl_handle_event_udp(struct epoll_wrk *thread, int fd)
@@ -1142,7 +1233,7 @@ static __hot int el_epl_handle_event_udp(struct epoll_wrk *thread, int fd)
 			return -ENETDOWN;
 		}
 
-		pr_err("recvfrom(): " PRERF, PREAR((int) -ret));
+		pr_err("recvfrom(): " PRERF, PREAR(-ret));
 		return ret;
 	}
 	prl_notice(4, "recvfrom(): %zd bytes", ret);
@@ -1160,8 +1251,7 @@ static __hot int el_epl_handle_event_tun(struct epoll_wrk *thread, int fd)
 	if (unlikely(read_ret < 0)) {
 		if (read_ret == -EAGAIN)
 			return 0;
-		pr_err("read(tun_fd) (fd=%d): " PRERF, fd,
-		       PREAR((int) -read_ret));
+		pr_err("read(tun_fd) (fd=%d): " PRERF, fd, PREAR(-read_ret));
 		return (int) read_ret;
 	}
 	pr_notice("[thread=%hu] read(tun_fd=%d) = %zd bytes", thread->idx,
@@ -1489,7 +1579,7 @@ static __cold int el_epl_spawn_threads(struct srv_state *state)
 	return 0;
 }
 
-static void el_epl_join_threads(struct srv_state *state)
+static noinline __cold void el_epl_join_threads(struct srv_state *state)
 {
 	struct epoll_wrk *threads = state->epoll_threads;
 	_Atomic(uint16_t) *nrp = &state->nr_on_threads;
