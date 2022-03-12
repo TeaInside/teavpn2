@@ -622,8 +622,8 @@ static __cold int init_session_array(struct srv_state *state)
 
 	nn   = state->cfg->sock.max_conn;
 	len  = nn * sizeof(*sess);
-	sess = mmap(NULL, len, PROT_READ | PROT_WRITE,
-		    MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+	sess = mmap(NULL, len, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE,
+		    -1, 0);
 	if (unlikely(state == MAP_FAILED)) {
 		ret = errno;
 		pr_err("mmap(): " PRERF, PREAR(ret));
@@ -685,8 +685,8 @@ static __cold int init_session_map_ipv4(struct srv_state *state)
 	if (unlikely(ret))
 		return -ret;
 
-	sess_map4 = mmap(NULL, map_len, PROT_READ | PROT_WRITE,
-			 MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+	sess_map4 = mmap(NULL, map_len, PROT_READ|PROT_WRITE,
+			 MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
 	if (unlikely(sess_map4 == MAP_FAILED)) {
 		ret = errno;
 		pr_err("mmap(): " PRERF, PREAR(ret));
@@ -933,6 +933,22 @@ static __hot ssize_t el_epl_send_to_client(struct epoll_wrk *thread,
 	return send_ret;
 }
 
+static int el_epl_close_sess(struct epoll_wrk *thread, struct udp_sess *sess)
+{
+	struct srv_pkt *srv_pkt = &thread->pkt->srv;
+	ssize_t send_ret;
+	size_t send_len;
+
+
+	send_len = srv_pprep(srv_pkt, TSRV_PKT_CLOSE, 0, 0);
+	send_ret = el_epl_send_to_client(thread, sess, srv_pkt, send_len);
+	if (unlikely((size_t)send_ret != send_len)) {
+
+	}
+
+	return ret;
+}
+
 static int el_epl_send_handshake(struct epoll_wrk *thread,
 				 struct udp_sess *sess)
 {
@@ -1030,7 +1046,6 @@ static int el_epl_handle_new_conn(struct epoll_wrk *thread, uint32_t addr,
 
 static void zero_sensitive(void *ptr, size_t len)
 {
-	VOLATILE_MEM_R(ptr);
 	memset(ptr, 0, len);
 	VOLATILE_MEM_R(ptr);
 }
@@ -1141,13 +1156,11 @@ static __hot int el_epl_handle_pkt_tun_data(struct epoll_wrk *thread,
 	size_t len;
 
 	/*
-	 *
 	 * The returned size by recvfrom() must be equal to:
 	 *
 	 *   PKT_MIN_LEN + @cli_pkt->len + @cli_pkt->pad_len
 	 *
 	 * Otherwise, something goes wrong.
-	 *
 	 */
 
 	len      = ntohs(cli_pkt->len);
@@ -1174,6 +1187,10 @@ static __hot int __el_epl_handle_event_udp(struct epoll_wrk *thread,
 		return el_epl_handle_pkt_handshake(thread, sess);
 	case TCLI_PKT_TUN_DATA:
 		return el_epl_handle_pkt_tun_data(thread, sess);
+	case TCLI_PKT_REQSYNC:
+	case TCLI_PKT_SYNC:
+	case TCLI_PKT_CLOSE:
+		return 0;
 	}
 
 	pr_notice("Bad message!");
@@ -1252,10 +1269,10 @@ static __hot int el_epl_handle_event_tun(struct epoll_wrk *thread, int fd)
 		if (read_ret == -EAGAIN)
 			return 0;
 		pr_err("read(tun_fd) (fd=%d): " PRERF, fd, PREAR(-read_ret));
-		return (int) read_ret;
+		return (int)read_ret;
 	}
-	pr_notice("[thread=%hu] read(tun_fd=%d) = %zd bytes", thread->idx,
-		  fd, read_ret);
+	pr_notice("[thread=%hu] read(tun_fd=%d) = %zd bytes", thread->idx, fd,
+		  read_ret);
 	return 0;
 }
 
@@ -1299,7 +1316,7 @@ static __hot int el_epl_run_event_loop(struct epoll_wrk *thread)
 	struct epoll_event *events;
 	int ret;
 	int tmp;
-	int i;	
+	int i;
 
 	ret = do_epoll_wait(thread);
 	if (unlikely(ret < 0))
@@ -1449,7 +1466,7 @@ static __cold int el_epl_init_threads(struct srv_state *state)
 }
 
 static __cold int el_epl_register_tun_fds(struct srv_state *state,
-					    struct epoll_wrk *thread)
+					  struct epoll_wrk *thread)
 {
 	const uint32_t events = EPOLLIN | EPOLLPRI;
 	uint8_t nn = state->cfg->sys.thread_num;
