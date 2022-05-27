@@ -20,21 +20,21 @@ static inline int __sys_epoll_wait(int epfd, struct epoll_event *events,
 {
 	int ret;
 	ret = epoll_wait(epfd, events, maxevents, timeout);
-	return unlikely(ret < 0) ? -errno : ret;
+	return unlikely(ret == -1) ? -errno : ret;
 }
 
 static inline ssize_t __sys_read(int fd, void *buf, size_t len)
 {
 	ssize_t ret;
 	ret = read(fd, buf, len);
-	return unlikely(ret < 0) ? (ssize_t) -errno : ret;
+	return unlikely(ret == -1) ? (ssize_t) -errno : ret;
 }
 
 static inline ssize_t __sys_write(int fd, const void *buf, size_t len)
 {
 	ssize_t ret;
 	ret = write(fd, buf, len);
-	return unlikely(ret < 0) ? (ssize_t) -errno : ret;
+	return unlikely(ret == -1) ? (ssize_t) -errno : ret;
 }
 
 static inline ssize_t __sys_recvfrom(int sockfd, void *buf, size_t len,
@@ -43,7 +43,7 @@ static inline ssize_t __sys_recvfrom(int sockfd, void *buf, size_t len,
 {
 	ssize_t ret;
 	ret = recvfrom(sockfd, buf, len, flags, src_addr, addrlen);
-	return unlikely(ret < 0) ? (ssize_t) -errno : ret;
+	return unlikely(ret == -1) ? (ssize_t) -errno : ret;
 }
 
 static inline ssize_t __sys_sendto(int sockfd, const void *buf, size_t len,
@@ -52,14 +52,14 @@ static inline ssize_t __sys_sendto(int sockfd, const void *buf, size_t len,
 {
 	ssize_t ret;
 	ret = sendto(sockfd, buf, len, flags, dest_addr, addrlen);
-	return unlikely(ret < 0) ? (ssize_t) -errno : ret;
+	return unlikely(ret == -1) ? (ssize_t) -errno : ret;
 }
 
 static inline int __sys_close(int fd)
 {
 	int ret;
 	ret = close(fd);
-	return unlikely(ret < 0) ? -errno : ret;
+	return unlikely(ret == -1) ? -errno : ret;
 }
 
 #endif /* #ifndef TEAVPN2__ARCH__GENERIC__LINUX_H */

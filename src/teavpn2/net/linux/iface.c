@@ -107,11 +107,14 @@ __cold static noinline char *escapeshellarg(char *alloc, const char *str,
 	size_t x;
 	char *cmd;
 
-	if (alloc == NULL)
+	if (alloc == NULL) {
 		/* Worst case */
 		cmd = (char *)malloc((sizeof(char) * l * 4) + 1);
-	else
+		if (!cmd)
+			return NULL;
+	} else {
 		cmd = alloc;
+	}
 
 #ifdef WIN32
 	cmd[y++] = '"';

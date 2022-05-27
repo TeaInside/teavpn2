@@ -32,7 +32,7 @@ noinline void *al64_calloc(size_t nmemb, size_t size)
 	size_t real_size = 0;
 
 	if (unlikely(__builtin_mul_overflow(nmemb, size, &real_size))) {
-		errno = EOVERFLOW;
+		errno = ENOMEM;
 		return NULL;
 	}
 
