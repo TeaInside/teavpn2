@@ -65,8 +65,10 @@ static inline struct bt_stack *bt_stack_init(struct bt_stack *stk,
 
 static inline void bt_stack_destroy(struct bt_stack *stk)
 {
-	if (stk->arr)
+	if (stk->arr) {
 		al64_free(stk->arr);
+		stk->arr = NULL;
+	}
 }
 
 
