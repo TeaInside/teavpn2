@@ -7,6 +7,7 @@
 #include <signal.h>
 #include <pthread.h>
 #include <sys/mman.h>
+#include <linux/ip.h>
 #include <arpa/inet.h>
 #include <stdatomic.h>
 #include <sys/epoll.h>
@@ -17,6 +18,8 @@
 #include <teavpn2/server/common.h>
 #include <teavpn2/net/linux/iface.h>
 #include <teavpn2/server/linux/udp.h>
+
+typedef _Atomic(uint16_t) atomic_u16;
 
 enum {
 	EL_EPOLL,
@@ -74,8 +77,8 @@ struct udp_sess {
 	 */
 	uint8_t					err_c;
 
-	_Atomic(bool)				is_authenticated;
-	_Atomic(bool)				is_connected;
+	bool					is_authenticated;
+	bool					is_connected;
 };
 
 
@@ -86,6 +89,7 @@ struct udp_sess_map4 {
 };
 
 #define SESS_MAP4_SIZE	(sizeof(struct udp_sess_map4) * 0x100ul * 0x100ul)
+#define ROUTE_MAP4_SIZE	(sizeof(atomic_u16) * 0x100ul * 0x100ul)
 #define EPOLL_NR_EVENTS	10u
 
 /*
@@ -183,6 +187,11 @@ struct srv_state {
 	struct tmutex			sess_map4_lock;
 
 	/*
+	 * A small hash table for route lookup.
+	 */
+	atomic_u16			(*route_map4)[0x100];
+
+	/*
 	 * Stack to get unused UDP session index in O(1).
 	 */
 	struct bt_stack			sess_stk;
@@ -229,7 +238,6 @@ static __always_inline size_t srv_pprep(struct srv_pkt *srv_pkt, uint8_t type,
 	return (size_t)(data_len + PKT_MIN_LEN);
 }
 
-
 static __always_inline size_t srv_pprep_handshake_reject(struct srv_pkt *srv_pkt,
 							 uint8_t reason,
 							 const char *msg)
@@ -245,7 +253,6 @@ static __always_inline size_t srv_pprep_handshake_reject(struct srv_pkt *srv_pkt
 
 	return srv_pprep(srv_pkt, TSRV_PKT_HANDSHAKE_REJECT, data_len, 0);
 }
-
 
 static __always_inline size_t srv_pprep_handshake(struct srv_pkt *srv_pkt)
 {
@@ -263,12 +270,10 @@ static __always_inline size_t srv_pprep_handshake(struct srv_pkt *srv_pkt)
 	return srv_pprep(srv_pkt, TSRV_PKT_HANDSHAKE, data_len, 0);
 }
 
-
 static __always_inline size_t srv_pprep_sync(struct srv_pkt *srv_pkt)
 {
 	return srv_pprep(srv_pkt, TSRV_PKT_SYNC, 0, 0);
 }
-
 
 static __always_inline size_t srv_pprep_reqsync(struct srv_pkt *srv_pkt)
 {
@@ -668,10 +673,6 @@ static __cold int init_session_stack(struct srv_state *state)
 	int ret;
 
 	prl_notice(4, "Initializing UDP session stack...");
-	ret = mutex_init(&state->sess_stk_lock, NULL);
-	if (unlikely(ret))
-		return -ret;
-
 	if (unlikely(!bt_stack_init(&state->sess_stk, max_conn)))
 		return -errno;
 
@@ -688,6 +689,13 @@ static __cold int init_session_stack(struct srv_state *state)
 		}
 	}
 
+	ret = mutex_init(&state->sess_stk_lock, NULL);
+	if (ret) {
+		bt_stack_destroy(&state->sess_stk);
+		memset(&state->sess_stk, 0, sizeof(state->sess_stk));
+		return -ret;
+	}
+
 	return 0;
 }
 
@@ -696,15 +704,31 @@ static __cold int init_session_map_ipv4(struct srv_state *state)
 	struct udp_sess_map4 (*sess_map4)[0x100] = NULL;
 	int err;
 
-	err = mutex_init(&state->sess_map4_lock, NULL);
-	if (err)
-		return -err;
-
 	sess_map4 = alloc_pinned_faulted(SESS_MAP4_SIZE);
 	if (!sess_map4)
 		return -ENOMEM;
 
+	err = mutex_init(&state->sess_map4_lock, NULL);
+	if (err) {
+		free_pinned(sess_map4, SESS_MAP4_SIZE);
+		return -err;
+	}
+
 	state->sess_map4 = sess_map4;
+	return 0;
+}
+
+
+static __cold int init_route_map_ipv4(struct srv_state *state)
+{
+	atomic_u16 (*route_map4)[0x100] = NULL;
+	int err;
+
+	route_map4 = alloc_pinned_faulted(ROUTE_MAP4_SIZE);
+	if (!route_map4)
+		return -ENOMEM;
+
+	state->route_map4 = route_map4;
 	return 0;
 }
 
@@ -993,11 +1017,12 @@ static struct udp_sess *create_udp_sess4(struct srv_state *state, uint32_t addr,
 	ret->src_addr = addr;
 	ret->src_port = port;
 	ret->addr = *saddr;
-	atomic_store_explicit(&ret->is_connected, true, memory_order_relaxed);
-	atomic_fetch_add_explicit(&state->nr_on_sess, 1, memory_order_relaxed);
+	ret->is_connected = true;
 	addr = htonl(addr);
 	WARN_ON(!inet_ntop(AF_INET, &addr, ret->str_src_addr,
 			   sizeof(ret->str_src_addr)));
+	atomic_fetch_add_explicit(&state->nr_on_sess, 1, memory_order_relaxed);
+
 	return ret;
 }
 
@@ -1198,6 +1223,40 @@ static int el_epl_handle_new_conn(struct epoll_wrk *thread, uint32_t addr,
 	return _el_epl_handle_new_conn(thread, sess);
 }
 
+static void del_ipv4_route_map(atomic_u16 (*map)[0x100], uint32_t addr)
+{
+	uint16_t byte0, byte1;
+
+	byte0 = (addr >> 0u) & 0xffu;
+	byte1 = (addr >> 8u) & 0xffu;
+	atomic_store(&map[byte0][byte1], 0);
+}
+
+static void set_ipv4_route_map(atomic_u16 (*map)[0x100], uint32_t addr,
+			       uint16_t maps_to)
+{
+	uint16_t byte0, byte1;
+
+	byte0 = (addr >> 0u) & 0xffu;
+	byte1 = (addr >> 8u) & 0xffu;
+	atomic_store(&map[byte0][byte1], maps_to + 1);
+}
+
+static int32_t get_ipv4_route_map(atomic_u16 (*map)[0x100], uint32_t addr)
+{
+	uint16_t ret, byte0, byte1;
+
+	byte0 = (addr >> 0u) & 0xffu;
+	byte1 = (addr >> 8u) & 0xffu;
+	ret = atomic_load(&map[byte0][byte1]);
+
+	if (ret == 0)
+		/* Unmapped address. */
+		return -ENOENT;
+
+	return (int32_t)(ret - 1);
+}
+
 static __hot int el_epl_handle_auth_pkt(struct epoll_wrk *thread,
 					struct udp_sess *sess)
 {
@@ -1207,6 +1266,7 @@ static __hot int el_epl_handle_auth_pkt(struct epoll_wrk *thread,
 	struct srv_pkt *srv_pkt = &pkt->srv;
 	struct pkt_auth_res *auth_res = &srv_pkt->auth_res;
 	struct pkt_auth auth;
+	uint32_t ipv4_iff;
 	ssize_t send_ret;
 	size_t send_len;
 	bool tmp;
@@ -1278,10 +1338,20 @@ static __hot int el_epl_handle_auth_pkt(struct epoll_wrk *thread,
 	send_ret = el_epl_send_to_client(thread, sess, srv_pkt, send_len,
 					 MSG_DONTWAIT);
 	if (unlikely(send_ret < 0)) {
+		/*
+		 * TODO: Drop the client.
+		 */
+
 		if (send_ret == -EAGAIN)
 			return 0;
+
 		return send_ret;
 	}
+
+	ipv4_iff = ntohl(inet_addr(auth_res->iff.ipv4));
+	sess->ipv4_iff = ipv4_iff;
+	sess->is_authenticated = true;
+	set_ipv4_route_map(thread->state->route_map4, ipv4_iff, sess->idx);
 	return 0;
 }
 
@@ -1317,14 +1387,19 @@ static __hot int el_epl_handle_tun_pkt(struct epoll_wrk *thread,
 	size_t data_len, expt_len, recv_ret;
 	ssize_t ret;
 
+	data_len = ntohs(cli_pkt->len);
+	if (unlikely(data_len == 0))
+		return 0;
+
 	/*
+	 *
 	 * The returned size by recvfrom() must be equal to:
 	 *
 	 *   PKT_MIN_LEN + ntohs(@cli_pkt->len) + @cli_pkt->pad_len
 	 *
 	 * Otherwise, something goes wrong!
+	 *
 	 */
-	data_len = ntohs(cli_pkt->len);
 	expt_len = PKT_MIN_LEN + data_len + cli_pkt->pad_len;
 	recv_ret = pkt->len;
 	if (unlikely(recv_ret != expt_len)) {
@@ -1420,13 +1495,55 @@ static __hot int el_epl_handle_event_udp(struct epoll_wrk *thread, int fd)
 	return _el_epl_handle_event_udp(thread, &saddr);
 }
 
-static __hot int el_epl_handle_event_tun(struct epoll_wrk *thread, int fd)
+static __hot int el_epl_route_ipv4_packet(struct epoll_wrk *thread,
+					  uint32_t dst_addr,
+					  struct pkt_tun_data *tdata,
+					  size_t len)
 {
-	size_t len = sizeof(thread->pkt.srv.__raw);
-	void *buf = thread->pkt.srv.__raw;
+	struct udp_sess *sess;
+	uint16_t idx;
+	int32_t find;
 	ssize_t ret;
 
-	ret = __sys_read(fd, buf, len);
+	find = get_ipv4_route_map(thread->state->route_map4, dst_addr);
+	if (unlikely(find < 0))
+		return (int)find;
+
+	idx = (uint16_t)find;
+	sess = &thread->state->sess[idx];
+	ret = el_epl_send_to_client(thread, sess, tdata, len, MSG_DONTWAIT);
+	if (unlikely(ret < 0))
+		return (int)ret;
+
+	return 0;
+}
+
+static __hot int el_epl_route_packet(struct epoll_wrk *thread,
+				     struct pkt_tun_data *tdata,
+				     size_t len)
+{
+	struct iphdr *iphdr = &tdata->iphdr;
+	int ret = 0;
+
+	if (likely(iphdr->version == 4)) {
+		uint32_t dst_addr = ntohl(iphdr->daddr);
+
+		ret = el_epl_route_ipv4_packet(thread, dst_addr, tdata, len);
+		if (likely(ret != -ENOENT))
+			return 0;
+	} else {
+		/* TODO: Handle IPv6 packets. */
+	}
+
+	return ret;
+}
+
+static __hot int el_epl_handle_event_tun(struct epoll_wrk *thread, int fd)
+{
+	struct pkt_tun_data *tdata = &thread->pkt.srv.tun_data;
+	ssize_t ret;
+
+	ret = __sys_read(fd, tdata, sizeof(*tdata));
 	if (unlikely(ret < 0)) {
 
 		if (ret == -EAGAIN)
@@ -1445,7 +1562,7 @@ static __hot int el_epl_handle_event_tun(struct epoll_wrk *thread, int fd)
 		return ret;
 	}
 
-	return 0;
+	return el_epl_route_packet(thread, tdata, (size_t)ret);
 }
 
 static __hot int el_epl_handle_event(struct epoll_wrk *thread,
@@ -1472,7 +1589,7 @@ static __hot int do_epoll_wait(struct epoll_wrk *thread)
 
 	ret = __sys_epoll_wait(fd, events, EPOLL_NR_EVENTS, timeout);
 	if (unlikely(ret < 0)) {
-		if (likely(ret == -EINTR)) {
+		if (ret == -EINTR) {
 			prl_notice(2, "[thread=%hu] Interrupted!", thread->idx);
 			return 0;
 		}
@@ -1677,14 +1794,23 @@ static __cold void destroy_sess_map4(struct srv_state *state)
 {
 	if (!state->sess_map4)
 		return;
+	mutex_lock(&state->sess_map4_lock);
 	free_pinned(state->sess_map4, SESS_MAP4_SIZE);
+	mutex_unlock(&state->sess_map4_lock);
+	mutex_destroy(&state->sess_map4_lock);
+}
+
+static __cold void destroy_route_map4(struct srv_state *state)
+{
+	if (!state->route_map4)
+		return;
+	free_pinned(state->route_map4, ROUTE_MAP4_SIZE);
 }
 
 static __cold void destroy_sess_stack(struct srv_state *state)
 {
 	if (!state->sess_stk.arr)
 		return;
-
 	mutex_lock(&state->sess_stk_lock);
 	bt_stack_destroy(&state->sess_stk);
 	mutex_unlock(&state->sess_stk_lock);
@@ -1712,6 +1838,7 @@ static __cold void destroy_state(struct srv_state *state)
 	g_state = NULL;
 	destroy_sess(state);
 	destroy_sess_map4(state);
+	destroy_route_map4(state);
 	destroy_sess_stack(state);
 	destroy_tun_fds(state);
 	free_pinned(state, sizeof(*state) + sizeof(int) * state->nr_tun_fds);
@@ -1746,6 +1873,9 @@ int teavpn2_server_udp_run(struct srv_cfg *cfg)
 	if (unlikely(ret))
 		goto out_del_sig;
 	ret = init_session_map_ipv4(state);
+	if (unlikely(ret))
+		goto out_del_sig;
+	ret = init_route_map_ipv4(state);
 	if (unlikely(ret))
 		goto out_del_sig;
 	ret = run_server_event_loop(state);

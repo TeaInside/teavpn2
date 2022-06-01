@@ -177,10 +177,15 @@ struct srv_state {
 	struct udp_sess				*sess;
 
 	/*
-	 * Small hash table for session lookup after recvfrom().
+	 * A small hash table for session lookup after recvfrom().
 	 */
 	struct sess_map4			(*sess_map4)[0x100];
 	struct tmutex				sess_map4_lock;
+
+	/*
+	 * A small hash table for route lookup.
+	 */
+	uint16_t				(*route_map4)[0x100];
 
 	/*
 	 * @cfg is the application config.
@@ -704,6 +709,12 @@ static __cold int init_session_map_ipv4(struct srv_state *state)
 	memset(sess_map4, 0, map_len);
 	state->sess_map4 = sess_map4;
 	return ret;
+}
+
+static __cold int init_route_map_ipv4(struct srv_state *state)
+{
+	const size_t map_len = sizeof(uint16_t) * 0x100ul * 0x100ul;
+	uint16_t (*route_map4)[0x100];
 }
 
 static int epoll_add(struct epoll_wrk *thread, int fd, uint32_t events,
@@ -1804,6 +1815,9 @@ int teavpn2_server_udp_run(struct srv_cfg *cfg)
 	if (unlikely(ret))
 		goto out_del_sig;
 	ret = init_session_map_ipv4(state);
+	if (unlikely(ret))
+		goto out_del_sig;
+	ret = init_route_map_ipv4(state);
 	if (unlikely(ret))
 		goto out_del_sig;
 	ret = run_server_event_loop(state);
