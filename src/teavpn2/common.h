@@ -61,6 +61,32 @@
 #  define __cold __attribute__((__cold__))
 #endif
 
+
+#ifndef __READ_ONCE
+#  define __READ_ONCE(x) (*(const volatile __typeof__(x) *)&(x))
+#endif
+
+#ifndef READ_ONCE
+#define READ_ONCE(x)	\
+({			\
+	__READ_ONCE(x);	\
+})
+#endif
+
+#ifndef __WRITE_ONCE
+#define __WRITE_ONCE(x, val)				\
+do {							\
+	*(volatile __typeof__(x) *)&(x) = (val);	\
+} while (0)
+#endif
+
+#ifndef WRITE_ONCE
+#define WRITE_ONCE(x, val)	\
+do {				\
+	__WRITE_ONCE(x, val);	\
+} while (0)
+#endif
+
 #if defined(__clang__)
 #  pragma clang diagnostic pop
 #endif
