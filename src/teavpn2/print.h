@@ -72,7 +72,7 @@ static inline void set_notice_level(uint8_t level)
 
 
 #define PRERF "(errno=%d) %s"
-#define PREAR(NUM) NUM, strerror(NUM)
+#define PREAR(NUM) ((int)(NUM)), strerror((int)(NUM))
 
 #define pr_err		__pr_error
 #define pr_error	__pr_error
