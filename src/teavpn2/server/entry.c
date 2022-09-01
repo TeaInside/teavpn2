@@ -455,9 +455,13 @@ __cold int run_server(int argc, char *argv[])
 	data_dir = cfg.sys.data_dir;
 	switch (cfg.sock.type) {
 	case SOCK_UDP:
-		return -teavpn2_server_udp_run(&cfg);
+		ret = -teavpn2_server_udp_run(&cfg);
+		break;
 	case SOCK_TCP:
 	default:
-		return ESOCKTNOSUPPORT;
+		ret = ESOCKTNOSUPPORT;
+		break;
 	}
+	data_dir = NULL;
+	return ret;
 }
