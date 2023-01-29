@@ -4,8 +4,6 @@ TeaVPN2 is an open source VPN Software. Current supported platform is
 only Linux. We plan to expand to other platforms (contributors are
 welcomed).
 
-<img alt="logo.svg" src=".github/logo.svg"/>
-
 
 # Build Requirements
 - GNU Make 4.3
