@@ -16,5 +16,5 @@
 /.vscode/
 /teavpn2*
 /dump.txt
-/config-host.h
-/config-host.mak
+/config.h
+/config.make

@@ -27,7 +27,7 @@ jobs:
 
     - name: Install tools
       run: |
-        sudo apt-get install clang gcc g++ make libc6-dev-i386 gcc-multilib g++-multilib -y;
+        sudo apt-get install clang gcc g++ make -y;
 
     - name: Show tools version
       run: |
@@ -35,24 +35,7 @@ jobs:
         ${{matrix.cxx}} --version;
         make --version;
 
-    - name: Build (Debug Mode)
-      run: |
-        make -j$(nproc) clean_all;
-        ./configure --cc=${{matrix.cc}} --cxx=${{matrix.cxx}} --ld=${{matrix.cc}};
-        make -j$(nproc) DEBUG_MODE=1;
-
     - name: Build
       run: |
-        ./configure --cc=${{matrix.cc}} --cxx=${{matrix.cxx}} --ld=${{matrix.cc}};
-        make -j$(nproc);
-
-    - name: Build 32-bit (Debug Mode)
-      run: |
-        make -j$(nproc) clean_all;
-        ./configure --cc=${{matrix.cc}} --cxx=${{matrix.cxx}} --ld=${{matrix.cc}} --32-bit;
-        make -j$(nproc) DEBUG_MODE=1;
-
-    - name: Build 32-bit
-      run: |
-        ./configure --cc=${{matrix.cc}} --cxx=${{matrix.cxx}} --ld=${{matrix.cc}} --32-bit;
+        ./configure --cc=${{matrix.cc}} --cxx=${{matrix.cxx}};
         make -j$(nproc);

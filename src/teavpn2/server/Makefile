@@ -13,11 +13,5 @@ ifeq ($(CONFIG_LINUX),y)
 	include $(BASE_DIR)/src/teavpn2/server/linux/Makefile
 endif
 
-OBJ_TMP_CC := \
+OBJ_CC += \
 	$(BASE_DIR)/src/teavpn2/server/entry.o
-
-OBJ_PRE_CC += $(OBJ_TMP_CC)
-
-$(OBJ_TMP_CC):
-	$(CC_PRINT)
-	$(Q)$(CC) $(PIE_FLAGS) $(DEPFLAGS) $(CFLAGS) -c $(O_TO_C) -o $(@)

@@ -9,7 +9,7 @@
 
 DEP_DIRS += $(BASE_DEP_DIR)/src/teavpn2/gui
 
-OBJ_TMP_CC := \
+OBJ_CC += \
 	$(BASE_DIR)/src/teavpn2/gui/entry.o \
 	$(BASE_DIR)/src/teavpn2/gui/events.o \
 	$(BASE_DIR)/src/teavpn2/gui/gui_config.o \
@@ -17,9 +17,3 @@ OBJ_TMP_CC := \
 	$(BASE_DIR)/src/teavpn2/gui/gui_home.o \
 	$(BASE_DIR)/src/teavpn2/gui/gui_utils.o \
 	$(BASE_DIR)/src/teavpn2/gui/gui_window.o
-
-OBJ_PRE_CC += $(OBJ_TMP_CC)
-
-$(OBJ_TMP_CC):
-	$(CC_PRINT)
-	$(Q)$(CC) $(PIE_FLAGS) $(DEPFLAGS) $(CFLAGS) -c $(O_TO_C) -o $(@)

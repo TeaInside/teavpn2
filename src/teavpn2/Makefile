@@ -17,14 +17,8 @@ ifeq ($(CONFIG_GUI),y)
 include $(BASE_DIR)/src/teavpn2/gui/Makefile
 endif
 
-OBJ_TMP_CC := \
+OBJ_CC += \
 	$(BASE_DIR)/src/teavpn2/allocator.o \
 	$(BASE_DIR)/src/teavpn2/auth.o \
 	$(BASE_DIR)/src/teavpn2/main.o \
 	$(BASE_DIR)/src/teavpn2/print.o
-
-OBJ_PRE_CC += $(OBJ_TMP_CC)
-
-$(OBJ_TMP_CC):
-	$(CC_PRINT)
-	$(Q)$(CC) $(PIE_FLAGS) $(DEPFLAGS) $(CFLAGS) -c $(O_TO_C) -o $(@)
