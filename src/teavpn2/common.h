@@ -266,4 +266,19 @@ static inline char *strncpy2(char *__restrict__ dst,
 #  define BUG_ON(COND) ({ COND; })
 #endif
 
+#ifndef cpu_relax
+#if defined(__x86_64__)
+static inline void __cpu_relax(void)
+{
+       __asm__ __volatile__ ("pause" ::: "memory");
+}
+#else
+static inline void __cpu_relax(void)
+{
+       __asm__ __volatile__ ("" ::: "memory");
+}
+#endif
+#define cpu_relax() __cpu_relax()
+#endif
+
 #endif
