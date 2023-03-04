@@ -55,6 +55,9 @@ for opt do
 	--gui)
 		use_gui="yes";
 	;;
+	--debug)
+		use_debug="yes";
+	;;
 	*)
 		echo "ERROR: unknown option $opt";
 		echo "Try '$0 --help' for more information";
@@ -104,6 +107,7 @@ Options: [defaults in brackets after descriptions]
   --cc=CMD                 Use CMD as the C compiler
   --cxx=CMD                Use CMD as the C++ compiler
   --gui                    Add the GUI support
+  --debug                  Build with debug enabled
 EOF
 exit 0;
 fi
@@ -350,6 +354,13 @@ if test "${use_gui}" = "yes"; then
 	CFLAGS="${CFLAGS} ${gtk3_cflags}";
 	CXXFLAGS="${CXXFLAGS} ${gtk3_cflags}";
 	LIB_LDFLAGS="${LD_FLAGS} ${gtk3_lib_ldflags}";
+fi;
+
+if test "${use_debug}" = "yes"; then
+	add_config "CONFIG_DEBUG";
+else
+	CFLAGS="${CFLAGS} -DNDEBUG";
+	CXXFLAGS="${CXXFLAGS} -DNDEBUG";
 fi;
 
 add_make_var "CC" "${cc}";

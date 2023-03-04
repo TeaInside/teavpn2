@@ -98,7 +98,7 @@ do {							\
 
 #ifdef NDEBUG
 	/* No debug */
-	#define pr_debug(...)
+	#define pr_debug(...)	do { } while (0)
 #else
 	/* Yes, do debug */
 	#define pr_debug	__pr_debug
