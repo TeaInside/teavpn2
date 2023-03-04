@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
-VERSION = 1
-PATCHLEVEL = 0
-SUBLEVEL = 0
+VERSION = 0
+PATCHLEVEL = 1
+SUBLEVEL = 2
 EXTRAVERSION := -rc1
 NAME = Green Grass
 
