@@ -856,13 +856,11 @@ static __hot int _route_packet(struct epl_thread *thread, size_t send_len)
 	struct iphdr *iphdr = &srv_pkt->tun_data.iphdr;
 
 	if (likely(iphdr->version == 4)) {
-		int ret;
 		uint32_t dst_addr = ntohl(iphdr->daddr);
 		struct udp_sess	*sess_arr = thread->state->sess_arr;
 
-		ret = route_ipv4_packet(thread, dst_addr, sess_arr, send_len);
-		if (likely(ret != -ENOENT))
-			return ret;
+		route_ipv4_packet(thread, dst_addr, sess_arr, send_len);
+		return 0;
 	}
 
 	return broadcast_packet(thread, send_len);
