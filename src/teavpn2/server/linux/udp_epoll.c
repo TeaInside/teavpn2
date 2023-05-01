@@ -476,6 +476,7 @@ static int handle_client_handshake(struct epl_thread *thread,
 	if ((cur->ver != VERSION) || (cur->patch_lvl != PATCHLEVEL) ||
 	    (cur->sub_lvl != SUBLEVEL)) {
 		ret = -EBADMSG;
+		strncpy2(rej_msg, "Version is not supported", sizeof(rej_msg));
 		rej_reason = TSRV_HREJECT_VERSION_NOT_SUPPORTED;
 		prl_notice(2, "Dropping connection from " PRWIU
 			   " (version not supported)...", W_IU(sess));
