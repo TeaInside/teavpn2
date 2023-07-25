@@ -293,7 +293,7 @@ out_err:
 
 
 #define IPV4_EL (IPV4_L * 2)
-#define IPV4_LI (IPV4_L + 1)
+#define IPV4_LI (IPV4_L + 7)
 #define IPV4_ELI (IPV4_EL + 1)
 
 #define EXEC_CMD(OUT, BUF, IP, CMD, ...)				\
@@ -389,6 +389,7 @@ static __cold noinline bool teavpn_iface_toggle(struct if_info *iface, bool up,
 	uint8_t cidr;
 	char cbuf[256];
 	const char *ip;
+	size_t tmp_len;
 
 	sane_strncpy(uipv4, iface->ipv4, sizeof(uipv4));
 	sane_strncpy(uipv4_nm, iface->ipv4_netmask, sizeof(uipv4_nm));
@@ -423,7 +424,8 @@ static __cold noinline bool teavpn_iface_toggle(struct if_info *iface, bool up,
 	}
 
 	/* Add CIDR to IPv4 */
-	snprintf(uipv4 + strnlen(uipv4, IPV4_L), IPV4_L, "/%u", cidr);
+	tmp_len = strnlen(uipv4, sizeof(uipv4) - 1);
+	snprintf(uipv4 + tmp_len, sizeof(uipv4) - tmp_len, "/%hhu", cidr);
 
 	/*
 	 * Bitwise AND between IP address and netmask
@@ -447,7 +449,8 @@ static __cold noinline bool teavpn_iface_toggle(struct if_info *iface, bool up,
 	}
 
 	/* Add CIDR to network address */
-	snprintf(uipv4_nw + strnlen(uipv4_nw, IPV4_L), IPV4_L, "/%d", cidr);
+	tmp_len = strnlen(uipv4_nw, sizeof(uipv4_nw) - 1);
+	snprintf(uipv4_nw + tmp_len, sizeof(uipv4_nw) - tmp_len, "/%hhu", cidr);
 
 	/* Convert broadcast address from 32-bit big-endian integer to chars */
 	if (!inet_ntop(AF_INET, &bipv4_bc, uipv4_bc, IPV4_L)) {
